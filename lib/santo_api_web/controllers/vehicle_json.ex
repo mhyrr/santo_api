@@ -1,5 +1,10 @@
 defmodule SantoApiWeb.VehicleJSON do
-  def show(%{vehicle: vehicle, claims: claims, evidence_requests: requests}) do
+  def show(%{
+        vehicle: vehicle,
+        claims: claims,
+        evidence_requests: requests,
+        comparison: comparison
+      }) do
     %{
       vehicle: %{
         id: vehicle.id,
@@ -11,8 +16,22 @@ defmodule SantoApiWeb.VehicleJSON do
         decode_snapshot: vehicle.decode_snapshot
       },
       claims: Enum.map(claims, &claim/1),
-      evidence_requests: Enum.map(requests, &request/1)
+      evidence_requests: Enum.map(requests, &request/1),
+      comparison: comparison
     }
+  end
+
+  def evidence(%{artifact: artifact} = assigns) do
+    assigns
+    |> show()
+    |> Map.put(:artifact, %{
+      id: artifact.id,
+      kind: artifact.kind,
+      sha256: artifact.sha256,
+      source_url: artifact.source_url,
+      acquired_at: artifact.acquired_at,
+      metadata: artifact.metadata
+    })
   end
 
   defp claim(claim) do

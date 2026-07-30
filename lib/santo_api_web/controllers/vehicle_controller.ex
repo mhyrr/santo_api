@@ -30,11 +30,30 @@ defmodule SantoApiWeb.VehicleController do
     end
   end
 
+  def vpic(conn, %{"id" => id}) do
+    with {:ok, vehicle} <- Registry.fetch_vehicle(id),
+         {:ok, artifact} <- Registry.ingest_vpic(vehicle) do
+      conn
+      |> put_status(:created)
+      |> render(:evidence, Keyword.put(payload(vehicle), :artifact, artifact))
+    else
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{status: "not_found"})
+
+      {:error, :unsupported_identity} ->
+        conn |> put_status(:unprocessable_entity) |> json(%{status: "unsupported_identity"})
+
+      {:error, _reason} ->
+        conn |> put_status(:bad_gateway) |> json(%{status: "vpic_unavailable"})
+    end
+  end
+
   defp payload(vehicle) do
     [
       vehicle: vehicle,
       claims: Registry.list_claims(vehicle.id),
-      evidence_requests: Registry.list_evidence_requests(vehicle.id)
+      evidence_requests: Registry.list_evidence_requests(vehicle.id),
+      comparison: Registry.claim_comparison(vehicle.id)
     ]
   end
 end

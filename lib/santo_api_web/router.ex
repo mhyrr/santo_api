@@ -27,6 +27,7 @@ defmodule SantoApiWeb.Router do
 
     post "/vehicles", VehicleController, :create
     get "/vehicles/:id", VehicleController, :show
+    post "/vehicles/:id/vpic", VehicleController, :vpic
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
