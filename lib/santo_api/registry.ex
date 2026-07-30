@@ -91,27 +91,71 @@ defmodule SantoApi.Registry do
   never stored — nothing overwrites anything.
   """
   def claim_comparison(vehicle_id) do
-    from(c in Claim,
-      join: p in Party,
-      on: p.id == c.asserted_by_party_id,
-      where: c.vehicle_id == ^vehicle_id and c.state in [:admitted, :proposed],
-      order_by: [c.predicate, p.name],
-      select: %{
-        claim_id: c.id,
-        predicate: c.predicate,
-        value: c.value,
-        state: c.state,
-        method: c.method,
-        party: p.name
-      }
-    )
-    |> Repo.all()
+    vehicle_id
+    |> live_claim_entries()
     |> Enum.group_by(& &1.predicate)
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.map(fn {predicate, entries} ->
       %{predicate: predicate, status: comparison_status(predicate, entries), claims: entries}
     end)
   end
+
+  defp live_claim_entries(vehicle_id) do
+    Repo.all(
+      from c in Claim,
+        join: p in Party,
+        on: p.id == c.asserted_by_party_id,
+        where: c.vehicle_id == ^vehicle_id and c.state in [:admitted, :proposed],
+        order_by: [c.predicate, p.name],
+        select: %{
+          claim_id: c.id,
+          predicate: c.predicate,
+          value: c.value,
+          state: c.state,
+          method: c.method,
+          party: p.name,
+          scope_kind: c.scope_kind,
+          inserted_at: c.inserted_at
+        }
+    )
+  end
+
+  @doc """
+  Recompute the one-row view (contract §8): factory/provenance claims
+  flatten into `vehicle.facts`; event-scoped claims stay in the logbook.
+  Runs inside every claim-writing path; call it after any out-of-band
+  claim state change.
+  """
+  def refresh_facts(%Vehicle{} = vehicle) do
+    facts =
+      vehicle.id
+      |> live_claim_entries()
+      |> Enum.filter(&(&1.scope_kind == :factory))
+      |> Enum.group_by(& &1.predicate)
+      |> Map.new(fn {predicate, entries} -> {predicate, fact(predicate, entries)} end)
+
+    vehicle |> Ecto.Changeset.change(facts: facts) |> Repo.update!()
+  end
+
+  defp fact(predicate, entries) do
+    best =
+      Enum.min_by(
+        entries,
+        &{state_rank(&1.state), DateTime.to_unix(&1.inserted_at, :microsecond)}
+      )
+
+    status =
+      case comparison_status(predicate, entries) do
+        :conflict -> "conflicted"
+        _no_disagreement when best.state == :admitted -> "verified"
+        _no_disagreement -> "unverified"
+      end
+
+    %{"value" => best.value, "status" => status}
+  end
+
+  defp state_rank(:admitted), do: 0
+  defp state_rank(:proposed), do: 1
 
   defp comparison_status(predicate, entries) do
     [first | rest] = entries
@@ -174,6 +218,7 @@ defmodule SantoApi.Registry do
       )
     end
 
+    refresh_facts(vehicle)
     artifact
   end
 
@@ -199,7 +244,7 @@ defmodule SantoApi.Registry do
 
     emit_claims(vehicle, decode)
     open_evidence_requests(vehicle, identity)
-    vehicle
+    refresh_facts(vehicle)
   end
 
   defp snapshot({:ok, decoded}), do: Terms.sanitize(decoded)

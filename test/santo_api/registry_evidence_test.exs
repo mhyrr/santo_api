@@ -94,6 +94,23 @@ defmodule SantoApi.RegistryEvidenceTest do
       assert santo_entry.state == :admitted
     end
 
+    test "facts pick the admitted value and surface conflict, agreement stays verified" do
+      stub_vpic()
+      {:ok, vehicle} = Registry.ingest(@cgt)
+      {:ok, _artifact} = Registry.ingest_vpic(vehicle)
+
+      {:ok, vehicle} = Registry.fetch_vehicle(vehicle.id)
+
+      assert vehicle.facts["identity.model"] == %{
+               "value" => %{"code" => "carrera_gt", "label" => "980"},
+               "status" => "conflicted"
+             }
+
+      assert vehicle.facts["identity.model_year"] == %{"value" => 2005, "status" => "verified"}
+      assert vehicle.facts["identity.marque"] == %{"value" => "porsche", "status" => "verified"}
+      assert vehicle.facts["build.plant"]["status"] == "verified"
+    end
+
     test "equivalence ignores the model label, comparing codes only" do
       stub_vpic(VpicFixtures.response(%{VpicFixtures.cgt_values() | "Model" => "Carrera GT"}))
       {:ok, vehicle} = Registry.ingest(@cgt)

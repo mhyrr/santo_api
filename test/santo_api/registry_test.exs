@@ -46,6 +46,20 @@ defmodule SantoApi.RegistryTest do
       end
     end
 
+    test "facts materialize as the one-row view, all verified for santo-only claims" do
+      {:ok, vehicle} = Registry.ingest(@nine_five_nine)
+
+      assert map_size(vehicle.facts) == 6
+
+      assert vehicle.facts["identity.model_year"] == %{"value" => 1988, "status" => "verified"}
+
+      assert vehicle.facts["build.variant"] == %{"value" => "sport", "status" => "verified"}
+
+      assert Enum.all?(vehicle.facts, fn {_predicate, fact} ->
+               fact["status"] == "verified"
+             end)
+    end
+
     test "unmapped decode attributes stay in the snapshot without claims" do
       {:ok, vehicle} = Registry.ingest(@cgt)
 
@@ -71,6 +85,7 @@ defmodule SantoApi.RegistryTest do
              ]
 
       assert Registry.list_claims(vehicle.id) == []
+      assert vehicle.facts == %{}
     end
 
     test "opens an identity evidence request carrying santo's evidence classes" do

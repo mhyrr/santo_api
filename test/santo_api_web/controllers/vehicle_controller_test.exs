@@ -89,6 +89,11 @@ defmodule SantoApiWeb.VehicleControllerTest do
 
       model = Enum.find(comparison, &(&1["predicate"] == "identity.model"))
       assert model["status"] == "conflict"
+
+      conn = get(conn, ~p"/api/vehicles/#{id}")
+      %{"vehicle" => %{"facts" => facts}} = json_response(conn, 200)
+      assert facts["identity.model"]["status"] == "conflicted"
+      assert facts["identity.model"]["value"]["code"] == "carrera_gt"
     end
 
     test "unknown vehicle is a 404", %{conn: conn} do

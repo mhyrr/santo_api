@@ -13,7 +13,8 @@ defmodule SantoApiWeb.VehicleJSON do
         candidates: vehicle.candidates,
         input: vehicle.input,
         santo_version: vehicle.santo_version,
-        decode_snapshot: vehicle.decode_snapshot
+        decode_snapshot: vehicle.decode_snapshot,
+        facts: vehicle.facts
       },
       claims: Enum.map(claims, &claim/1),
       evidence_requests: Enum.map(requests, &request/1),

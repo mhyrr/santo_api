@@ -32,7 +32,8 @@ defmodule SantoApiWeb.VehicleController do
 
   def vpic(conn, %{"id" => id}) do
     with {:ok, vehicle} <- Registry.fetch_vehicle(id),
-         {:ok, artifact} <- Registry.ingest_vpic(vehicle) do
+         {:ok, artifact} <- Registry.ingest_vpic(vehicle),
+         {:ok, vehicle} <- Registry.fetch_vehicle(id) do
       conn
       |> put_status(:created)
       |> render(:evidence, Keyword.put(payload(vehicle), :artifact, artifact))

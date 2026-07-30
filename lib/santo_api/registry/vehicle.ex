@@ -18,6 +18,7 @@ defmodule SantoApi.Registry.Vehicle do
     field :input, :string
     field :decode_snapshot, :map
     field :santo_version, :string
+    field :facts, :map, default: %{}
     timestamps(type: :utc_datetime_usec)
   end
 end
