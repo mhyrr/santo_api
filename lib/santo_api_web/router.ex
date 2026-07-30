@@ -18,6 +18,9 @@ defmodule SantoApiWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    live "/bench", BenchLive.Index
+    live "/bench/vehicles/:id", BenchLive.Show
   end
 
   scope "/api", SantoApiWeb do

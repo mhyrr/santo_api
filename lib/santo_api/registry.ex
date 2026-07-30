@@ -46,6 +46,14 @@ defmodule SantoApi.Registry do
     end
   end
 
+  @doc """
+  All vehicles, most recently ingested first. Bench-only listing — there
+  is no scoping or pagination yet, matching the rest of the registry.
+  """
+  def list_vehicles do
+    Repo.all(from v in Vehicle, order_by: [desc: v.inserted_at])
+  end
+
   def fetch_vehicle(id) do
     with {:ok, uuid} <- Ecto.UUID.cast(id),
          %Vehicle{} = vehicle <- Repo.get(Vehicle, uuid) do

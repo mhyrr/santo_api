@@ -122,6 +122,15 @@ defmodule SantoApi.RegistryTest do
     end
   end
 
+  describe "list_vehicles/0" do
+    test "returns all vehicles, most recently ingested first" do
+      {:ok, first} = Registry.ingest(@cgt)
+      {:ok, second} = Registry.ingest(@nine_five_nine)
+
+      assert Enum.map(Registry.list_vehicles(), & &1.id) == [second.id, first.id]
+    end
+  end
+
   describe "fetch_vehicle/1" do
     test "fetches by id and rejects unknown or malformed ids" do
       {:ok, vehicle} = Registry.ingest(@cgt)
