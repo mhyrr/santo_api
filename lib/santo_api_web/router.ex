@@ -20,10 +20,11 @@ defmodule SantoApiWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", SantoApiWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", SantoApiWeb do
+    pipe_through :api
+
+    get "/vins/:vin", VinController, :show
+  end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:santo_api, :dev_routes) do
