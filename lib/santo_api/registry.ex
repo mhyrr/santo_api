@@ -15,8 +15,19 @@ defmodule SantoApi.Registry do
   import Ecto.Query, warn: false
 
   alias SantoApi.Repo
-  alias SantoApi.Registry.{Claim, EvidenceRequest, IdentityKey, Party, Vehicle, Vocabulary}
+
+  alias SantoApi.Registry.{
+    Artifact,
+    Claim,
+    EvidenceRequest,
+    IdentityKey,
+    Party,
+    Vehicle,
+    Vocabulary
+  }
+
   alias SantoApi.Terms
+  alias SantoApi.Vpic
 
   def ingest(input) do
     case Santo.Identity.key(input) do
@@ -51,9 +62,119 @@ defmodule SantoApi.Registry do
     Repo.all(from r in EvidenceRequest, where: r.vehicle_id == ^vehicle_id, order_by: r.subject)
   end
 
-  def vin_santo_party do
-    Repo.get_by(Party, kind: :vin_santo) ||
-      Repo.insert!(%Party{name: "Vin Santo", kind: :vin_santo})
+  def vin_santo_party, do: ensure_party("Vin Santo", :vin_santo)
+
+  def ensure_party(name, kind) do
+    Repo.get_by(Party, name: name, kind: kind) ||
+      Repo.insert!(%Party{name: name, kind: kind})
+  end
+
+  @doc """
+  Fetch a vPIC snapshot for a VIN-identified vehicle, store it as an
+  api_snapshot artifact, and emit its facts as `:proposed` claims — the
+  ratification gate applies to external evidence. Pre-1981 chassis
+  identities are outside vPIC's scope.
+  """
+  def ingest_vpic(%Vehicle{identity_kind: :vin} = vehicle) do
+    vin = String.trim_leading(vehicle.identity_key, "vin:")
+
+    with {:ok, %{payload: payload, url: url}} <- Vpic.fetch(vin) do
+      Repo.transaction(fn -> persist_vpic_evidence(vehicle, payload, url) end)
+    end
+  end
+
+  def ingest_vpic(%Vehicle{}), do: {:error, :unsupported_identity}
+
+  @doc """
+  The oracle pattern as a query: group live claims by predicate and
+  label each `:agreement`, `:conflict`, or `:single_source`. Derived,
+  never stored — nothing overwrites anything.
+  """
+  def claim_comparison(vehicle_id) do
+    from(c in Claim,
+      join: p in Party,
+      on: p.id == c.asserted_by_party_id,
+      where: c.vehicle_id == ^vehicle_id and c.state in [:admitted, :proposed],
+      order_by: [c.predicate, p.name],
+      select: %{
+        claim_id: c.id,
+        predicate: c.predicate,
+        value: c.value,
+        state: c.state,
+        method: c.method,
+        party: p.name
+      }
+    )
+    |> Repo.all()
+    |> Enum.group_by(& &1.predicate)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {predicate, entries} ->
+      %{predicate: predicate, status: comparison_status(predicate, entries), claims: entries}
+    end)
+  end
+
+  defp comparison_status(predicate, entries) do
+    [first | rest] = entries
+
+    cond do
+      length(Enum.uniq_by(entries, & &1.party)) < 2 ->
+        :single_source
+
+      Enum.all?(rest, &Vocabulary.equivalent?(predicate, first.value, &1.value)) ->
+        :agreement
+
+      true ->
+        :conflict
+    end
+  end
+
+  defp persist_vpic_evidence(vehicle, payload, url) do
+    party = ensure_party("NHTSA vPIC", :vendor)
+    sha = :crypto.hash(:sha256, Jason.encode!(payload)) |> Base.encode16(case: :lower)
+
+    artifact =
+      Repo.get_by(Artifact, sha256: sha) ||
+        Repo.insert!(%Artifact{
+          kind: :api_snapshot,
+          sha256: sha,
+          payload: payload,
+          source_url: url,
+          source_party_id: party.id,
+          acquired_at: DateTime.utc_now()
+        })
+
+    for {predicate, value} <- Vpic.facts(payload) do
+      :ok = Vocabulary.validate(predicate, value)
+      scope_kind = Vocabulary.scope_kind(predicate)
+
+      Repo.insert!(
+        %Claim{
+          vehicle_id: vehicle.id,
+          asserted_by_party_id: party.id,
+          artifact_id: artifact.id,
+          predicate: predicate,
+          value: value,
+          scope_kind: scope_kind,
+          state: :proposed,
+          method: :structured_api,
+          method_meta: %{"vendor" => party.name},
+          content_hash:
+            Claim.hash(
+              vehicle.identity_key,
+              predicate,
+              value,
+              scope_kind,
+              nil,
+              :structured_api,
+              party.name
+            )
+        },
+        on_conflict: :nothing,
+        conflict_target: [:vehicle_id, :content_hash]
+      )
+    end
+
+    artifact
   end
 
   defp upsert_vehicle(identity, input, decode) do
@@ -103,7 +224,8 @@ defmodule SantoApi.Registry do
         state: :admitted,
         method: :santo,
         method_meta: %{"santo_version" => santo_version()},
-        content_hash: Claim.hash(vehicle.identity_key, predicate, value, scope_kind, nil, :santo)
+        content_hash:
+          Claim.hash(vehicle.identity_key, predicate, value, scope_kind, nil, :santo, party.name)
       })
     end
 

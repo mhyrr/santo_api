@@ -8,7 +8,7 @@ defmodule SantoApi.Registry.Claim do
 
   use Ecto.Schema
 
-  alias SantoApi.Registry.{JsonValue, Party, Vehicle}
+  alias SantoApi.Registry.{Artifact, JsonValue, Party, Vehicle}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -16,6 +16,7 @@ defmodule SantoApi.Registry.Claim do
   schema "claims" do
     belongs_to :vehicle, Vehicle
     belongs_to :asserted_by_party, Party
+    belongs_to :artifact, Artifact
     field :predicate, :string
     field :value, JsonValue
     field :scope_kind, Ecto.Enum, values: [:factory, :observed, :event]
@@ -31,8 +32,10 @@ defmodule SantoApi.Registry.Claim do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def hash(identity_key, predicate, value, scope_kind, scope_date, method) do
-    payload = Jason.encode!([identity_key, predicate, value, scope_kind, scope_date, method])
+  def hash(identity_key, predicate, value, scope_kind, scope_date, method, party_name) do
+    payload =
+      Jason.encode!([identity_key, predicate, value, scope_kind, scope_date, method, party_name])
+
     :crypto.hash(:sha256, payload) |> Base.encode16(case: :lower)
   end
 end

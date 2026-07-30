@@ -23,6 +23,14 @@ defmodule SantoApi.Registry.Vocabulary do
 
   def scope_kind(predicate), do: Map.get(@predicates, predicate, :error)
 
+  @doc """
+  Are two values of this predicate the same fact? `identity.model`
+  compares codes only — the label is presentation, and sources differ on
+  it without disagreeing about the car.
+  """
+  def equivalent?("identity.model", %{"code" => a}, %{"code" => b}), do: a == b
+  def equivalent?(_predicate, a, b), do: a == b
+
   def validate(predicate, value) do
     case Map.fetch(@predicates, predicate) do
       {:ok, _scope} -> validate_value(predicate, value)
