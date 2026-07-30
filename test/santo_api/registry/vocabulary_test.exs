@@ -20,6 +20,8 @@ defmodule SantoApi.Registry.VocabularyTest do
       assert {:error, _} = Vocabulary.validate("identity.market", "unknown")
       assert {:error, _} = Vocabulary.validate("identity.marque", :porsche)
       assert {:error, _} = Vocabulary.validate("identity.model", %{"code" => nil, "label" => "x"})
+      assert {:error, _} = Vocabulary.validate("observation.mileage", -1)
+      assert {:error, _} = Vocabulary.validate("observation.mileage", "43210")
     end
 
     test "the vocabulary is closed: unknown predicates are rejected" do
@@ -28,14 +30,14 @@ defmodule SantoApi.Registry.VocabularyTest do
   end
 
   describe "scope_kind/1" do
-    test "every v1 predicate is factory-scoped" do
-      for predicate <- Vocabulary.predicates() do
-        assert Vocabulary.scope_kind(predicate) == :factory
-      end
+    test "identity and build predicates are factory-scoped, observations are observed" do
+      assert Vocabulary.scope_kind("identity.marque") == :factory
+      assert Vocabulary.scope_kind("build.variant") == :factory
+      assert Vocabulary.scope_kind("observation.mileage") == :observed
     end
 
     test "unknown predicate has no scope" do
-      assert Vocabulary.scope_kind("observation.mileage") == :error
+      assert Vocabulary.scope_kind("event.service") == :error
     end
   end
 end

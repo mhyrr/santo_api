@@ -7,13 +7,15 @@ defmodule SantoApi.Registry.EvidenceRequest do
 
   use Ecto.Schema
 
-  alias SantoApi.Registry.Vehicle
+  alias SantoApi.Registry.{Artifact, Claim, Vehicle}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   schema "evidence_requests" do
     belongs_to :vehicle, Vehicle
+    belongs_to :satisfied_by_claim, Claim
+    belongs_to :satisfied_by_artifact, Artifact
     field :subject, :string
     field :evidence_classes, {:array, :string}, default: []
     field :status, Ecto.Enum, values: [:open, :satisfied, :abandoned], default: :open

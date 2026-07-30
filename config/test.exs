@@ -41,3 +41,5 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 config :santo_api, :vpic_req_options, plug: {Req.Test, SantoApi.Vpic}
+
+config :santo_api, :uploads_dir, Path.join(System.tmp_dir!(), "santo_api_test_uploads")

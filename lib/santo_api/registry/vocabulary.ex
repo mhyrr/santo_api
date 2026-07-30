@@ -16,7 +16,8 @@ defmodule SantoApi.Registry.Vocabulary do
     "identity.model_year" => :factory,
     "identity.market" => :factory,
     "build.plant" => :factory,
-    "build.variant" => :factory
+    "build.variant" => :factory,
+    "observation.mileage" => :observed
   }
 
   def predicates, do: Map.keys(@predicates)
@@ -51,6 +52,9 @@ defmodule SantoApi.Registry.Vocabulary do
   defp validate_value("build.plant", value) when is_binary(value), do: :ok
 
   defp validate_value("build.variant", value) when is_binary(value), do: :ok
+
+  defp validate_value("observation.mileage", value) when is_integer(value) and value >= 0,
+    do: :ok
 
   defp validate_value(predicate, _value), do: {:error, {:invalid_value, predicate}}
 end

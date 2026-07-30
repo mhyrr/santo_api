@@ -8,13 +8,14 @@ defmodule SantoApi.Registry.Artifact do
 
   use Ecto.Schema
 
-  alias SantoApi.Registry.Party
+  alias SantoApi.Registry.{Party, Vehicle}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   schema "artifacts" do
     belongs_to :source_party, Party
+    belongs_to :vehicle, Vehicle
     field :kind, Ecto.Enum, values: [:document, :photo, :receipt, :api_snapshot, :listing]
     field :sha256, :string
     field :payload, :map

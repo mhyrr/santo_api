@@ -63,6 +63,112 @@ defmodule SantoApi.Registry do
     Repo.all(from r in EvidenceRequest, where: r.vehicle_id == ^vehicle_id, order_by: r.subject)
   end
 
+  def list_artifacts(vehicle_id) do
+    Repo.all(
+      from a in Artifact, where: a.vehicle_id == ^vehicle_id, order_by: [desc: a.inserted_at]
+    )
+  end
+
+  @doc """
+  Store an uploaded file as an artifact: content-hashed into the uploads
+  dir, deduped by sha. `storage_ref` is the basename inside the
+  configured uploads dir, so the store can move without rewriting rows.
+  """
+  def create_upload_artifact(%{path: path, filename: filename, kind: kind} = attrs) do
+    content = File.read!(path)
+    sha = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+
+    case Repo.get_by(Artifact, sha256: sha) do
+      %Artifact{} = existing ->
+        {:ok, existing}
+
+      nil ->
+        storage_ref = sha <> Path.extname(filename)
+        dir = uploads_dir()
+        File.mkdir_p!(dir)
+        File.cp!(path, Path.join(dir, storage_ref))
+
+        {:ok,
+         Repo.insert!(%Artifact{
+           vehicle_id: attrs[:vehicle_id],
+           kind: kind,
+           sha256: sha,
+           storage_ref: storage_ref,
+           mime: attrs[:mime],
+           source_party_id: vin_santo_party().id,
+           acquired_at: DateTime.utc_now(),
+           metadata: %{"filename" => filename}
+         })}
+    end
+  end
+
+  defp uploads_dir do
+    Application.get_env(
+      :santo_api,
+      :uploads_dir,
+      Path.join(to_string(:code.priv_dir(:santo_api)), "uploads")
+    )
+  end
+
+  @doc """
+  Propose a human claim against a vehicle — the bench path. Enters
+  `:proposed`; `ratify_claim/1` is the gate.
+  """
+  def propose_claim(%Vehicle{} = vehicle, attrs) do
+    changeset = Claim.propose_changeset(vehicle, vin_santo_party(), attrs)
+
+    with {:ok, claim} <- Repo.insert(changeset) do
+      refresh_facts(vehicle)
+      {:ok, claim}
+    end
+  end
+
+  def ratify_claim(claim_id), do: flip_claim(claim_id, :admitted)
+  def reject_claim(claim_id), do: flip_claim(claim_id, :rejected)
+
+  defp flip_claim(claim_id, new_state) do
+    result =
+      Repo.transaction(fn ->
+        case Repo.get(Claim, claim_id) do
+          nil ->
+            Repo.rollback(:not_found)
+
+          %Claim{state: :proposed} = claim ->
+            claim = claim |> Ecto.Changeset.change(state: new_state) |> Repo.update!()
+            {:ok, vehicle} = fetch_vehicle(claim.vehicle_id)
+            refresh_facts(vehicle)
+            claim
+
+          %Claim{state: state} ->
+            Repo.rollback({:not_proposed, state})
+        end
+      end)
+
+    case result do
+      {:ok, claim} -> {:ok, claim}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def satisfy_evidence_request(request_id, refs) do
+    case Repo.get(EvidenceRequest, request_id) do
+      nil ->
+        {:error, :not_found}
+
+      %EvidenceRequest{status: :open} = request ->
+        request
+        |> Ecto.Changeset.change(
+          status: :satisfied,
+          satisfied_by_claim_id: refs[:claim_id],
+          satisfied_by_artifact_id: refs[:artifact_id]
+        )
+        |> Repo.update()
+
+      %EvidenceRequest{} ->
+        {:error, :not_open}
+    end
+  end
+
   def vin_santo_party, do: ensure_party("Vin Santo", :vin_santo)
 
   def ensure_party(name, kind) do
