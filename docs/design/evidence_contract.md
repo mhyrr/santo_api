@@ -174,13 +174,27 @@ hash) · `evidence_requests` · `adjudications`. Six tables; conflicts, tiers,
 and facts are computed from claims — facts materialized for cross-registry
 queries, the rest on read.
 
-## 11. Build order after sign-off
+## 11. Roadmap (updated 2026-07-30 with Greg — no auth, no users yet)
 
-1. Schemas + contexts for §9, with the dossier corpus cars
-   (Carrera GT / 959 / Cayman S) as the seed fixtures — fixtures must enter through
-   the real ingest path, not hand-inserted rows.
-2. `POST /api/vins` — accept input, `Identity.key/1`, persist vehicle, snapshot the
-   santo decode as claims with `basis.method = santo`.
-3. Dossier workflow surfaces (upload artifact, propose claim, ratify, adjudicate).
-4. Vendor benchmarks (vPIC oracle already exists; DataOne/NMVTIS later) — only
-   after the contract holds real data.
+The v1 product is the dossier, and its only user is us: the plumbing target is an
+operator workbench, not an auth system. Auth arrives with the first non-operator
+surface (owner claiming is design.md layer 1/2 territory, explicitly deferred).
+
+Done: registry schemas + ingest · vPIC evidence · facts projection · provider
+abstraction (capability-based; providers acquire, the registry persists and
+interprets) · bench context (file artifacts to local disk via `uploads_dir`,
+propose/ratify/reject, evidence-request satisfaction).
+
+1. **Operator bench UI** — LiveView workbench per vehicle: facts, claims with the
+   ratify gate, comparison, uploads, propose-claim form. Local-only; BasicAuth
+   one-liner when it ever deploys.
+2. **Dossier corpus** — real documents from public well-documented sales
+   (BaT-style listings with posted window stickers/COAs become `:listing` and
+   `:photo` artifacts). Vocabulary predicates (paint, delivery, title events) are
+   added as the corpus demands them, test-first.
+3. **Extraction** — LLM reads artifacts, emits proposed claims into the same
+   gate. Only after the bench can review its output. Revrec lessons apply.
+4. **Dossier rendering** — the sellable output: facts, tier composition,
+   timeline, citations.
+5. **More providers** — DataOne/NMVTIS/listing history as capability mappers,
+   benchmarked against real dossier demand; PPS as an `:async_order` provider.
