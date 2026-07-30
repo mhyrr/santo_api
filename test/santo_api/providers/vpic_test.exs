@@ -1,7 +1,7 @@
-defmodule SantoApi.VpicTest do
+defmodule SantoApi.Providers.VpicTest do
   use ExUnit.Case, async: true
 
-  alias SantoApi.Vpic
+  alias SantoApi.Providers.Vpic
   alias SantoApi.VpicFixtures
 
   describe "facts/1" do

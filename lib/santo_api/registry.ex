@@ -26,8 +26,9 @@ defmodule SantoApi.Registry do
     Vocabulary
   }
 
+  alias SantoApi.Providers
+  alias SantoApi.Providers.{Acquisition, Request}
   alias SantoApi.Terms
-  alias SantoApi.Vpic
 
   def ingest(input) do
     case Santo.Identity.key(input) do
@@ -78,8 +79,9 @@ defmodule SantoApi.Registry do
   def ingest_vpic(%Vehicle{identity_kind: :vin} = vehicle) do
     vin = String.trim_leading(vehicle.identity_key, "vin:")
 
-    with {:ok, %{payload: payload, url: url}} <- Vpic.fetch(vin) do
-      Repo.transaction(fn -> persist_vpic_evidence(vehicle, payload, url) end)
+    with {:ok, request} <- Request.new(:generic_specifications, {:vin, vin}),
+         {:ok, %Acquisition{} = acquisition} <- Providers.acquire(:nhtsa_vpic, request) do
+      Repo.transaction(fn -> persist_acquisition(vehicle, acquisition) end)
     end
   end
 
@@ -172,22 +174,31 @@ defmodule SantoApi.Registry do
     end
   end
 
-  defp persist_vpic_evidence(vehicle, payload, url) do
-    party = ensure_party("NHTSA vPIC", :vendor)
-    sha = :crypto.hash(:sha256, Jason.encode!(payload)) |> Base.encode16(case: :lower)
+  defp persist_acquisition(vehicle, %Acquisition{} = acquisition) do
+    {:ok, provider} = Providers.provider(acquisition.provider)
+    party = ensure_party(provider.descriptor().name, :vendor)
+    sha = :crypto.hash(:sha256, Jason.encode!(acquisition.payload)) |> Base.encode16(case: :lower)
 
     artifact =
       Repo.get_by(Artifact, sha256: sha) ||
         Repo.insert!(%Artifact{
           kind: :api_snapshot,
           sha256: sha,
-          payload: payload,
-          source_url: url,
+          payload: acquisition.payload,
+          source_url: acquisition.source_url,
           source_party_id: party.id,
-          acquired_at: DateTime.utc_now()
+          mime: acquisition.media_type,
+          acquired_at: acquisition.acquired_at,
+          metadata: %{
+            "provider" => to_string(acquisition.provider),
+            "capability" => to_string(acquisition.capability),
+            "coverage" => to_string(acquisition.coverage),
+            "rights_profile" => acquisition.rights_profile,
+            "diagnostics" => acquisition.diagnostics
+          }
         })
 
-    for {predicate, value} <- Vpic.facts(payload) do
+    for {predicate, value} <- acquisition_facts(acquisition) do
       :ok = Vocabulary.validate(predicate, value)
       scope_kind = Vocabulary.scope_kind(predicate)
 
@@ -221,6 +232,11 @@ defmodule SantoApi.Registry do
     refresh_facts(vehicle)
     artifact
   end
+
+  # Per-provider claim interpretation stays Registry-side: providers own
+  # transport, the registry owns what becomes a claim.
+  defp acquisition_facts(%Acquisition{provider: :nhtsa_vpic, payload: payload}),
+    do: Providers.Vpic.facts(payload)
 
   defp upsert_vehicle(identity, input, decode) do
     key = IdentityKey.serialize(identity)
