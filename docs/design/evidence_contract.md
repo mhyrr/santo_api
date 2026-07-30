@@ -126,7 +126,36 @@ From claim basis, by code:
 Tier composition per vehicle ("87% receipt-backed over 6 years") is an aggregate
 over admitted claims — free once claims carry basis.
 
-## 8. Seams deliberately left, not built
+## 8. Facts — the one-row projection
+
+*(Added after the 2026-07-30 walk: claims are the ledger; this is the balance
+sheet. Decided with Greg.)*
+
+Each vehicle carries a materialized `facts` map — one row per vehicle, queryable
+across the registry: predicate → `{value, status}`.
+
+- **Projected from factory/provenance-scoped claims only.** Facts describe the
+  car and its provenance: build data, plant, delivery market, PTS color.
+  Event-scoped claims (modifications, maintenance, rebuilds) are the logbook's
+  substrate and present as a timeline — they never flatten into facts.
+- **Status** is computed, three values: `verified` (an admitted claim, no live
+  disagreement), `unverified` (proposed claims only), `conflicted` (live
+  disagreement — surfaced, never hidden).
+- **Value precedence** when sources differ: admitted beats proposed; ties break
+  to the earliest claim. The losing value stays visible in the claims and the
+  comparison — facts pick a face, they don't erase.
+- Recomputed inside every transaction that writes claims. Reading facts costs
+  one row; the receipts underneath are for sale moments, disputes, appraisals.
+
+Canonical examples of evidence-borne facts santo can never claim: paint-to-sample
+color (Kardex/PPS/COA territory), European delivery (delivery provenance ≠ VIN
+market). They enter as proposed claims from artifacts or owners and become
+verified facts through the gate.
+
+Ratification, named precisely: one state flip, `proposed → admitted`, with who
+and when attached. Not a workflow.
+
+## 9. Seams deliberately left, not built
 
 - **Attestation**: a signed statement over a content-hashed set of admitted claims
   at a point in time. v1 only ensures claims are hashable and immutable.
@@ -134,15 +163,18 @@ over admitted claims — free once claims carry basis.
   ratification → admitted. Import revrec's lesson: capture corrections as signal;
   prefer deterministic post-extraction fixes over prompt hints. Oban when real.
 - **Logbook entries** (design.md layer 2): a logbook entry is a presentation of
-  claims sharing an event scope — same substrate, no separate entry store.
+  claims sharing an event scope — same substrate, no separate entry store. The
+  facts/logbook boundary is §8: owner-facing event streams stay out of facts.
 
-## 9. Shape on disk (indicative, not DDL)
+## 10. Shape on disk (indicative, not DDL)
 
-`vehicles` (surrogate id, identity fields, status) · `parties` · `artifacts` ·
-`claims` (subject, predicate, value, scope, basis refs, state, hash) ·
-`evidence_requests` · `adjudications`. Six tables; conflicts and tiers are queries.
+`vehicles` (surrogate id, identity fields, materialized `facts`) · `parties` ·
+`artifacts` · `claims` (subject, predicate, value, scope, basis refs, state,
+hash) · `evidence_requests` · `adjudications`. Six tables; conflicts, tiers,
+and facts are computed from claims — facts materialized for cross-registry
+queries, the rest on read.
 
-## 10. Build order after sign-off
+## 11. Build order after sign-off
 
 1. Schemas + contexts for §9, with the dossier corpus cars
    (Carrera GT / 959 / Cayman S) as the seed fixtures — fixtures must enter through
