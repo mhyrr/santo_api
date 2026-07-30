@@ -23,7 +23,9 @@ defmodule SantoApi.Providers.Request do
           options: map()
         }
 
-  def new(capability, identity, options \\ %{}) when is_map(options) do
+  def new(capability, identity, options \\ %{})
+
+  def new(capability, identity, options) when is_map(options) do
     with :ok <- Capability.validate(capability),
          :ok <- validate_identity(identity) do
       {:ok, %__MODULE__{capability: capability, identity: identity, options: options}}
