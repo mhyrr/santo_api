@@ -24,6 +24,9 @@ defmodule SantoApiWeb.Router do
     pipe_through :api
 
     get "/vins/:vin", VinController, :show
+
+    post "/vehicles", VehicleController, :create
+    get "/vehicles/:id", VehicleController, :show
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
