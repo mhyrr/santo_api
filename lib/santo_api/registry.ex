@@ -17,6 +17,7 @@ defmodule SantoApi.Registry do
   alias SantoApi.Repo
 
   alias SantoApi.Registry.{
+    Adjudication,
     Artifact,
     Claim,
     EvidenceRequest,
@@ -77,6 +78,15 @@ defmodule SantoApi.Registry do
     )
   end
 
+  def list_adjudications(vehicle_id) do
+    Repo.all(
+      from a in Adjudication,
+        where: a.vehicle_id == ^vehicle_id,
+        order_by: [desc: a.inserted_at],
+        preload: [:claim_a, :claim_b, :prevailing_claim, :decided_by_party, :evidence_request]
+    )
+  end
+
   @doc """
   Store an uploaded file as an artifact: content-hashed into the uploads
   dir, deduped by sha. `storage_ref` is the basename inside the
@@ -124,7 +134,11 @@ defmodule SantoApi.Registry do
   `:proposed`; `ratify_claim/1` is the gate.
   """
   def propose_claim(%Vehicle{} = vehicle, attrs) do
-    changeset = Claim.propose_changeset(vehicle, vin_santo_party(), attrs)
+    propose_claim(vehicle, vin_santo_party(), attrs)
+  end
+
+  def propose_claim(%Vehicle{} = vehicle, %Party{} = party, attrs) do
+    changeset = Claim.propose_changeset(vehicle, party, attrs)
 
     with {:ok, claim} <- Repo.insert(changeset) do
       refresh_facts(vehicle)
@@ -134,6 +148,56 @@ defmodule SantoApi.Registry do
 
   def ratify_claim(claim_id), do: flip_claim(claim_id, :admitted)
   def reject_claim(claim_id), do: flip_claim(claim_id, :rejected)
+
+  @doc """
+  Resolve two live claims into the append-only casebook.
+
+  A supersede outcome admits the prevailing claim when necessary and flips the
+  other claim to `:superseded`. Coexistence admits both claims and preserves the
+  disagreement. Requesting evidence leaves claim state alone and opens the
+  corresponding evidence request. Every branch recomputes the materialized fact.
+  """
+  def adjudicate_claims(%Party{} = decider, claim_a_id, claim_b_id, attrs) do
+    result =
+      Repo.transaction(fn ->
+        with {:ok, {claim_a, claim_b}} <- lock_claim_pair(claim_a_id, claim_b_id),
+             :ok <- validate_claim_pair(claim_a, claim_b) do
+          changeset = Adjudication.create_changeset(decider, claim_a, claim_b, attrs)
+
+          with :ok <- validate_adjudication_changeset(changeset),
+               :ok <- validate_adjudication_artifacts(changeset, claim_a.vehicle_id) do
+            content_hash = Ecto.Changeset.get_field(changeset, :content_hash)
+
+            case Repo.get_by(Adjudication, content_hash: content_hash) do
+              %Adjudication{} = existing ->
+                existing
+
+              nil ->
+                case validate_live_claims(claim_a, claim_b) do
+                  :ok ->
+                    changeset = prepare_adjudication(changeset, claim_a)
+                    apply_adjudication_outcome!(changeset, claim_a, claim_b)
+                    adjudication = Repo.insert!(changeset)
+                    refresh_facts(Repo.get!(Vehicle, claim_a.vehicle_id))
+                    adjudication
+
+                  {:error, reason} ->
+                    Repo.rollback(reason)
+                end
+            end
+          else
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, adjudication} -> {:ok, adjudication}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   defp flip_claim(claim_id, new_state) do
     result =
@@ -157,6 +221,135 @@ defmodule SantoApi.Registry do
       {:ok, claim} -> {:ok, claim}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp lock_claim_pair(claim_a_id, claim_b_id) do
+    with {:ok, claim_a_uuid} <- Ecto.UUID.cast(claim_a_id),
+         {:ok, claim_b_uuid} <- Ecto.UUID.cast(claim_b_id) do
+      claims =
+        Repo.all(
+          from c in Claim,
+            where: c.id in ^[claim_a_uuid, claim_b_uuid],
+            order_by: c.id,
+            lock: "FOR UPDATE"
+        )
+
+      by_id = Map.new(claims, &{&1.id, &1})
+
+      case {Map.get(by_id, claim_a_uuid), Map.get(by_id, claim_b_uuid)} do
+        {%Claim{} = claim_a, %Claim{} = claim_b} -> {:ok, {claim_a, claim_b}}
+        _ -> {:error, :not_found}
+      end
+    else
+      :error -> {:error, :not_found}
+    end
+  end
+
+  defp validate_claim_pair(%Claim{id: id}, %Claim{id: id}), do: {:error, :same_claim}
+
+  defp validate_claim_pair(%Claim{} = claim_a, %Claim{} = claim_b) do
+    cond do
+      claim_a.vehicle_id != claim_b.vehicle_id ->
+        {:error, :different_vehicles}
+
+      claim_a.predicate != claim_b.predicate ->
+        {:error, :different_predicates}
+
+      claim_a.scope_kind != claim_b.scope_kind ->
+        {:error, :different_scopes}
+
+      claim_a.scope_kind == :event ->
+        {:error, :events_do_not_conflict}
+
+      claim_a.scope_kind == :observed and claim_a.scope_date != claim_b.scope_date ->
+        {:error, :non_overlapping_observations}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_adjudication_changeset(%Ecto.Changeset{valid?: true}), do: :ok
+  defp validate_adjudication_changeset(%Ecto.Changeset{} = changeset), do: {:error, changeset}
+
+  defp validate_adjudication_artifacts(changeset, vehicle_id) do
+    artifact_ids = Ecto.Changeset.get_field(changeset, :evidence_artifact_ids, [])
+
+    count =
+      Repo.aggregate(
+        from(a in Artifact, where: a.id in ^artifact_ids and a.vehicle_id == ^vehicle_id),
+        :count
+      )
+
+    if count == length(Enum.uniq(artifact_ids)),
+      do: :ok,
+      else: {:error, :invalid_evidence_artifacts}
+  end
+
+  defp validate_live_claims(%Claim{state: state_a}, %Claim{state: state_b})
+       when state_a in [:proposed, :admitted] and state_b in [:proposed, :admitted],
+       do: :ok
+
+  defp validate_live_claims(%Claim{state: state_a}, %Claim{state: state_b}),
+    do: {:error, {:claims_not_live, state_a, state_b}}
+
+  defp prepare_adjudication(changeset, claim) do
+    case Ecto.Changeset.get_field(changeset, :outcome) do
+      :request_evidence ->
+        classes = Ecto.Changeset.get_field(changeset, :requested_evidence_classes)
+
+        request =
+          Repo.one(
+            from r in EvidenceRequest,
+              where:
+                r.vehicle_id == ^claim.vehicle_id and r.subject == ^claim.predicate and
+                  r.status == :open
+          ) ||
+            Repo.insert!(%EvidenceRequest{
+              vehicle_id: claim.vehicle_id,
+              subject: claim.predicate,
+              evidence_classes: classes
+            })
+
+        Adjudication.with_evidence_request(changeset, request)
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp apply_adjudication_outcome!(changeset, claim_a, claim_b) do
+    case Ecto.Changeset.get_field(changeset, :outcome) do
+      :supersede ->
+        prevailing_id = Ecto.Changeset.get_field(changeset, :prevailing_claim_id)
+
+        case {claim_a.id == prevailing_id, claim_b.id == prevailing_id} do
+          {true, false} ->
+            set_claim_state!(claim_a, :admitted)
+            set_claim_state!(claim_b, :superseded)
+
+          {false, true} ->
+            set_claim_state!(claim_b, :admitted)
+            set_claim_state!(claim_a, :superseded)
+
+          _ ->
+            Repo.rollback(:prevailing_claim_not_in_pair)
+        end
+
+      :coexist_with_note ->
+        set_claim_state!(claim_a, :admitted)
+        set_claim_state!(claim_b, :admitted)
+
+      :request_evidence ->
+        :ok
+    end
+  end
+
+  defp set_claim_state!(%Claim{state: state}, state), do: :ok
+
+  defp set_claim_state!(%Claim{} = claim, state) do
+    claim |> Ecto.Changeset.change(state: state) |> Repo.update!()
+    :ok
   end
 
   def satisfy_evidence_request(request_id, refs) do
@@ -231,7 +424,10 @@ defmodule SantoApi.Registry do
           state: c.state,
           method: c.method,
           party: p.name,
+          party_id: p.id,
+          artifact_id: c.artifact_id,
           scope_kind: c.scope_kind,
+          scope_date: c.scope_date,
           inserted_at: c.inserted_at
         }
     )
@@ -255,11 +451,7 @@ defmodule SantoApi.Registry do
   end
 
   defp fact(predicate, entries) do
-    best =
-      Enum.min_by(
-        entries,
-        &{state_rank(&1.state), DateTime.to_unix(&1.inserted_at, :microsecond)}
-      )
+    best = best_fact_entry(predicate, entries)
 
     status =
       case comparison_status(predicate, entries) do
@@ -274,11 +466,46 @@ defmodule SantoApi.Registry do
   defp state_rank(:admitted), do: 0
   defp state_rank(:proposed), do: 1
 
-  defp comparison_status(predicate, entries) do
+  defp best_fact_entry(predicate, entries) do
+    best_state_rank = entries |> Enum.map(&state_rank(&1.state)) |> Enum.min()
+    state_entries = Enum.filter(entries, &(state_rank(&1.state) == best_state_rank))
+    earliest = Enum.min_by(state_entries, &DateTime.to_unix(&1.inserted_at, :microsecond))
+
+    state_entries
+    |> Enum.filter(&Vocabulary.equivalent?(predicate, earliest.value, &1.value))
+    |> Enum.min_by(fn entry ->
+      {-value_richness(entry.value), DateTime.to_unix(entry.inserted_at, :microsecond)}
+    end)
+  end
+
+  defp value_richness(value) when is_map(value) do
+    Enum.count(value, fn {_key, field} -> !is_nil(field) end)
+  end
+
+  defp value_richness(_value), do: 1
+
+  defp comparison_status(_predicate, [%{scope_kind: :event} | _entries]), do: :history
+
+  defp comparison_status(predicate, [%{scope_kind: :observed} | _entries] = entries) do
+    scope_groups = Enum.group_by(entries, & &1.scope_date)
+
+    statuses =
+      Enum.map(scope_groups, fn {_date, claims} -> value_comparison_status(predicate, claims) end)
+
+    cond do
+      :conflict in statuses -> :conflict
+      map_size(scope_groups) > 1 -> :history
+      true -> hd(statuses)
+    end
+  end
+
+  defp comparison_status(predicate, entries), do: value_comparison_status(predicate, entries)
+
+  defp value_comparison_status(predicate, entries) do
     [first | rest] = entries
 
     cond do
-      length(Enum.uniq_by(entries, & &1.party)) < 2 ->
+      length(Enum.uniq_by(entries, &comparison_source/1)) < 2 ->
         :single_source
 
       Enum.all?(rest, &Vocabulary.equivalent?(predicate, first.value, &1.value)) ->
@@ -288,6 +515,11 @@ defmodule SantoApi.Registry do
         :conflict
     end
   end
+
+  defp comparison_source(%{artifact_id: artifact_id}) when not is_nil(artifact_id),
+    do: {:artifact, artifact_id}
+
+  defp comparison_source(%{party_id: party_id}), do: {:party, party_id}
 
   defp persist_acquisition(vehicle, %Acquisition{} = acquisition) do
     {:ok, provider} = Providers.provider(acquisition.provider)

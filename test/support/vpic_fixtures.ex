@@ -28,6 +28,22 @@ defmodule SantoApi.VpicFixtures do
 
   def cgt_response, do: response(cgt_values())
 
+  def cayman_values do
+    %{
+      "VIN" => "WP0AB29827U782968",
+      "Make" => "PORSCHE",
+      "Manufacturer" => "DR. ING. H.C.F. PORSCHE AG",
+      "Model" => "Cayman",
+      "ModelYear" => "2007",
+      "PlantCity" => "UUSIKAUPUNKI",
+      "PlantCountry" => "FINLAND",
+      "ErrorCode" => "0",
+      "ErrorText" => "0 - VIN decoded clean. Check Digit (9th position) is correct"
+    }
+  end
+
+  def cayman_response, do: response(cayman_values())
+
   def response(values) do
     %{
       "Count" => 1,
