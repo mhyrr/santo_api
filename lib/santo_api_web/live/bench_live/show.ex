@@ -40,6 +40,7 @@ defmodule SantoApiWeb.BenchLive.Show do
     |> assign(:vehicle, vehicle)
     |> assign(:claims, Registry.list_claims(vehicle.id))
     |> assign(:artifacts, Registry.list_artifacts(vehicle.id))
+    |> assign(:adjudications, Registry.list_adjudications(vehicle.id))
     |> assign(:evidence_requests, Registry.list_evidence_requests(vehicle.id))
     |> assign(:comparison, Registry.claim_comparison(vehicle.id))
   end
@@ -62,6 +63,37 @@ defmodule SantoApiWeb.BenchLive.Show do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Reject failed: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event(
+        "adjudicate_claims",
+        %{
+          "claim_a_id" => claim_a_id,
+          "claim_b_id" => claim_b_id,
+          "prevailing_claim_id" => prevailing_claim_id,
+          "note" => note
+        } = params,
+        socket
+      ) do
+    evidence_artifact_ids = normalize_ids(params["evidence_artifact_ids"])
+
+    case Registry.adjudicate_claims(
+           Registry.vin_santo_party(),
+           claim_a_id,
+           claim_b_id,
+           %{
+             outcome: :supersede,
+             prevailing_claim_id: prevailing_claim_id,
+             evidence_artifact_ids: evidence_artifact_ids,
+             note: note
+           }
+         ) do
+      {:ok, _adjudication} ->
+        {:noreply, load_vehicle(socket, socket.assigns.vehicle.id)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Adjudication failed: #{inspect(reason)}")}
     end
   end
 
@@ -173,6 +205,53 @@ defmodule SantoApiWeb.BenchLive.Show do
               <div :for={claim <- row.claims}>
                 {claim.party}: {inspect(claim.value)}
               </div>
+              <form
+                :if={row.status == :conflict and length(row.claims) == 2 and @artifacts != []}
+                id={"adjudicate-#{dom_key(row.predicate)}"}
+                phx-submit="adjudicate_claims"
+                class="mt-3 grid gap-2 border-t border-base-300 pt-3"
+              >
+                <.input
+                  type="hidden"
+                  name="claim_a_id"
+                  value={Enum.at(row.claims, 0).claim_id}
+                />
+                <.input
+                  type="hidden"
+                  name="claim_b_id"
+                  value={Enum.at(row.claims, 1).claim_id}
+                />
+                <.input
+                  type="select"
+                  name="prevailing_claim_id"
+                  label="Keep claim"
+                  value={Enum.at(row.claims, 0).claim_id}
+                  options={claim_options(row.claims)}
+                />
+                <.input
+                  type="select"
+                  name="evidence_artifact_ids[]"
+                  label="Decision evidence"
+                  value={nil}
+                  prompt="Choose an artifact"
+                  options={artifact_options(@artifacts)}
+                  required
+                />
+                <.input
+                  type="text"
+                  name="note"
+                  label="Decision note"
+                  value=""
+                  required
+                />
+                <.button>Supersede losing claim</.button>
+              </form>
+              <p
+                :if={row.status == :conflict and @artifacts == []}
+                class="mt-2 text-sm text-base-content/60"
+              >
+                Upload decision evidence to adjudicate.
+              </p>
             </td>
           </tr>
         </tbody>
@@ -191,7 +270,7 @@ defmodule SantoApiWeb.BenchLive.Show do
           </tr>
         </thead>
         <tbody>
-          <tr :for={claim <- @claims} data-claim-id={claim.id}>
+          <tr :for={claim <- @claims} data-claim-id={claim.id} data-state={claim.state}>
             <td>{claim.predicate}</td>
             <td>{inspect(claim.value)}</td>
             <td>{claim.scope_kind}</td>
@@ -203,6 +282,28 @@ defmodule SantoApiWeb.BenchLive.Show do
                 <.button phx-click="reject_claim" phx-value-id={claim.id}>Reject</.button>
               </div>
             </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 class="text-lg font-semibold mt-6">Adjudications</h2>
+      <table id="adjudications" class="table table-zebra">
+        <thead>
+          <tr>
+            <th>outcome</th>
+            <th>claims</th>
+            <th>decided by</th>
+            <th>note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={adjudication <- @adjudications} data-adjudication-id={adjudication.id}>
+            <td>{adjudication.outcome}</td>
+            <td>
+              {short_id(adjudication.claim_a_id)} ↔ {short_id(adjudication.claim_b_id)}
+            </td>
+            <td>{adjudication.decided_by_party.name}</td>
+            <td>{adjudication.note}</td>
           </tr>
         </tbody>
       </table>
@@ -290,4 +391,19 @@ defmodule SantoApiWeb.BenchLive.Show do
   defp badge_class("verified"), do: "badge-success"
   defp badge_class("conflicted"), do: "badge-error"
   defp badge_class(_status), do: "badge-neutral"
+
+  defp normalize_ids(ids) when is_list(ids), do: ids
+  defp normalize_ids(id) when is_binary(id) and id != "", do: [id]
+  defp normalize_ids(_ids), do: []
+
+  defp claim_options(claims) do
+    Enum.map(claims, &{"#{&1.party}: #{inspect(&1.value)}", &1.claim_id})
+  end
+
+  defp artifact_options(artifacts) do
+    Enum.map(artifacts, &{&1.metadata["filename"] || &1.source_url || short_id(&1.id), &1.id})
+  end
+
+  defp dom_key(value), do: String.replace(value, ".", "-")
+  defp short_id(id), do: String.slice(id || "", 0, 8)
 end

@@ -108,6 +108,46 @@ defmodule SantoApiWeb.BenchLiveTest do
       assert html =~ "structured_api"
     end
 
+    test "adjudicates a two-claim conflict with an evidencing artifact", %{conn: conn} do
+      Req.Test.stub(SantoApi.Vpic, fn conn ->
+        Req.Test.json(conn, SantoApi.VpicFixtures.cgt_response())
+      end)
+
+      {:ok, vehicle} = Registry.ingest(@cgt)
+      {:ok, _snapshot} = Registry.ingest_vpic(vehicle)
+
+      path = Path.expand("../../../priv/corpus/carrera_gt/window_sticker.jpg", __DIR__)
+
+      {:ok, artifact} =
+        Registry.create_upload_artifact(%{
+          vehicle_id: vehicle.id,
+          path: path,
+          filename: "window_sticker.jpg",
+          mime: "image/jpeg",
+          kind: :document
+        })
+
+      claims = Registry.list_claims(vehicle.id)
+      santo = Enum.find(claims, &(&1.predicate == "identity.model" and &1.method == :santo))
+
+      vpic =
+        Enum.find(claims, &(&1.predicate == "identity.model" and &1.method == :structured_api))
+
+      {:ok, view, _html} = live(conn, ~p"/bench/vehicles/#{vehicle.id}")
+
+      view
+      |> form("#adjudicate-identity-model", %{
+        "prevailing_claim_id" => santo.id,
+        "evidence_artifact_ids" => [artifact.id],
+        "note" => "The original window sticker identifies the Carrera GT."
+      })
+      |> render_submit()
+
+      assert has_element?(view, "tr[data-claim-id='#{vpic.id}'][data-state='superseded']")
+      assert has_element?(view, "#adjudications tr[data-adjudication-id]")
+      refute has_element?(view, "#adjudicate-identity-model")
+    end
+
     test "unknown vehicle id redirects to the bench index", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/bench"}}} =
                live(conn, ~p"/bench/vehicles/#{Ecto.UUID.generate()}")
