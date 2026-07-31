@@ -134,6 +134,37 @@ so this GT3's `identity.model` fact is vPIC's unverified "911" and nothing
 in the registry says "GT3" — the same vendored-data thinness Greg hit with
 his 981 Boxster probe, from a $315k car's seat.
 
+### 2005 Carrera GT (`priv/corpus/carrera_gt.exs`)
+
+Artifacts: listing snapshot, window sticker (`:document`), service invoice
+p3+p4 (`:receipt`).
+
+| Claim | Value | Evidence |
+|---|---|---|
+| build.paint_code | (label only) Fayence Yellow | window sticker |
+| build.paint_code | 1C1 / Fayence Yellow | listing narrative |
+| build.plant | Leipzig, Germany | window sticker (final assembly point) |
+| provenance.delivery_dealer | Sonnen Porsche, Mill Valley CA | window sticker (sold-to/ship-to dealer 144) |
+| provenance.delivery_date | 2005-04-29 | invoice p3 (`DEL. DATE 29APR05` in the dealer system) |
+| observation.mileage | 8,803 @ 2024-10-24 | invoice p3 (mileage out) |
+| event.service | recall campaign + goodwill tires, Porsche of Colorado Springs | invoice p3 |
+| observation.mileage | ~9,200 @ 2026-07-22 | listing (seller-approximate) |
+| event.sale | BaT, $4,568,000 @ 2026-07-22 | listing |
+
+Unclaimed, deliberately: MSRP/total ($440,000 / $448,300 — friction #4
+again), the N/C option list, gas-guzzler tax, the invoice's line-item
+parts. The mileage pair (invoice 8,803 → listing ~9,200) sits as history,
+not conflict — though only because both claims share the Vin Santo party
+(friction #2); the scope-date-aware comparison §4 promises is untested by
+machinery, only by accident.
+
+The model conflict mirrors car 1, inverted: santo says `carrera_gt/980`
+(admitted, **right**), vPIC says `911` (proposed — NHTSA files the Carrera
+GT under 911). On car 1 the admitted claim is wrong and the proposed one
+right; here the reverse. Neither source can be blanket-trusted, which is
+the strongest argument the corpus makes for adjudication (friction #1, #8)
+being the next contract surface.
+
 ## Friction log — where the contract bends
 
 1. **An admitted claim that is wrong cannot be corrected.** Santo's vendored
@@ -208,3 +239,37 @@ his 981 Boxster probe, from a $315k car's seat.
    (friction #1). Tonight every vPIC claim stays proposed as a uniform
    operator stance; the gate needs adjudication before it can do its real
    job on identity predicates.
+
+9. **Facts precedence is blind to value richness.** The CGT has two
+   admitted paint claims — label-only from the window sticker, code+label
+   from the listing — and the fact shows the label-only value because it was
+   ratified seconds earlier ("ties break to the earliest claim"). The most
+   informative equivalent claim losing to the earliest one is an accident of
+   operator sequence. Small today; under extraction, claim arrival order is
+   pipeline noise, and the fact face shouldn't depend on it. A precedence
+   that prefers the richest value among equivalent claims (most non-nil
+   fields, then earliest) would fix it without touching conflict semantics.
+
+10. **Evidence requests never fired.** All three VINs ingested clean, so no
+    evidence request exists anywhere in the corpus — the machinery only
+    triggers on disputed identity. The window sticker and CoA evidence
+    classes named in §6 have no path that ever *asks* for them: a car with an
+    unverified paint fact doesn't open a request for the document class that
+    would verify it. If the dossier workflow is to drive acquisition
+    (§6's monetization seam), something must create requests from coverage
+    gaps, not just identity disputes.
+
+## What the corpus says, in one paragraph
+
+The pipeline held: three cars, fifteen artifacts, thirty-odd claims, every
+one through ingest → vPIC → upload → propose → ratify, re-runnable, and the
+bench shows dossier-shaped cars — verified paint, production dates, delivery
+dealers, sale events, mileage history, one honest conflict per identity
+dispute. The contract's load-bearing gap is adjudication: both model
+conflicts (santo wrong on the 987, vPIC wrong on the Carrera GT) are
+unresolvable today because correction of admitted claims was designed (§5)
+but not built, and the party model (friction #2) collapses all
+document-borne independence into one asserting party, which neuters both
+the comparison and the verification tiers. Those two — adjudication and
+per-claim asserting parties — are the contract work extraction should not
+start without.
