@@ -108,6 +108,32 @@ Live conflict, wanted: santo decodes the 987 as model `boxster/987`
 `conflicted` at the bench. The car is a Cayman — the registry's own claim is
 the wrong one. See friction #1.
 
+### 2018 911 GT3 Touring (`priv/corpus/gt3_touring.exs`)
+
+Artifacts: listing snapshot, VIN Analytics build report p1–p4, factory
+vehicle-data sticker photographed in the maintenance booklet.
+
+| Claim | Value | Evidence |
+|---|---|---|
+| build.paint_code | 226 / Linden Green (lindgrün), paint to sample | AVD p2 (Z-option 24931) |
+| build.paint_code | 226 (code only) | factory data sticker (FARBCODE) |
+| build.production_date | 2018-09-03 | AVD p1 |
+| build.plant | Stuttgart | AVD p1 |
+| observation.mileage | 3,600 @ 2025-09-24 | listing |
+| event.sale | BaT, $315,000 @ 2025-09-24 | listing |
+
+Unclaimed, deliberately: engine/gearbox serials (DGGA 011148, G9190 5006293
+on the AVD — `build.engine_number` vocabulary headroom, not needed tonight),
+the 117-line option list (friction #5), warranty start 2018-10-27 as a
+delivery date (friction #7), the model itself (friction #6).
+
+Notes: the sale listed a "window sticker" but no Monroney was found among
+the 279 unlabeled gallery photos — the third-party AVD build report may be
+what the seller meant. Santo has no model/variant claim for the 991 at all,
+so this GT3's `identity.model` fact is vPIC's unverified "911" and nothing
+in the registry says "GT3" — the same vendored-data thinness Greg hit with
+his 981 Boxster probe, from a $315k car's seat.
+
 ## Friction log — where the contract bends
 
 1. **An admitted claim that is wrong cannot be corrected.** Santo's vendored
@@ -157,3 +183,28 @@ the wrong one. See friction #1.
    AVD has them; 2007 documents have prose names); a single list-valued claim
    would make every partial disagreement one big conflict. Deferred to the
    extraction/logbook design, as the ticket anticipated.
+
+6. **`identity.model` has three vocabularies and no mapping.** Santo's codes
+   are its own atoms (`boxster`, `carrera_gt`), vPIC says `911`, the GT3's
+   build report says `911 GT3` / model code `991-810`. A document-borne model
+   claim would have to invent a code, so the GT3 carries none — and its model
+   fact is an unverified vPIC `911`. The closed vocabulary (fork B) closed the
+   *predicates* but left each predicate's *value space* open; for
+   identity-adjacent predicates the value space needs vendoring too.
+
+7. **Delivery is encoded obliquely on modern documents.** The GT3's AVD has
+   no delivery line — only `Warranty Start: 2018-10-27`, which in practice is
+   the retail delivery date. Claiming it as `provenance.delivery_date` would
+   be interpretation, not transcription, so it stays unclaimed. Extraction
+   (tranche 3) will face this constantly: the fact is on the page but under a
+   different name, and the LLM will be tempted to normalize. The contract
+   needs a stance on proxy facts — likely a claim carrying the document's own
+   term in `method_meta` with the interpretation ratified explicitly.
+
+8. **Ratifying an external claim that contradicts an admitted one has no
+   home.** vPIC's `Cayman` claim on car 1 is right and santo's admitted
+   `boxster` is wrong, but ratifying it would create the contract's first
+   admitted-vs-admitted conflict with no adjudication record to resolve it
+   (friction #1). Tonight every vPIC claim stays proposed as a uniform
+   operator stance; the gate needs adjudication before it can do its real
+   job on identity predicates.
