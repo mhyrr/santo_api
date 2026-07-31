@@ -10,6 +10,9 @@ All artifacts entered through `Registry.create_upload_artifact/1` with
 metadata. All claims entered `proposed → admitted` through
 `Registry.propose_claim/2` + `Registry.ratify_claim/1`. No hand-inserted rows.
 Ingest scripts live in `priv/corpus/`, one per car, alongside the source files.
+The two model corrections run through `Registry.adjudicate_claims/4` from the
+re-runnable `priv/corpus/adjudications.exs`; the script never inserts a row
+directly.
 
 ## Car selection
 
@@ -103,10 +106,10 @@ not evidence of absence — no honest value for `legal.title_brand` from it),
 ownership chain (two owners FL→PA on the Carfax; no vocabulary and it is
 design.md layer 1–2 territory).
 
-Live conflict, wanted: santo decodes the 987 as model `boxster/987`
-(auto-admitted); vPIC says Cayman (proposed). `identity.model` shows
-`conflicted` at the bench. The car is a Cayman — the registry's own claim is
-the wrong one. See friction #1.
+Adjudicated in TK-003: santo decodes the 987 as model `boxster/987`
+(auto-admitted); vPIC says Cayman (proposed). The CoA-backed adjudication admits
+`cayman`, supersedes santo's claim without deleting it, and the fact now renders
+`cayman / verified`. See friction #1.
 
 ### 2018 911 GT3 Touring (`priv/corpus/gt3_touring.exs`)
 
@@ -160,37 +163,40 @@ machinery, only by accident.
 
 The model conflict mirrors car 1, inverted: santo says `carrera_gt/980`
 (admitted, **right**), vPIC says `911` (proposed — NHTSA files the Carrera
-GT under 911). On car 1 the admitted claim is wrong and the proposed one
-right; here the reverse. Neither source can be blanket-trusted, which is
-the strongest argument the corpus makes for adjudication (friction #1, #8)
-being the next contract surface.
+GT under 911). The window-sticker-backed adjudication keeps santo's claim and
+supersedes vPIC's without deleting it. The paired cases prove neither source can
+be blanket-trusted; each conflict is decided from vehicle-specific evidence.
 
 ## Friction log — where the contract bends
 
-1. **An admitted claim that is wrong cannot be corrected.** Santo's vendored
+1. **Resolved in TK-003 — admitted claims can be corrected without erasure.** Santo's vendored
    987 data claims `identity.model = boxster` for a Cayman VIN and enters
-   `:admitted` on santo's authority. Adjudication (§5) is a seam, not code:
-   there is no supersede flow, and `reject_claim/1` only flips `:proposed`
-   claims. The registry currently has a false admitted claim about its first
-   corpus car and no path to retire it. Two needs: an adjudication record
-   (§5 as designed), and an upstream fix in santo's compiled data — the 987
-   platform can't distinguish Cayman from Boxster by pos-7 body code alone in
-   its current table, so the defensible santo claim may be the *platform*
-   (987), not the model. Greg's Boxster probe (WP0CA2A87FS120563 → "year and
-   not much else") is the same vendored-data thinness from the other side.
+   `:admitted` on santo's authority. The adjudication now admits the correct
+   vPIC claim and flips santo's losing claim to `:superseded`; both remain in
+   history. The upstream santo problem remains: the 987 platform can't
+   distinguish Cayman from Boxster by pos-7 body code alone in its current
+   table, so the defensible santo claim may be the *platform* (987), not the
+   model. Greg's Boxster probe (WP0CA2A87FS120563 → "year and not much else")
+   is the same vendored-data thinness from the other side.
+   `Registry.adjudicate_claims/4` owns the transaction
+   (`lib/santo_api/registry.ex:160`); the immutable record shape lives in
+   `lib/santo_api/registry/adjudication.ex:18`, and the database rejects updates
+   and deletes (`priv/repo/migrations/20260731163000_create_adjudications.exs:67`).
 
-2. **Same-party claims can never agree or conflict.** Every bench-path claim
-   is asserted by the Vin Santo party (`propose_claim` stamps it), so the CoA
-   and the window sticker each stating Slate Grey — two independent documents
-   — render as `single_source (2 claims)`, not `agreement`. The comparison
-   machinery keys on asserting party, but for document-borne claims the
-   interesting independence lives in the *artifacts*. Either claims need
-   real asserting parties (the CoA's asserter is arguably Porsche AG, the
-   window sticker's the factory, the listing's the seller) or the comparison
-   needs to treat distinct evidencing artifacts as distinct sources. This
-   also blocks tier-3 verification (§7: "artifact whose source is independent
-   of the asserting party") — with everything asserted by Vin Santo, tier
-   composition is meaningless.
+2. **Resolved at the comparison boundary; historical party attribution remains
+   debt.** Before TK-003 every bench-path claim was asserted by the Vin Santo
+   party, so the CoA and window sticker each stating Slate Grey rendered as
+   `single_source (2 claims)`. For document-borne claims the useful independence
+   lives in the artifacts. Re-attributing the live corpus would duplicate
+   immutable, party-hashed claims or require roughly thirty provenance
+   adjudications, so TK-003 took its explicit fallback: claims backed by distinct
+   artifacts count as distinct sources (`lib/santo_api/registry.ex:519`). New
+   writes can supply a real asserting party through `Registry.propose_claim/3`;
+   the two-argument operator default remains for the existing bench. This makes
+   the CoA + window-sticker paint pair an agreement now; observed claims at
+   different dates remain `history`, preserving §4. A future tier-3
+   surface must either migrate the historical attributions deliberately or
+   continue composing independence from the artifact side of the basis.
 
 3. **Plant naming has no equivalence rule.** Santo says
    `"Uusikaupunki (Valmet; Finland)"`, the window sticker says
@@ -232,23 +238,20 @@ being the next contract surface.
    needs a stance on proxy facts — likely a claim carrying the document's own
    term in `method_meta` with the interpretation ratified explicitly.
 
-8. **Ratifying an external claim that contradicts an admitted one has no
-   home.** vPIC's `Cayman` claim on car 1 is right and santo's admitted
-   `boxster` is wrong, but ratifying it would create the contract's first
-   admitted-vs-admitted conflict with no adjudication record to resolve it
-   (friction #1). Tonight every vPIC claim stays proposed as a uniform
-   operator stance; the gate needs adjudication before it can do its real
-   job on identity predicates.
+8. **Resolved in TK-003 — contradictory external proposals have an adjudication
+   path.** The Cayman decision admits vPIC and supersedes santo; the Carrera GT
+   decision keeps santo and supersedes vPIC. Both go through the same Registry
+   transaction and the re-runnable corpus script
+   (`priv/corpus/adjudications.exs:14`), so source preference cannot leak into
+   the mechanism.
 
-9. **Facts precedence is blind to value richness.** The CGT has two
+9. **Resolved in TK-003 — equivalent values prefer the richest face.** The CGT has two
    admitted paint claims — label-only from the window sticker, code+label
-   from the listing — and the fact shows the label-only value because it was
-   ratified seconds earlier ("ties break to the earliest claim"). The most
-   informative equivalent claim losing to the earliest one is an accident of
-   operator sequence. Small today; under extraction, claim arrival order is
-   pipeline noise, and the fact face shouldn't depend on it. A precedence
-   that prefers the richest value among equivalent claims (most non-nil
-   fields, then earliest) would fix it without touching conflict semantics.
+   from the listing. The fact used to show the label-only value because it was
+   ratified seconds earlier; claim arrival order is pipeline noise. Precedence
+   now prefers the richest value among equivalent claims (most non-nil fields,
+   then earliest), selecting `1C1 / Fayence Yellow` without changing
+   disagreement semantics (`lib/santo_api/registry.ex:469`).
 
 10. **Evidence requests never fired.** All three VINs ingested clean, so no
     evidence request exists anywhere in the corpus — the machinery only
@@ -261,15 +264,12 @@ being the next contract surface.
 
 ## What the corpus says, in one paragraph
 
-The pipeline held: three cars, fifteen artifacts, thirty-odd claims, every
-one through ingest → vPIC → upload → propose → ratify, re-runnable, and the
-bench shows dossier-shaped cars — verified paint, production dates, delivery
-dealers, sale events, mileage history, one honest conflict per identity
-dispute. The contract's load-bearing gap is adjudication: both model
-conflicts (santo wrong on the 987, vPIC wrong on the Carrera GT) are
-unresolvable today because correction of admitted claims was designed (§5)
-but not built, and the party model (friction #2) collapses all
-document-borne independence into one asserting party, which neuters both
-the comparison and the verification tiers. Those two — adjudication and
-per-claim asserting parties — are the contract work extraction should not
-start without.
+The pipeline now carries correction as well as admission: three cars, fifteen
+artifacts, thirty-odd claims, and two evidence-backed adjudications, all through
+Registry functions and re-runnable scripts. The Cayman and Carrera GT mirror
+cases resolve in opposite directions without deleting either losing claim; CoA
++ window-sticker paint renders agreement from distinct artifact basis; richer
+equivalent values win the fact face. Historical human claims still name Vin
+Santo because rewriting an immutable ledger is a separate provenance migration,
+now documented rather than concealed. Extraction can ship proposals into a gate
+that can correct them.
