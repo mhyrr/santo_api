@@ -22,6 +22,7 @@ defmodule SantoApi.Registry.Vocabulary do
     "provenance.delivery_dealer" => :factory,
     "provenance.delivery_date" => :factory,
     "event.service" => :event,
+    "event.sale" => :event,
     "observation.mileage" => :observed
   }
 
@@ -83,6 +84,10 @@ defmodule SantoApi.Registry.Vocabulary do
       do: :ok,
       else: {:error, {:invalid_value, "provenance.delivery_dealer"}}
   end
+
+  defp validate_value("event.sale", %{"venue" => venue, "price" => price, "currency" => currency})
+       when is_binary(venue) and is_integer(price) and price >= 0 and is_binary(currency),
+       do: :ok
 
   defp validate_value("event.service", %{"summary" => summary, "performer" => performer})
        when is_binary(summary) do

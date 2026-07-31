@@ -66,6 +66,31 @@ defmodule SantoApi.Registry.VocabularyTest do
                Vocabulary.validate("provenance.delivery_dealer", %{"name" => nil, "location" => "x"})
     end
 
+    test "sale events carry venue and price" do
+      assert :ok =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => "Bring a Trailer",
+                 "price" => 33_000,
+                 "currency" => "USD"
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => nil,
+                 "price" => 33_000,
+                 "currency" => "USD"
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => "Bring a Trailer",
+                 "price" => "33k",
+                 "currency" => "USD"
+               })
+
+      assert Vocabulary.scope_kind("event.sale") == :event
+    end
+
     test "service events carry a summary, performer optional" do
       assert :ok =
                Vocabulary.validate("event.service", %{
