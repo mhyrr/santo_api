@@ -1,5 +1,5 @@
 defmodule SantoApiWeb.BenchLiveTest do
-  use SantoApiWeb.ConnCase, async: true
+  use SantoApiWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 

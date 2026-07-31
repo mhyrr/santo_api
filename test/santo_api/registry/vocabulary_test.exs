@@ -37,8 +37,16 @@ defmodule SantoApi.Registry.VocabularyTest do
                })
 
       assert :ok = Vocabulary.validate("build.paint_code", %{"code" => "226", "label" => nil})
-      assert :ok = Vocabulary.validate("build.paint_code", %{"code" => nil, "label" => "Fayence Yellow"})
-      assert {:error, _} = Vocabulary.validate("build.paint_code", %{"code" => nil, "label" => nil})
+
+      assert :ok =
+               Vocabulary.validate("build.paint_code", %{
+                 "code" => nil,
+                 "label" => "Fayence Yellow"
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("build.paint_code", %{"code" => nil, "label" => nil})
+
       assert {:error, _} = Vocabulary.validate("build.paint_code", "L041")
     end
 
@@ -63,7 +71,10 @@ defmodule SantoApi.Registry.VocabularyTest do
                })
 
       assert {:error, _} =
-               Vocabulary.validate("provenance.delivery_dealer", %{"name" => nil, "location" => "x"})
+               Vocabulary.validate("provenance.delivery_dealer", %{
+                 "name" => nil,
+                 "location" => "x"
+               })
     end
 
     test "sale events carry venue and price" do
@@ -98,8 +109,14 @@ defmodule SantoApi.Registry.VocabularyTest do
                  "performer" => "Porsche of Colorado Springs"
                })
 
-      assert :ok = Vocabulary.validate("event.service", %{"summary" => "Oil change", "performer" => nil})
-      assert {:error, _} = Vocabulary.validate("event.service", %{"summary" => nil, "performer" => "x"})
+      assert :ok =
+               Vocabulary.validate("event.service", %{
+                 "summary" => "Oil change",
+                 "performer" => nil
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.service", %{"summary" => nil, "performer" => "x"})
     end
   end
 

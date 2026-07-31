@@ -1,5 +1,5 @@
 defmodule SantoApi.RegistryEvidenceTest do
-  use SantoApi.DataCase, async: true
+  use SantoApi.DataCase, async: false
 
   alias SantoApi.Registry
   alias SantoApi.Registry.Artifact
