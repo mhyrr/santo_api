@@ -103,9 +103,10 @@ defmodule SantoApi.Registry do
            sha256: sha,
            storage_ref: storage_ref,
            mime: attrs[:mime],
+           source_url: attrs[:source_url],
            source_party_id: vin_santo_party().id,
            acquired_at: DateTime.utc_now(),
-           metadata: %{"filename" => filename}
+           metadata: Map.merge(attrs[:metadata] || %{}, %{"filename" => filename})
          })}
     end
   end

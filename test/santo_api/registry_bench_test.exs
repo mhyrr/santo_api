@@ -39,6 +39,25 @@ defmodule SantoApi.RegistryBenchTest do
       assert id == artifact.id
     end
 
+    test "carries source_url and merges caller metadata for provenance" do
+      {:ok, vehicle} = Registry.ingest(@nine_three)
+
+      {:ok, %Artifact{} = artifact} =
+        Registry.create_upload_artifact(%{
+          vehicle_id: vehicle.id,
+          path: upload_fixture(),
+          filename: "listing.html",
+          mime: "text/html",
+          kind: :listing,
+          source_url: "https://example.com/listing/some-car/",
+          metadata: %{"rights" => "manual corpus research, internal use"}
+        })
+
+      assert artifact.source_url == "https://example.com/listing/some-car/"
+      assert artifact.metadata["rights"] == "manual corpus research, internal use"
+      assert artifact.metadata["filename"] == "listing.html"
+    end
+
     test "identical content dedupes to the same artifact" do
       {:ok, vehicle} = Registry.ingest(@nine_three)
 
