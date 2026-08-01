@@ -1,45 +1,72 @@
-# VNI — Vote No Incumbents
+# Vin Santo — a provenance registry for collector cars
 
-Phoenix 1.8/LiveView + PostGIS political data project: the public case against
-incumbency entrenchment. Design spec: `docs/design/001-design-pass-1.md`,
-interface pass: `docs/design/002-interface-pass-1.md`. Phoenix/Elixir framework
-conventions: `AGENTS.md`.
+Phoenix 1.8/LiveView + Ecto/Postgres, on top of the `santo` VIN-decode library
+(path dep, `../santo`). Elixir/Phoenix style rules: `AGENTS.md`. Product thesis:
+`design.md`. Domain semantics: `docs/design/evidence_contract.md` — read the
+contract before touching anything under `lib/santo_api/registry/`.
 
 ## Development commands
 
 ### Essential commands
 - `mix setup` — install deps, create/migrate database, build assets
 - `mix precommit` — compile with warnings-as-errors, unused-deps check, format, test. Run before claiming done.
-- `mix test` — full suite (sandboxed against the local Docker PostGIS)
-- `mix ecto.reset` — drop, create, migrate, seed. Seeds ingest all 435 districts for every supported Congress (119/118/117) from Census TIGER/Line, stamp current-map authorship, and score each congress within its own cohort (archives cached under `priv/repo/data/tiger/`; first run downloads ~100 zips). `VNI_SKIP_DISTRICT_SEEDS=1` skips.
-- `mix vni.ingest.shapefiles --congress N` — (re)ingest TIGER CD geometry (119 current; 118/117 historical, ingested closed), idempotent
-- `mix vni.ingest.zctas` — ZIP Code Tabulation Area polygons and the ZIP→district crosswalk. Not part of `mix setup`: one 530 MB archive, cached under `priv/repo/data/tiger/zcta2025/`, and the crosswalk INSERT runs several minutes. Required for `/find` to answer anything; without it every ZIP reports as unknown. Rerun `--crosswalk-only` after any district ingest — the pairs are only true of the map they were computed against.
-- `mix vni.score` — full scoring pass: metrics, normalize, national rank (`--congress N` scores a historical cohort within itself)
-- `mix vni.og.cards` — render the unfurl images every link needs: one site-wide default plus one per current district, into `priv/static/images/og/`. **Commit the PNGs** — generation needs the database and the Docker build cannot reach it, so they travel as committed binaries like `priv/promotion` does. Rerun after any ingest that moves geometry, incumbents, or margins; the art states facts true of the map it was drawn against.
-- `mix phx.server` — **NEVER RUN** (user manages the dev server separately)
-- Use Tidewave's tools for runtime evaluation and database queries when the dev server is up; `get_docs` for documentation, `get_source_location` for definitions.
+- `mix test` — full suite (Ecto sandbox against the local Docker Postgres)
+- `mix ecto.reset` — drop, create, migrate, seed
+- `mix run priv/corpus/cayman_s.exs` (also `gt3_touring.exs`, `carrera_gt.exs`) — replay a corpus car through the real registry paths. Idempotent. `adjudications.exs` runs after all three.
+- `mix phx.server` — **NEVER RUN** (user manages the dev server separately). Port 4000 is usually taken on Greg's machine; he runs it with `PORT=4001`.
+- Use Tidewave's tools for runtime evaluation and database queries when the dev server is up (`/tidewave/mcp`); `get_docs` for documentation, `get_source_location` for definitions.
 
 ### Database
-- Local Postgres runs in Docker: `docker compose up -d` in `~/work/infra/` (imresamu/postgis:17-3.5, pinned to major 17 to match Fly prod and the data volume). Database `vni_dev`, credentials postgres/postgres on localhost:5432.
+- Local Postgres runs in Docker: `docker compose up -d` in `~/work/infra/` (imresamu/postgis:17-3.5, pinned to major 17 to match Fly prod and the data volume). Database `santo_api_dev`, credentials postgres/postgres on localhost:5432. The PostGIS image is shared infra — santo_api itself uses no geo types.
 - The volume `arete_postgres-data` holds every project's dev DBs — never remove it.
 - Brew postgresql@14/16/17 are installed but stopped; don't start them (port 5432 collision on the loopback).
-- GDAL's `ogr2ogr` (brew postgis formula) is required for shapefile ingest.
-- `rsvg-convert` (brew `librsvg`) is required for `mix vni.og.cards`. Same dev-side posture as GDAL — production never rasterizes anything. The task refuses to run when fontconfig cannot resolve Arial Black, because a silent substitution bakes hundreds of wrong images whose only symptom is looking wrong in someone else's timeline.
 
 ## Load-bearing subsystems (handle inline, never delegate)
 
-- **Map versioning** (`VNI.Atlas`). Districts are addressed through map versions; current = `effective_until IS NULL`. Never make a district slug globally unique or query districts without a map-version constraint — mid-decade redistricting breaks that instantly.
-- **Scoring methodology** (`VNI.Scores`). The site's credibility rests on reproducible open methodology. Measurement rules are documented in the moduledoc and are not negotiable: geography casts for area/perimeter, EPSG:5070 for constructions, never raw 4326 degrees. Any formula change bumps `@methodology_version`.
-- **Pledge data (Phase 3, future).** Politically sensitive PII. Double opt-in, encrypt at rest, minimal retention. Treat like money.
+- **The claim ledger** — `lib/santo_api/registry/claim.ex`, `registry/adjudication.ex`,
+  and the write paths in `registry.ex` (`propose_claim`, `ratify_claim`,
+  `adjudicate_claims`). `content_hash` is the attestation seam and includes the
+  asserting party; basis fields (`vehicle_id`, `party_id`, `method`, `state`,
+  `content_hash`) are stamped, never cast. A cast basis field lets a caller forge
+  provenance; a wrong hash silently collapses two distinct claims into one.
+- **Fact materialization and comparison** — `refresh_facts/1`,
+  `claim_comparison/1`, `Vocabulary.equivalent?/3`. This is the arithmetic:
+  precedence (admitted > proposed, ties to earliest), conflict detection,
+  verified/unverified/conflicted status. Get it wrong and the product lies about
+  what's been verified, which is the one thing it sells.
+- **Identity keying** — `registry/identity_key.ex` and `Registry.ingest/1`. The key
+  decides which physical chassis a row is about. A wrong key merges two cars or
+  splits one; `:disputed` rows carry candidates as data and there is no merge
+  machinery to undo a bad key.
+- **Provider rights and coverage semantics** — `providers/acquisition.ex`,
+  `providers/provider.ex`. `rights_profile` governs what we may legally store and
+  redistribute. `coverage: :none` means the provider had nothing to say — never
+  "clean history."
+
+Everything else — bench LiveView, JSON rendering, controllers, corpus scripts,
+migrations — is fine to delegate to `elixir-dev`.
 
 ## Doctrine constraints on code and copy
 
-Exclusively anti-entrenchment: incumbency, gerrymandering, term limits. No position on anything the parties fight about. SCOTUS carve-out (no term limits there). No challenger info on district pages — any challenger will do; the purity is the point. Published facts only in `VNI.Politics`. Never use Cook PVI (licensed); lean comes from our formula over public data. All ingested data must come from government or non-partisan sources, cited with a source URL.
+These are the evidence contract's invariants. Violating one is a design bug, not a style nit.
+
+- **Claims are append-only.** Corrections are a new claim plus an adjudication — never an edit, never a delete. Adjudication changes which claim is live; both stay in the ledger.
+- **External evidence enters `:proposed`.** Only santo-derived decode facts enter `:admitted`. Ratification is one state flip with who and when, not a workflow.
+- **The predicate vocabulary is closed.** Only predicates in `registry/vocabulary.ex` exist; adding one is a reviewed code change, like santo's compiled data. Same for provider capabilities in `providers/capability.ex`.
+- **Conflicts and verification tiers are derived, never stored.** `claim_comparison/1` computes agreement/conflict/single_source at read time. Nothing overwrites anything.
+- **`vehicle.facts` is factory/provenance scope only.** Event-scoped material (service, modification, sale) is logbook territory and never flattens into facts. Observed claims (e.g. `observation.mileage`) deliberately never appear there either.
+- **Providers acquire; they never persist claims or decide truth.** Per-provider interpretation lives Registry-side (`acquisition_facts/1`). Providers own transport, diagnostics, and rights metadata.
+- **LLMs extract, code computes.** Extraction proposes claims (`method: :llm_extract`) with the artifact attached. Precedence, comparison, and hashing stay deterministic. No blending.
+- **Evidence comes from licensed feeds, government/public sources, and owner-supplied artifacts.** No unlicensed scraping. Listing text and comments are proposed claims until corroborated.
+- **Decode bugs get fixed upstream in `../santo`**, not patched around in the registry.
+- Copy never asserts more than the ledger supports: absence of evidence is a gap, not a clean record.
 
 ## Project conventions
 
-- Ingest tasks are rerunnable and idempotent (upserts keyed on natural identity).
-- Compactness scoring is Elixir orchestrating SQL — keep the math in PostGIS, the orchestration thin.
-- Hand-curated data (map authorship, ~50 rows) lives in seeds with a source URL per row.
-- Public LiveViews consume `VNIWeb.DistrictPresenter` maps, never raw structs — geometry stays out of the socket.
-- Use `:req` (`Req`) for HTTP; avoid `:httpoison`, `:tesla`, `:httpc`.
+- Corpus and ingest scripts are re-runnable and idempotent — artifacts and claims dedupe by content hash, and a second run reports what already exists.
+- Ingest-heavy test files are `async: false` on purpose. Two sandbox transactions inserting the same real VINs and parties in opposite order hit Postgres `deadlock_detected`. Don't flip them back.
+- Vendor values are normalized into the value shapes santo emits (e.g. `identity.model` is always `%{"code", "label"}`) so comparison compares like with like. Per-predicate equivalence lives in `Vocabulary.equivalent?/3`.
+- Uploads are content-hashed into the configured `:uploads_dir`; `storage_ref` is the basename only, so the store can move.
+- Use `:req` (`Req`) for HTTP; avoid `:httpoison`, `:tesla`, `:httpc`. External calls are stubbed in tests via `Req.Test` with fixtures under `test/support/`.
+- `/bench` is the internal operator surface (propose, ratify, adjudicate, upload). No auth yet — do not expose it publicly or add user-facing affordances to it.
+- Every corpus dossier documents sale result, paint code, production/delivery dates, delivery dealer, and service events. Those are required vocabulary fields, not optional metadata.
