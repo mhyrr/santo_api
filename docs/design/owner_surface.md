@@ -16,7 +16,12 @@ LLM via MCP — replaces the embedded-parser plan (§1, §8); distribution kit
 for crossposting to existing audiences (§6); `event.outing` added (§2).
 Round 2: supporting infrastructure itemized (§9 — accounts, operator admin,
 per-platform integrations, plumbing); roadmap section renumbered to §10;
-tickets extended to A–L.*
+tickets extended to A–L.
+Round 3 (2026-08-01): build starts with infra (§9: tickets J, A, B first);
+`current_state` added as a second projection that replays the logbook into
+"the car now" (§2b), with a seed trait vocabulary sized for swapped/raced
+cars, not just originality; page hierarchy inverted — the living car leads,
+provenance is the foundation layer, not the headline (§6).*
 
 ## The product shape
 
@@ -199,9 +204,10 @@ one code-reviewed change each, per fork B discipline. The logbook demands:
 | Predicate | Scope | Value shape (jsonb) | Notes |
 |---|---|---|---|
 | `event.fuel` | event | `volume` (req, decimal-as-string), `unit` (req, `"gal"\|"l"`), `total_cents` (opt int), `currency` (opt), `grade` (opt), `station` (opt), `partial` (opt bool) | Money in integer cents, never floats. Cost/mile is computed, never stored. |
-| `event.modification` | event | `summary` (req), `area` (opt string — suspension, engine, wheels…), `detail` (opt string) | `area` stays a free string in v1; an enum invites vocabulary bikeshed before we've seen real data. |
+| `event.modification` | event | `summary` (req), `area` (opt string — suspension, engine, wheels…), `detail` (opt string), `sets` (opt — trait deltas, §2b) | `area` stays a free string in v1; an enum invites vocabulary bikeshed before we've seen real data. `sets` entries validate against the trait vocabulary. |
 | `event.note` | event | `text` (req) | The escape hatch. Never conflicts, never comparison-relevant, tier-1 forever. |
-| `event.outing` | event | `kind` (req — `autocross\|track\|show\|drive\|other`), `venue` (opt), `result` (opt), `summary` (opt) | Serious owners' logs are full of these; the autocross voice memo is the canonical compound utterance (outing + modification + note in one breath). |
+| `event.outing` | event | `kind` (req — `autocross\|track\|show\|drive\|other`), `venue` (opt), `result` (opt), `summary` (opt), `sets` (opt — trait deltas, §2b) | Serious owners' logs are full of these; the autocross voice memo is the canonical compound utterance (outing + modification + note in one breath). "Tried 3 degrees camber" is a `sets` delta. |
+| `state.engine`, `state.transmission`, `state.wheels_tires`, `state.suspension`, `state.brakes`, `state.exterior` | observed | `summary` (req), `code` (opt), `detail` (opt) | The current-state seed traits (§2b). Free-text-first values; exact-equality equivalence, no cross-source comparison in v1. Grow the set from real entries, per fork B discipline. |
 | `observation.mileage` | observed | *(exists)* integer | Reused; fill-ups and service entries emit it alongside. |
 | `event.service`, `event.sale` | event | *(exist)* | `event.service` gains nothing in v1; its `summary`+`performer` shape already fits. |
 
@@ -254,6 +260,58 @@ table owned by the stewardship (URL, label, position — mutable, presentation
 layer, no ledger contact). "Artifacts-in-waiting" stays literal: a later
 acquisition can snapshot a link target into a real artifact through the
 provider machinery, with rights handled then.
+
+---
+
+## 2b. Current state — the second projection
+
+*Decided with Greg, 2026-08-01 round 3. The logbook works as a replayable
+log: events and observations fold into "the car now," separate from the
+factory record.*
+
+**The gap it fills.** `vehicle.facts` answers "what did the factory build."
+The timeline answers "what happened." Nothing answers *what is the car now* —
+current mileage, current engine, current wheels after ten years of building.
+For the owners §0 says we're courting (the modified car, the vintage racer —
+the 1985 Datsun Z with an LS1 and 18x11s), current state *is* the page.
+
+**Not factory-plus-perturbations.** `current_state` is a second derived map
+on the vehicle, sibling to `facts`, computed **independently** of it — it
+never reads factory facts. For a swapped car, factory is a thin-or-empty
+column and current state is nearly the whole record; the projection can't
+assume factory as a baseline. Where both columns exist, divergence
+(originality vs. build story) is computed at render time — derived, never
+stored, same doctrine as conflicts.
+
+**The fold.** Recomputed inside every claim-writing transaction, same hook as
+`refresh_facts/1`. Replayable by construction: drop the column, re-fold from
+the ledger, identical result. Inputs, per trait predicate:
+
+- **Observed-scope trait claims** — "as of this date, the car has X."
+  `observation.mileage` is the existing proof of the pattern; the `state.*`
+  seed traits (§2 table) extend it.
+- **Event deltas** — the optional `sets: [{predicate, value}]` field on
+  `event.modification` and `event.outing`, validated against the trait
+  vocabulary. Free-text entries without `sets` stay timeline-only; the MCP
+  assistant (§8) proposes deltas from the utterance ("swapped in an LS1" →
+  sets `state.engine`), confirmed like everything else.
+
+Rules: **admitted claims only** — a proposed, unconfirmed MCP entry never
+mutates public state, or the §8 confirm gate stops meaning anything. Latest
+scope date wins; ties to latest insertion. This deliberately inverts facts
+precedence (ties to earliest): facts asks what was true at birth, current
+state asks what's true now — recency winning is the semantics, not an
+inconsistency.
+
+**Cold start — the current-spec panel.** A built car's first session must not
+be archaeology. The owner's page gets a spec panel: the seed traits as
+editable fields, each save one observed claim through the normal
+propose-and-self-ratify path (§3). Ten minutes and the fold has a full
+baseline; events refine it from there. Lands in ticket F with the composer.
+
+**Why it's load-bearing.** The fold is arithmetic in the CLAUDE.md sense —
+same class as facts materialization. Wrong fold and the page lies about the
+car. Main-thread work, test-first, its own ticket (M in §10).
 
 ---
 
@@ -440,20 +498,30 @@ visibility on the page is fine. `GREG'S CALL` only if he wants vanity slugs
 (`/v/linden-green-touring`) in v1; recommendation is no — vanity is ornament,
 add it when owners ask.
 
-**What renders:**
+**Hierarchy (Greg, round 3): the living car leads; provenance is the
+foundation, not the headline.** The page is the owner's love for the car —
+what it is now, what they're doing with it. Provenance and verification are
+the resale foundation underneath, quiet until needed. Render order:
 
-- Identity block: marque/model/year, VIN, claimed-by badge.
-- Facts with tier display — verified / unverified / conflicted rendered
-  honestly (the §8 statuses), each fact expandable to its claims and evidence.
-  Conflicts show as conflicts; absence shows as a gap. Copy never asserts more
-  than the ledger supports.
-- Tier composition strip ("62% of build facts document-backed") — the §7
-  aggregate, the sale-time pitch rendered as a stat.
-- The timeline: event/observed claims grouped by `entry_ref` into entries,
-  newest first — the logbook. Registry-sourced events (BaT sale, dealer
-  service invoices) and owner entries interleave, visually distinguished by
-  tier and asserting party.
-- Photo gallery (owner artifacts marked public), link list (§2).
+- **Hero**: photos and the current-build headline composed from
+  `current_state` (§2b) — "1985 Datsun 280Z · LS1 swap · 18x11" — not from
+  the decode. Marque/model/year and claimed-by badge; VIN present but small.
+- **The timeline — the page's center of gravity**: event/observed claims
+  grouped by `entry_ref` into entries, newest first — the logbook. Registry-
+  sourced events (BaT sale, dealer service invoices) and owner entries
+  interleave, visually distinguished by tier and asserting party.
+- **Current spec** (§2b): the trait fold, with modified-from-stock traits
+  marked — the build story at a glance.
+- **Photo gallery** (owner artifacts marked public), link list (§2).
+- **The record** (foundation layer, below the fold or collapsed): factory/
+  provenance facts with tier display — verified / unverified / conflicted
+  rendered honestly, each fact expandable to its claims and evidence;
+  conflicts show as conflicts, absence as a gap; copy never asserts more
+  than the ledger supports. Tier composition strip ("62% of build facts
+  document-backed") lives here — the sale-time pitch as a stat, not the
+  page's opening move. A stock, documented car (the corpus Carrera GT) still
+  shines: its record section is dense and its "current = factory" reads as
+  originality — but the section order doesn't change per car.
 **The distribution kit — entries travel to the audience.** The audience is
 the payoff (§0 lesson 1), and the audience already exists on forums, IG, and
 YouTube — so every public entry ships with one-tap distribution *outward*:
@@ -734,7 +802,10 @@ files from platforms. Owner-uploaded photos are the only media we host.
 > 3. **Owner surface** (docs/design/owner_surface.md): auth (magic link) ·
 >    public vehicle pages with create-on-first-lookup · claiming via
 >    possession proof · logbook vocabulary (`event.fuel`,
->    `event.modification`, `event.note`, `event.outing`) · phone-first
+>    `event.modification`, `event.note`, `event.outing`, `state.*` traits) ·
+>    **`current_state` projection** (the logbook as a replayable log folding
+>    into "the car now"; page leads with the living car, provenance as
+>    foundation) · phone-first
 >    composer · **MCP agent entry surface** (voice via the owner's own LLM;
 >    proposed-until-confirmed) · scope-split self-ratification ·
 >    distribution kit (share card, forum snippet, badge) · privacy controls
@@ -767,10 +838,11 @@ instead of only operator-fed auction documents.
 |---|---|---|---|
 | A | Auth + accounts: `phx.gen.auth` magic link, User↔Party link, operator flag, /bench behind auth | — | |
 | B | Ledger prerequisites: `ratified_by_party_id`/`ratified_at`, `entry_ref` column + event-hash amendment, artifact `source_party_id` fix, `visibility` columns | — | Load-bearing (claim ledger) — main-thread work, not delegated. Test-first; corpus re-run green is the acceptance test. |
-| C | Logbook vocabulary: `event.fuel`, `event.modification`, `event.note` + validators + tests | — | Small, test-first. |
-| D | Public vehicle page: `/v/:public_id`, VIN resolver, facts + tier display, timeline grouped by `entry_ref`, lookup + create-on-first-lookup, rate limit | B | Read-only; ships before claiming exists (unclaimed pages are the bait). |
+| C | Logbook vocabulary: `event.fuel`, `event.modification`, `event.note`, `event.outing`, `state.*` seed traits, `sets` deltas + validators + tests | — | Small, test-first. |
+| M | `current_state` fold (§2b): derived map, transaction-hook refresh, admitted-only latest-wins fold, replay test (drop + re-fold = identical) | B, C | Load-bearing (arithmetic, same class as facts) — main-thread work, not delegated. |
+| D | Public vehicle page: `/v/:public_id`, VIN resolver, §6 hierarchy (hero from `current_state`, timeline-centered, record as foundation layer), lookup + create-on-first-lookup, rate limit | B, M | Read-only; ships before claiming exists (unclaimed pages are the bait). |
 | E | Claiming: challenge codes, proof upload, vision pre-check, /bench approval queue, stewardships | A, B | |
-| F | Entry composer: four modes, photos, links table, scope-split self-ratification path | A, B, C | The make-or-break ticket; §1 is its spec. |
+| F | Entry composer: four modes, photos, links table, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. |
 | G | Privacy controls + owner's own-view + full-record export | F | |
 | H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `confirm_entry`, `attach_link`, `get_timeline`), proposed-until-confirmed path, pending queue in composer | A, B, C | §8's contract. v1 core, not fast-follow — the differentiated entry path. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Entries travel to existing audiences; page is the canonical record. Needs J's image pipeline. |
@@ -778,18 +850,39 @@ instead of only operator-fed auction documents.
 | K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. |
 | L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
 
-A→E→F/H is the critical path; B, C, D, J parallelize ahead of it. D ships
-value (public pages, lookup) before any auth exists — layered commits, each
-green. F and H land together conceptually — the composer's pending queue is
-where unconfirmed MCP entries surface — but commit separately. J is the quiet
-launch blocker: email gates A, storage gates E. K, I, L trail the critical
-path and can land incrementally after first owners exist.
+**Build order (Greg, round 3): infra first.** J, A, B open the build — no
+design dependencies, and they gate everything downstream (email gates A's
+magic links, storage gates E's proof photos, B is the ledger seam every
+other ticket touches). C and M follow immediately; then D ships value
+(public pages, lookup) before any auth-gated surface exists — layered
+commits, each green. A→E→F/H remains the critical path to the first owner
+entry. F and H land together conceptually — the composer's pending queue is
+where unconfirmed MCP entries surface — but commit separately. K, I, L trail
+the critical path and can land incrementally after first owners exist. The
+§9.1 walk decisions (handles, deletion posture) get taken as they block A/B,
+not deferred to a second walk.
 
-### Decisions queued for the walk, in order
+### Decided 2026-08-01, round 3 (Greg)
 
-1. §3 — scope-split self-ratification (contract invariant amendment). The big
-   one.
-2. §2 — `entry_ref` in the event-claim content hash (attestation seam).
+- Build starts with infra: J, A, B first.
+- `current_state` as a second projection (§2b), independent of
+  `vehicle.facts` — factory record untouched; usable by swapped/raced cars
+  where factory is thin and current state is the record.
+- Trait vocabulary: seed set + grow (six `state.*` predicates,
+  free-text-first values).
+- Page hierarchy: the living car leads — hero from `current_state`,
+  timeline-centered; provenance/tier display is the foundation layer, not
+  the headline (§6).
+- §3 scope-split self-ratification: **ratified.** Owners self-ratify
+  event/observed claims on stewarded cars; factory/provenance stays at the
+  operator gate. `evidence_contract.md` gets the amended invariant wording
+  when ticket B lands.
+- §2 `entry_ref` in the event-claim content hash: **ratified.** Occurrence
+  identity is entry identity for events; corpus re-run green is the
+  acceptance test.
+
+### Decisions still queued for the walk, in order
+
 3. §8 — MCP confirm semantics: agent-mediated entries land `:proposed` until
    the owner confirms (one word in the chat). The alternative — trusting the
    tool call itself as the owner's act — saves a word and lets mishearings

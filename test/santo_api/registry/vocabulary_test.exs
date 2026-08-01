@@ -120,6 +120,149 @@ defmodule SantoApi.Registry.VocabularyTest do
     end
   end
 
+  describe "logbook predicates (TK-009)" do
+    test "fill-ups carry volume and unit; money is integer cents, never floats" do
+      assert :ok = Vocabulary.validate("event.fuel", %{"volume" => "13.1", "unit" => "gal"})
+
+      assert :ok =
+               Vocabulary.validate("event.fuel", %{
+                 "volume" => "49.6",
+                 "unit" => "l",
+                 "total_cents" => 6_745,
+                 "currency" => "USD",
+                 "grade" => "93",
+                 "station" => "Shell",
+                 "partial" => false
+               })
+
+      assert {:error, _} = Vocabulary.validate("event.fuel", %{"volume" => 13.1, "unit" => "gal"})
+
+      assert {:error, _} =
+               Vocabulary.validate("event.fuel", %{"volume" => "13.1", "unit" => "liters"})
+
+      assert {:error, _} =
+               Vocabulary.validate("event.fuel", %{"volume" => "-2", "unit" => "gal"})
+
+      assert {:error, _} =
+               Vocabulary.validate("event.fuel", %{
+                 "volume" => "13.1",
+                 "unit" => "gal",
+                 "total_cents" => 67.45
+               })
+    end
+
+    test "modifications carry a summary; area stays a free string" do
+      assert :ok = Vocabulary.validate("event.modification", %{"summary" => "LS1 swap"})
+
+      assert :ok =
+               Vocabulary.validate("event.modification", %{
+                 "summary" => "Camber to 2.5 front",
+                 "area" => "suspension",
+                 "detail" => "Was 2.0; trying more front grip for autocross"
+               })
+
+      assert {:error, _} = Vocabulary.validate("event.modification", %{"summary" => nil})
+      assert {:error, _} = Vocabulary.validate("event.modification", "LS1 swap")
+    end
+
+    test "notes are the escape hatch — any text is accepted" do
+      assert :ok = Vocabulary.validate("event.note", %{"text" => "Car sat all winter."})
+      assert {:error, _} = Vocabulary.validate("event.note", %{"text" => nil})
+    end
+
+    test "outings carry a kind from the closed list" do
+      assert :ok =
+               Vocabulary.validate("event.outing", %{
+                 "kind" => "autocross",
+                 "venue" => "Pikes Peak International Raceway",
+                 "result" => "2nd in class",
+                 "summary" => "Best run on the 32 psi setup"
+               })
+
+      assert :ok = Vocabulary.validate("event.outing", %{"kind" => "drive"})
+      assert {:error, _} = Vocabulary.validate("event.outing", %{"kind" => "grocery-run"})
+      assert {:error, _} = Vocabulary.validate("event.outing", %{"venue" => "somewhere"})
+    end
+
+    test "state traits carry a summary, code and detail optional (the Datsun case)" do
+      assert :ok = Vocabulary.validate("state.engine", %{"summary" => "GM LS1 5.7L V8"})
+
+      assert :ok =
+               Vocabulary.validate("state.wheels_tires", %{
+                 "summary" => "18x11 square, 315/30 Hoosier A7",
+                 "code" => nil,
+                 "detail" => "RB Wheels custom offset"
+               })
+
+      assert :ok = Vocabulary.validate("state.transmission", %{"summary" => "T-56 6-speed"})
+      assert :ok = Vocabulary.validate("state.suspension", %{"summary" => "Techno Toy coilovers"})
+      assert :ok = Vocabulary.validate("state.brakes", %{"summary" => "Wilwood 4-piston front"})
+      assert :ok = Vocabulary.validate("state.exterior", %{"summary" => "Resprayed 905 red"})
+
+      assert {:error, _} = Vocabulary.validate("state.engine", %{"summary" => nil})
+      assert {:error, _} = Vocabulary.validate("state.engine", "LS1")
+
+      assert {:error, :unknown_predicate} =
+               Vocabulary.validate("state.exhaust", %{"summary" => "x"})
+    end
+
+    test "sets deltas validate against the trait vocabulary only (§2b)" do
+      assert :ok =
+               Vocabulary.validate("event.modification", %{
+                 "summary" => "LS1 swap complete",
+                 "sets" => [
+                   %{"predicate" => "state.engine", "value" => %{"summary" => "GM LS1 5.7L V8"}},
+                   %{"predicate" => "state.transmission", "value" => %{"summary" => "T-56"}}
+                 ]
+               })
+
+      assert :ok =
+               Vocabulary.validate("event.outing", %{
+                 "kind" => "autocross",
+                 "sets" => [
+                   %{
+                     "predicate" => "state.suspension",
+                     "value" => %{"summary" => "3.0 deg front camber, 32 psi"}
+                   }
+                 ]
+               })
+
+      # Only state.* traits are settable — not observations, not factory facts.
+      assert {:error, _} =
+               Vocabulary.validate("event.modification", %{
+                 "summary" => "rolled back the odo",
+                 "sets" => [%{"predicate" => "observation.mileage", "value" => 1}]
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.modification", %{
+                 "summary" => "repaint",
+                 "sets" => [
+                   %{
+                     "predicate" => "build.paint_code",
+                     "value" => %{"code" => "905", "label" => nil}
+                   }
+                 ]
+               })
+
+      # A delta whose value fails its own trait validator fails the event.
+      assert {:error, _} =
+               Vocabulary.validate("event.modification", %{
+                 "summary" => "swap",
+                 "sets" => [%{"predicate" => "state.engine", "value" => %{"summary" => nil}}]
+               })
+    end
+
+    test "logbook predicates carry the scope tenses the fold expects" do
+      assert Vocabulary.scope_kind("event.fuel") == :event
+      assert Vocabulary.scope_kind("event.modification") == :event
+      assert Vocabulary.scope_kind("event.note") == :event
+      assert Vocabulary.scope_kind("event.outing") == :event
+      assert Vocabulary.scope_kind("state.engine") == :observed
+      assert Vocabulary.scope_kind("state.exterior") == :observed
+    end
+  end
+
   describe "scope_kind/1" do
     test "identity and build predicates are factory-scoped, observations are observed" do
       assert Vocabulary.scope_kind("identity.marque") == :factory
