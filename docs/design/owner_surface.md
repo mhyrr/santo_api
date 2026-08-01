@@ -10,6 +10,30 @@ the evidence contract's §11 roadmap: owner surface before document extraction
 decisions flagged `GREG'S CALL` are his, not pre-resolved. No implementation
 until the walk completes.*
 
+*Revised 2026-08-01 after walk feedback, round 1: audience is the payoff, not
+a badge (§0, §6); the agent entry surface — voice through the owner's own
+LLM via MCP — replaces the embedded-parser plan (§1, §8); distribution kit
+for crossposting to existing audiences (§6); `event.outing` added (§2).
+Round 2: supporting infrastructure itemized (§9 — accounts, operator admin,
+per-platform integrations, plumbing); roadmap section renumbered to §10;
+tickets extended to A–L.*
+
+## The product shape
+
+One loop, stated once so every section below serves it:
+
+**Speak → ledger → audience.** The owner talks to the assistant they already
+have — at the pump, in the paddock, under the car — and their words become
+attributed, timestamped, append-only claims they confirm with a word. The page
+assembles itself from the accumulating log: timeline, stats, photos, links.
+Every entry is one tap from the audiences the owner already narrates to —
+forum thread, Instagram, YouTube — as a post that points back at the canonical
+record. Verification tiers ride silently underneath the whole time: entries
+are born tier-1, receipts and corroboration upgrade them, and at sale the log
+the owner kept for the audience turns out to be the dossier.
+
+Entry costs a sentence. The payoff is an audience. The moat is the record.
+
 Inputs: `docs/design/evidence_contract.md` (§8, §9, §11),
 `docs/design/corpus.md` (friction log), TK-002 including the reframe note,
 TK-004, `docs/research/porsche_ferrari_public_data_universe.md`, the registry
@@ -61,12 +85,15 @@ they died of **no payoff and no audience**.
 
 **Lessons the design carries forward:**
 
-1. **Entry friction is necessary, not sufficient.** Three required fields max,
-   capture at the moment, one-line grammars for the common case (§1). But the
-   thing that sustains logging is a payoff computed *from* the log, visible
-   immediately and ideally publicly — Fuelly's badge, Strava's kudos. The
-   public page and its stats are not downstream nice-to-haves; they are the
-   retention mechanism (§6).
+1. **Entry friction is necessary; an audience is what sustains.** Three
+   required fields max, capture at the moment, one-line grammars for the
+   common case (§1). But people keep logging when they know someone is
+   watching — the same reason social media works. Strava's numbers are
+   explicit (social streaks 5.7 vs 4.3 days; club members >2x weekly logging),
+   and build threads run for a decade because replies keep coming. The
+   corollary from Wheelwell's grave: don't build the audience — **pipe entries
+   to the audiences owners already have** (their forum thread, their IG),
+   with the page as the canonical record those posts point back to (§6).
 2. **Don't make the owner re-type what a document says.** The receipt photo is
    the natural unit of maintenance entry; structure is derived later, not
    demanded up front (§1, §8).
@@ -76,7 +103,7 @@ they died of **no payoff and no audience**.
    contemporaneity + immutability + attribution — exactly what an append-only,
    content-hashed, party-attributed claims ledger formalizes (§3). This is the
    open gap Vin Santo sits in, and shop-authored entries are the eventual
-   credibility unlock (§9 seam).
+   credibility unlock (§10 seam).
 4. **The record is the moat, and export is the trust price.** Whoever holds
    ten years of history holds the owner — and must offer an exit path or be
    distrusted (the club-partnership memo reached the same conclusion
@@ -104,10 +131,20 @@ by an LLM, or both?
 - **Photos and links are attachments,** not entries — they ride along on
   whatever entry they illustrate (or stand alone as a photo entry).
 
-**Recommendation: both, split by nature — and ship v1 without the LLM.**
+**Recommendation: two entry surfaces, neither of which embeds an LLM.**
 
-One entry surface, phone-first, one tap from the vehicle page: a segmented
-composer with **Fill-up | Service | Mod | Note** modes.
+1. **The owner's own assistant, via MCP (§8) — the differentiated path.** The
+   owner opens Claude or ChatGPT and *talks*: "fill-up Friday, 13.1 gallons at
+   $5.15" — or a voice memo from the autocross paddock: "best run 2nd place,
+   tried 3 degrees camber and 32 psi instead of 34, car felt more balanced."
+   Their assistant transcribes, structures, and calls Vin Santo's MCP tools;
+   we supply typed tools and the ledger, they supply voice and dialogue. This
+   is Fuelly's SMS grammar reborn with the parser on the owner's side of the
+   wire — zero entry UI of ours in the loop.
+2. **A phone-first web composer — the floor.** For owners without an
+   assistant wired up, and as the home of the confirm queue (§8). One tap
+   from the vehicle page: a segmented composer with
+   **Fill-up | Service | Mod | Note** modes.
 
 - *Fill-up*: odometer, volume, total price (optional: grade, station, partial
   flag). Three fields, numeric keyboards, last-entry defaults. Produces an
@@ -130,9 +167,11 @@ Every mode accepts photos. Total taps for a fill-up: open page → composer is
 already on Fill-up → three numbers → save. That is the Fuelly bar and v1 must
 hit it.
 
-The LLM parse (free text → structured claims) is a **fast-follow behind the
-same box**, not a v1 dependency — §8 makes the case, including the retroactive
-upgrade path that makes deferral safe.
+Voice and free-text structuring are supplied by the owner's assistant through
+the §8 MCP surface **in v1** — no hosted parser, no voice UI of ours. A hosted
+parser behind the web composer's text box is a later nicety, and deferring it
+is safe: notes are claims, so a parser can retroactively propose structure
+from entries logged before it existed.
 
 **Delivery: responsive LiveView, installable as a PWA.** No native app. The
 entry moment is "standing at the gas pump / in the garage with greasy hands" —
@@ -144,7 +183,8 @@ landscape says something sharper — friction is necessary but *payoff* is what
 sustains (Automatic Labs had zero friction and died anyway). So the entry UX
 is only half the make-or-break; the other half is that every save visibly
 improves something the owner can show off — the timeline grows, a stat
-updates, the page gets richer (§6). And *session zero* needs designing: the
+updates, the page gets richer, and the entry is one tap from their build
+thread or IG (§6). And *session zero* needs designing: the
 claim-flow handoff (§4) has to land a new steward in a back-fill moment ("add
 your car's story — start with the last service"), or day-one retention dies
 regardless of how good the forms are.
@@ -161,6 +201,7 @@ one code-reviewed change each, per fork B discipline. The logbook demands:
 | `event.fuel` | event | `volume` (req, decimal-as-string), `unit` (req, `"gal"\|"l"`), `total_cents` (opt int), `currency` (opt), `grade` (opt), `station` (opt), `partial` (opt bool) | Money in integer cents, never floats. Cost/mile is computed, never stored. |
 | `event.modification` | event | `summary` (req), `area` (opt string — suspension, engine, wheels…), `detail` (opt string) | `area` stays a free string in v1; an enum invites vocabulary bikeshed before we've seen real data. |
 | `event.note` | event | `text` (req) | The escape hatch. Never conflicts, never comparison-relevant, tier-1 forever. |
+| `event.outing` | event | `kind` (req — `autocross\|track\|show\|drive\|other`), `venue` (opt), `result` (opt), `summary` (opt) | Serious owners' logs are full of these; the autocross voice memo is the canonical compound utterance (outing + modification + note in one breath). |
 | `observation.mileage` | observed | *(exists)* integer | Reused; fill-ups and service entries emit it alongside. |
 | `event.service`, `event.sale` | event | *(exist)* | `event.service` gains nothing in v1; its `summary`+`performer` shape already fits. |
 
@@ -172,9 +213,10 @@ to protect *comparison and facts*: predicates whose values get compared across
 sources need pinned semantics. A free-text event predicate never enters facts
 (§8), never conflicts (events accumulate, §4), and never compares. The risk is
 different: everything lands in `event.note` and structured data never
-accumulates. Mitigations: the composer defaults to the structured modes, and
-the §8 parser later proposes structured claims *from* existing notes — notes
-are feedstock, not a dead end.
+accumulates. Mitigations: the MCP path (§8) structures at
+the source — the assistant emits typed claims, not prose; the composer
+defaults to the structured modes; and structure can later be proposed
+retroactively from existing notes (§8) — notes are feedstock, not a dead end.
 
 ### Entry grouping — the §9 seam, made mechanical
 
@@ -249,9 +291,11 @@ carries it.
   transaction** — `Registry.propose_claim/3` with the owner's party, then the
   flip, owner recorded as ratifier. The gate's *shape* is preserved (every
   claim passes through `:proposed`, every admission has a who/when); only the
-  latency collapses. For §8's LLM-parsed entries the two steps genuinely
-  separate: parse → `:proposed` → owner's confirmation tap *is* the
-  ratification. Same machinery, same audit trail.
+  latency collapses. For agent-mediated entries (§8) the two
+  steps genuinely separate: the assistant's tool call lands `:proposed`; the
+  owner's confirmation — a word in the chat, a tap in the queue — *is* the
+  ratification. Same machinery, same audit trail, and a model mishearing
+  "13.1" as "31" never enters the record silently.
 - **Factory- and provenance-scope claims from owners** ("my paint code is
   226") enter `:proposed` and wait for the operator gate or corroborating
   evidence — unchanged. These touch `facts` and the verified display; owner
@@ -410,11 +454,29 @@ add it when owners ask.
   service invoices) and owner entries interleave, visually distinguished by
   tier and asserting party.
 - Photo gallery (owner artifacts marked public), link list (§2).
-- **An embeddable badge** — small image/snippet with the car, headline stat,
-  and page link, built for forum signatures and IG bios. Fuelly's badge was
-  its growth loop and public-commitment device for a decade; this is cheap
-  (one controller rendering an SVG) and it aims the product straight at the
-  people who already narrate their cars on forums. In v1 scope.
+**The distribution kit — entries travel to the audience.** The audience is
+the payoff (§0 lesson 1), and the audience already exists on forums, IG, and
+YouTube — so every public entry ships with one-tap distribution *outward*:
+
+- **Share card**: a rendered image (car, entry text, headline stat, page
+  link) sized for IG stories/posts — the visual unit of "look what I did to
+  the car today."
+- **Forum snippet**: the entry as ready-to-paste BBcode/markdown — photos,
+  text, and a link back to the page — for the owner's existing build thread.
+  Honest mechanics: true API crossposting only exists where forums have APIs
+  (Discourse-based boards do; the legacy phpBB and vBulletin boards where most
+  build threads live don't, and driving a user's forum account by automation
+  is TOS-hostile — §9.3 has the per-platform table). Copy-paste-into-your-thread is the v1 mechanic; direct
+  crosspost is added per-platform where an API makes it clean.
+- **Embeddable badge**: small SVG with car + stat + link for forum
+  signatures — Fuelly's decade-long growth loop, still cheap (one
+  controller).
+
+The direction of trade matters: entries flow *out* to platforms as the
+owner's own content (rights-clean by construction); platform content flows
+*in* only as pointers (§2 links). The page is the canonical record every
+crosspost points back to — the build thread keeps the audience, Vin Santo
+keeps the ledger.
 
 **Export from day one.** The owner can download their complete record —
 claims, entries, artifacts — in a documented format, no gatekeeping. The
@@ -485,49 +547,175 @@ with disclosure the seller commits to, not the public page.
 
 ---
 
-## 8. Free-text extraction — v1 or fast-follow?
+## 8. The agent entry surface — MCP, and where the LLM lives
 
-**Recommendation: fast-follow, with the seam designed into v1.** Three
-reasons:
+**The reframe (Greg, 2026-08-01 walk):** we don't embed an LLM; we expose an
+interface for the LLMs owners already have. Voice entry is the killer entry
+mode — "fill-up Friday, 13.1 gallons," the autocross voice memo — and the
+voice side is entirely supplied by Claude/ChatGPT/whatever the owner talks to.
+Vin Santo's job is a typed tool surface and the ledger behind it. This is the
+agent-readable-business-interface bet applied to our own front door: the
+registry becomes something any authorized agent can write to — which is also,
+later, exactly how a shop's agent logs the service it just performed (§10
+tranche 7, the credibility unlock).
 
-1. **No v1 event type needs it.** Fuel is a 3-field form that beats a sentence
-   on speed (§1). Mods and notes are text whose text *is* the value — they
-   save instantly as `event.modification`/`event.note` with zero parsing. v1
-   entry friction is already at the Fuelly bar without a model in the loop.
-2. **The retroactive upgrade makes deferral free.** Because notes land in the
-   ledger as claims with text values, the parser can later propose structured
-   claims *from existing notes* ("this note mentions 41,200 miles — log it?").
-   Nothing entered before the parser ships is wasted; owners' old entries get
-   *better*. A v1 dependency would delay shipping for capability we can
-   deliver to already-captured data later.
-3. **Same UI contract either way.** The composer's text box doesn't change
-   when the parser arrives — the box gets smarter behind the same surface.
-   No rework.
+**Tool surface (v1, deliberately small):**
 
-**The contract, specified now so the seam is real:** utterance + vehicle
-context → model (a small, fast one — this is Haiku-class work) emits claim
-candidates strictly within the closed vocabulary: `[{predicate, value,
-scope_date}]` + a residual note. UI renders candidates as chips —
-"⛽ 13.2 gal · $67.98" / "📏 41,200 mi" — owner taps to confirm (that tap is
-the §3 ratification), edits, or dismisses to plain note. Anything not
-confidently parsed falls through to `event.note` untouched; the model
-abstains rather than guesses; nothing auto-admits. `method: :llm_extract`,
-prompt+model in `method_meta`, per corpus-friction lesson: capture the owner's
-corrections as signal, prefer deterministic post-parse fixes over prompt
-tinkering.
+- `my_vehicles` — the caller's stewarded vehicles (id, identity, headline).
+- `log_entry(vehicle, date, claims[], note?, links[]?)` — claims validated
+  strictly against the closed vocabulary (`event.fuel`, `event.modification`,
+  `event.outing`, `event.service`, `observation.mileage`); anything that
+  doesn't fit falls into the note residual, never rejected. Creates the
+  claims `:proposed` under one `entry_ref` and returns a human-readable echo
+  for the assistant to read back.
+- `confirm_entry(entry_ref)` / `discard_entry(entry_ref)` — the §3
+  ratification (or rejection), invoked after the owner says yes in the chat.
+- `attach_link(vehicle, url, label?)` — link curation (§2).
+- `get_timeline(vehicle)` — read-back, so the assistant can answer "when did
+  I last change the oil?" — retrieval is half the reason to keep a log, and
+  it makes the assistant a *reader* of the record, not just a scribe.
 
-**Trigger to build it:** if post-launch entry data shows note-mode dominating
-structured modes (owners telling us forms are friction), the parser jumps the
-queue. Define the check now: ratio of structured claims to `event.note`
-claims per active steward, reviewed at 30 days.
+**Doctrine mapping.** Asserting party: the owner (the token is theirs).
+Method: `:llm_extract`, with the calling agent identified in `method_meta` —
+the ledger records that a model mediated. State: `:proposed` until
+`confirm_entry`; the assistant echoes the parsed entry back ("Logging: 13.1
+gal, $67.45, odometer 41,660 — confirm?") and the owner's yes triggers the
+confirm call. Unconfirmed entries also appear in the composer's pending queue,
+so nothing strands. The confirm step costs one word and is the entire
+difference between "the owner said it" and "a model heard it" — LLMs extract,
+the owner ratifies, code computes. Nothing auto-admits. `GREG'S CALL` if he'd
+rather trust the tool call itself as the owner's assertive act and skip the
+confirm; recommendation is to keep it.
 
-`GREG'S CALL` — the reframe note leaned "first extraction is likely owner free
-text," so v1-inclusion is a defensible read of intent; this recommendation
-trades a smaller v1 for an earlier one.
+**Auth:** a per-user token minted in account settings (scoped to the user's
+stewardships, revocable) for v1; OAuth when a real client demands it. MCP
+server implementation rides the existing Phoenix app — Tidewave already
+demonstrates MCP-in-Phoenix in this repo's dev stack; whether via a small
+library or hand-rolled streamable HTTP, keep the dependency footprint minimal.
+
+**Corrections as signal (revrec lesson, unchanged):** when an owner edits a
+proposed entry before confirming, the delta is captured in `method_meta` —
+that's the corpus for improving tool descriptions later, and deterministic
+post-parse fixes beat prompt tinkering.
+
+**What this displaces:** the previous plan's hosted free-text parser behind
+the web composer. It's now a later nicety, not a tranche — the high-intent
+users get structuring through their assistant on day one, and because notes
+are claims, a hosted parser can still retroactively upgrade old entries
+whenever it ships.
+
+**Caveat.** Setup friction is real: connecting an MCP server to a consumer
+assistant is a settings dance today, and the population comfortable with it —
+though it overlaps suspiciously well with people who log camber changes — is a
+minority of even serious owners. The composer floor (§1) exists for everyone
+else, and the entry-mix metric (share of entries arriving via MCP vs composer,
+reviewed at 30 days) tells us where to invest next. The bet is that
+assistant-side MCP support gets easier every quarter and we're early to a
+surface everyone else will retrofit.
 
 ---
 
-## 9. Roadmap amendment and ticket decomposition
+## 9. Supporting infrastructure — the price of the first non-operator surface
+
+§11's original ordering deferred owners precisely because of this bill. Here
+it is, itemized, so the walk approves the real scope and not the romantic
+subset. Much of it is boring generator output and configuration; the
+genuinely new machines are the operator queues, object storage, and the
+integration seams.
+
+### 9.1 Accounts, beyond login
+
+§5 settles credentials (magic link) and the User↔Party split. The rest of an
+account:
+
+- **Handle.** The public identity — "maintained by @handle" on the page,
+  attribution on every entry. Recommendation: **party name = the handle,
+  chosen at the first assertive act, immutable thereafter**; a separate
+  mutable display name is presentation-only. The immutability isn't
+  aesthetics: the party name is baked into every claim's `content_hash`, so a
+  renamed party would orphan its own history's hashes. Pseudonymous handles
+  are also the privacy posture (below). `GREG'S CALL` — immutable handles are
+  a real UX constraint and users will ask.
+- **MCP tokens.** Mint/revoke in account settings (§8): scoped to the user's
+  stewardships, shown once, revocable individually. Token last-used display
+  so a leaked token is noticeable.
+- **Notifications: email-only in v1.** Magic links, claiming decision,
+  counter-claim alert (§4 — time-sensitive, the one that must not be missed),
+  pending-entry nudge ("your assistant logged 2 entries — confirm"). Swoosh
+  ships with Phoenix; no web push, no digest engine in v1.
+- **Account deletion, stated honestly.** Credentials and profile delete;
+  **the party and its claims persist** — the ledger is append-only and
+  attribution is historical fact, the same reason a superseded claim stays
+  visible. Deletion flow offers bulk-set-entries-private first, then
+  disassociates the user from the party. Pseudonymous handles make this
+  defensible; the ToS says it plainly. `GREG'S CALL` — this is the
+  ledger-integrity vs right-to-erasure line, and it should be his sentence.
+
+### 9.2 Operator admin — the other side of every flow
+
+Every owner flow in this doc has an operator end, and it lands in /bench —
+one app, behind the §5 operator flag, not a second surface. /bench grows from
+a per-vehicle workbench into workbench + queues:
+
+- **Claiming queue** (§4): proof photo, vision pre-check verdict, vehicle
+  context, approve/deny. High-value flags surface here.
+- **Ratification queue**: owner-proposed factory/provenance claims waiting on
+  the gate (§3) — the operator half of the scope split.
+- **Dispute queue**: counter-claims on stewarded vehicles (§4); resolution
+  uses the existing adjudication machinery, never a side door.
+- **Report queue**: the public page gets a report affordance (abuse, doxxing,
+  fraud); reports land here. Remedy is a visibility flip plus a note — the
+  ledger is never edited, even for moderation.
+- **User admin**: suspend account, revoke stewardship — both status flips
+  with reasons, nothing deleted.
+- **Metrics strip**: active stewards, entry mix (MCP vs composer — the §8
+  30-day check), confirm rates, claims/day. Read-only, computed, no new
+  tables.
+
+Doctrine: admin actions that touch the ledger go through `ratify_claim` /
+`adjudicate_claims` / status flips exclusively. The admin UI is a caller of
+the same machinery the corpus scripts use.
+
+### 9.3 Platform integrations — per-platform honesty
+
+The principle from §6, restated as the integration contract: **outbound
+carries the owner's own content; inbound stores pointers and official-embed
+metadata only.** No scraping, no credential puppeteering, anywhere.
+
+| Platform | Inbound (on the page) | Outbound (distribution) | v1? |
+|---|---|---|---|
+| YouTube | Link → oEmbed (open endpoint, no key): title, author, thumbnail; iframe embed on the page | Nothing needed — owners post there natively, link back | **Yes** |
+| Instagram | Link → bare link card in v1. IG oEmbed requires a Meta developer app + "oEmbed Read" review — do that dance later if embed-rich pages earn it | Share card image via the phone share sheet (§6). No API posting: IG's Content Publishing API covers business/creator accounts only | **Yes (bare)** |
+| phpBB / vBulletin forums (Rennlist et al.) | Thread URL stored per vehicle (§2 links) | **Snippet copy-paste is the integration** — no official REST API exists for either. "Post to my thread" = open thread URL + snippet on clipboard, one paste. Store the thread URL once so every entry knows where it goes | **Yes** |
+| Discourse forums | Link + oEmbed/onebox both directions work naturally | Real REST API with per-user API keys — the one platform where true one-tap crosspost is clean. Add when a target community warrants | Later |
+
+We store URLs and oEmbed metadata (title/author/thumbnail URL), never media
+files from platforms. Owner-uploaded photos are the only media we host.
+
+### 9.4 Platform plumbing
+
+- **Transactional email** — launch blocker; magic links depend on it. Swoosh
+  (in-box) + one adapter (Postmark or SES — pick at build time, it's config).
+- **Object storage.** Uploads move from local `uploads_dir` to S3-compatible
+  storage (Tigris on Fly). The existing convention — `storage_ref` is
+  basename-only — was designed for exactly this: the move is configuration
+  and a file sync, not a migration. Claiming photos and owner documents are
+  user data; local disk stops being acceptable the day the first real owner
+  uploads.
+- **Image pipeline.** Share cards render from an SVG template, rasterized
+  server-side (vips) because IG wants pixels; gallery thumbnails likewise.
+  No general image service — two named transforms.
+- **Rate limiting.** Unauthenticated lookup (§7), auth endpoints, MCP calls.
+  Plug-level ETS bucket, hand-rolled or `hammer` — minimal-deps rule applies.
+- **Legal pages.** ToS + privacy policy — first personal data in the system.
+  The deletion posture (9.1) and moderation remedy (9.2) get written down
+  there, in the same plain register as the product copy: the ledger keeps
+  history; here's exactly what that means for you.
+- **Backups.** Postgres is covered Fly-side; the artifact store gets
+  versioning/replication turned on — owner documents are the one thing we
+  cannot re-acquire.
+
+## 10. Roadmap amendment and ticket decomposition
 
 ### Proposed §11 rewrite (drafted for ratification, not applied)
 
@@ -546,23 +734,26 @@ trades a smaller v1 for an earlier one.
 > 3. **Owner surface** (docs/design/owner_surface.md): auth (magic link) ·
 >    public vehicle pages with create-on-first-lookup · claiming via
 >    possession proof · logbook vocabulary (`event.fuel`,
->    `event.modification`, `event.note`) · phone-first entry composer ·
->    scope-split self-ratification · privacy controls.
-> 4. **Owner free-text extraction** — utterance → proposed claims → owner
->    confirms; the smallest extraction that kills entry friction. Triggered
->    early if entry data demands it.
-> 5. **Document extraction** (TK-004) — the corpus friction log's stances;
+>    `event.modification`, `event.note`, `event.outing`) · phone-first
+>    composer · **MCP agent entry surface** (voice via the owner's own LLM;
+>    proposed-until-confirmed) · scope-split self-ratification ·
+>    distribution kit (share card, forum snippet, badge) · privacy controls
+>    + export · operator queues (claiming, ratification, disputes, reports)
+>    · platform plumbing (email, object storage, rate limits, ToS/privacy).
+> 4. **Document extraction** (TK-004) — the corpus friction log's stances;
 >    now also fed by owner-uploaded receipts accumulating from tranche 3.
-> 6. **Dossier rendering** — the sale-time output: facts, tier composition,
+> 5. **Dossier rendering** — the sale-time output: facts, tier composition,
 >    timeline, citations, owner-controlled full disclosure.
-> 7. **More providers** — NMVTIS/auction-history/VIO per the public-data
+> 6. **More providers** — NMVTIS/auction-history/VIO per the public-data
 >    census (docs/research/); club partnership pilots; PPS as async order.
-> 8. **Shop-authored entries** (seam, unscheduled) — the landscape's
+> 7. **Shop-authored entries** (seam, unscheduled) — the landscape's
 >    credibility unlock: the party doing the work writes the claim
 >    (CARFAX's shop feed, GlobalWorkshop's pushed restoration reports).
 >    Shops are already `parties`; a shop-scoped entry path turns tier-1
 >    logbooks into third-party-attributed ones without any new ledger
->    machinery.
+>    machinery. The MCP surface (tranche 3) is the same door — a shop's
+>    agent calling `log_entry` with the shop's party is the whole
+>    integration.
 
 Note what moving document extraction *after* the owner surface buys it: by the
 time TK-004 builds, there's a stream of owner-uploaded receipts attached to
@@ -577,21 +768,35 @@ instead of only operator-fed auction documents.
 | A | Auth + accounts: `phx.gen.auth` magic link, User↔Party link, operator flag, /bench behind auth | — | |
 | B | Ledger prerequisites: `ratified_by_party_id`/`ratified_at`, `entry_ref` column + event-hash amendment, artifact `source_party_id` fix, `visibility` columns | — | Load-bearing (claim ledger) — main-thread work, not delegated. Test-first; corpus re-run green is the acceptance test. |
 | C | Logbook vocabulary: `event.fuel`, `event.modification`, `event.note` + validators + tests | — | Small, test-first. |
-| D | Public vehicle page: `/v/:public_id`, VIN resolver, facts + tier display, timeline grouped by `entry_ref`, lookup + create-on-first-lookup, rate limit, embeddable badge | B | Read-only; ships before claiming exists (unclaimed pages are the bait). |
+| D | Public vehicle page: `/v/:public_id`, VIN resolver, facts + tier display, timeline grouped by `entry_ref`, lookup + create-on-first-lookup, rate limit | B | Read-only; ships before claiming exists (unclaimed pages are the bait). |
 | E | Claiming: challenge codes, proof upload, vision pre-check, /bench approval queue, stewardships | A, B | |
 | F | Entry composer: four modes, photos, links table, scope-split self-ratification path | A, B, C | The make-or-break ticket; §1 is its spec. |
 | G | Privacy controls + owner's own-view + full-record export | F | |
-| H | Free-text parse fast-follow | F | §8's contract; triggered by the 30-day entry-mix check. |
+| H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `confirm_entry`, `attach_link`, `get_timeline`), proposed-until-confirmed path, pending queue in composer | A, B, C | §8's contract. v1 core, not fast-follow — the differentiated entry path. |
+| I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Entries travel to existing audiences; page is the canonical record. Needs J's image pipeline. |
+| J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
+| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. |
+| L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
 
-A→E→F is the critical path; B, C, D parallelize ahead of it. D ships value
-(public pages, lookup) before any auth exists — layered commits, each green.
+A→E→F/H is the critical path; B, C, D, J parallelize ahead of it. D ships
+value (public pages, lookup) before any auth exists — layered commits, each
+green. F and H land together conceptually — the composer's pending queue is
+where unconfirmed MCP entries surface — but commit separately. J is the quiet
+launch blocker: email gates A, storage gates E. K, I, L trail the critical
+path and can land incrementally after first owners exist.
 
 ### Decisions queued for the walk, in order
 
 1. §3 — scope-split self-ratification (contract invariant amendment). The big
    one.
 2. §2 — `entry_ref` in the event-claim content hash (attestation seam).
-3. §6 — privacy default (entries public, documents private?).
-4. §8 — LLM parse as fast-follow vs v1.
-5. §1 — mobile-web-only v1.
-6. §9 — the §11 rewrite text and ticket cut.
+3. §8 — MCP confirm semantics: agent-mediated entries land `:proposed` until
+   the owner confirms (one word in the chat). The alternative — trusting the
+   tool call itself as the owner's act — saves a word and lets mishearings
+   into the record silently. Recommendation: keep the confirm.
+4. §6 — privacy default (entries public, uploaded documents private?).
+5. §9.1 — handles immutable (party name is hashed into claims), and the
+   deletion posture: credentials delete, party + claims persist. The
+   ledger-integrity vs right-to-erasure line, in Greg's words.
+6. §1 — mobile-web-only v1 (no native app).
+7. §10 — the §11 rewrite text and ticket cut A–L.
