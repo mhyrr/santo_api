@@ -46,3 +46,13 @@ config :phoenix,
 config :santo_api, :vpic_req_options, plug: {Req.Test, SantoApi.Vpic}
 
 config :santo_api, :uploads_dir, Path.join(System.tmp_dir!(), "santo_api_test_uploads")
+
+# The whole suite shares one loopback address, so production limits would have
+# tests throttling each other. The limiter itself is exercised directly, with
+# explicit limits, in its own tests.
+config :santo_api, :rate_limits,
+  api: [limit: 1_000_000, window: :timer.minutes(1)],
+  auth: [limit: 1_000_000, window: :timer.minutes(15)],
+  # Kept small and real: it is keyed per address, and every test uses a fresh
+  # one, so exercising it here cannot throttle anything else.
+  login_email: [limit: 3, window: :timer.hours(1)]

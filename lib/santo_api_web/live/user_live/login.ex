@@ -82,12 +82,7 @@ defmodule SantoApiWeb.UserLive.Login do
 
   @impl true
   def handle_event("submit_magic", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_login_instructions(
-        user,
-        &url(~p"/users/log-in/#{&1}")
-      )
-    end
+    Accounts.request_login_link(email, &url(~p"/users/log-in/#{&1}"))
 
     info =
       "If your email is in our system, you will receive instructions for logging in shortly."

@@ -77,3 +77,10 @@ config :phoenix_live_view,
 config :swoosh, :api_client, false
 
 config :santo_api, :uploads_dir, Path.expand("priv/uploads")
+
+# Live reload replays page loads constantly; production limits would throttle
+# your own editing.
+config :santo_api, :rate_limits,
+  api: [limit: 10_000, window: :timer.minutes(1)],
+  auth: [limit: 10_000, window: :timer.minutes(15)],
+  login_email: [limit: 100, window: :timer.hours(1)]

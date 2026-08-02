@@ -117,21 +117,50 @@ if config_env() == :prod do
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
 
-  # ## Configuring the mailer
+  config :santo_api,
+         :email_from,
+         {System.get_env("MAILER_FROM_NAME", "Vin Santo"),
+          System.get_env("MAILER_FROM_ADDRESS") ||
+            raise("MAILER_FROM_ADDRESS is missing — magic links have nowhere to come from")}
+
+  # ## The mailer adapter — GREG'S CALL, not taken here.
   #
-  # In production you need to configure the mailer to use a different adapter.
-  # Here is an example configuration for Mailgun:
+  # Transactional email is a launch blocker: magic links are the only way in
+  # (owner_surface.md §5, §9.4). Swoosh is in-tree and the local and test
+  # adapters work; what is missing is the production adapter, and picking it
+  # means opening an account and pointing DNS, which is not ours to do.
+  #
+  # Postmark and SES are the two candidates in §9.4. Postmark is the better
+  # deliverability story for low-volume transactional mail and costs more;
+  # SES is cheaper and needs a sending-domain warm-up and a support ticket to
+  # leave the sandbox. Either is a config change here plus the dependency's
+  # own requirements — nothing in the app cares which.
+  #
+  # Postmark:
   #
   #     config :santo_api, SantoApi.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
+  #       adapter: Swoosh.Adapters.Postmark,
+  #       api_key: System.fetch_env!("POSTMARK_API_KEY")
   #
-  # Most non-SMTP adapters require an API client. Swoosh supports Req, Hackney,
-  # and Finch out-of-the-box. This configuration is typically done at
-  # compile-time in your config/prod.exs:
+  # SES (needs :gen_smtp or the ExAws adapter's deps):
   #
-  #     config :swoosh, :api_client, Swoosh.ApiClient.Req
+  #     config :santo_api, SantoApi.Mailer,
+  #       adapter: Swoosh.Adapters.AmazonSES,
+  #       region: System.fetch_env!("AWS_REGION"),
+  #       access_key: System.fetch_env!("AWS_ACCESS_KEY_ID"),
+  #       secret: System.fetch_env!("AWS_SECRET_ACCESS_KEY")
   #
-  # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
+  # `config :swoosh, :api_client, Swoosh.ApiClient.Req` is already set in
+  # config/prod.exs, so an API-based adapter needs no extra HTTP client.
+
+  # ## Artifact storage — GREG'S CALL, not taken here.
+  #
+  # `SantoApi.Storage.Local` writes to disk, which stops being acceptable the
+  # day the first real owner uploads a document (§9.4). The move to Tigris on
+  # Fly, or any S3-compatible store, is this line plus an adapter module —
+  # `storage_ref` is a basename by design, so no rows change:
+  #
+  #     config :santo_api, :storage_adapter, SantoApi.Storage.S3
+  #
+  # Provisioning the bucket is an external action and waits for Greg.
 end

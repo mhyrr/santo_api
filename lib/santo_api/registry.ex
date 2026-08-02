@@ -15,6 +15,7 @@ defmodule SantoApi.Registry do
   import Ecto.Query, warn: false
 
   alias SantoApi.Repo
+  alias SantoApi.Storage
 
   alias SantoApi.Registry.{
     Adjudication,
@@ -133,9 +134,9 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
-  Store an uploaded file as an artifact: content-hashed into the uploads
-  dir, deduped by sha. `storage_ref` is the basename inside the
-  configured uploads dir, so the store can move without rewriting rows.
+  Store an uploaded file as an artifact: content-hashed into the artifact
+  store, deduped by sha. `storage_ref` is a basename and carries no location,
+  so the store can move without rewriting rows — see `SantoApi.Storage`.
   """
   def create_upload_artifact(%{path: path, filename: filename, kind: kind} = attrs) do
     content = File.read!(path)
@@ -147,9 +148,7 @@ defmodule SantoApi.Registry do
 
       nil ->
         storage_ref = sha <> Path.extname(filename)
-        dir = uploads_dir()
-        File.mkdir_p!(dir)
-        File.cp!(path, Path.join(dir, storage_ref))
+        :ok = Storage.put(storage_ref, content)
 
         {:ok,
          Repo.insert!(%Artifact{
@@ -204,14 +203,6 @@ defmodule SantoApi.Registry do
            metadata: metadata
          })}
     end
-  end
-
-  defp uploads_dir do
-    Application.get_env(
-      :santo_api,
-      :uploads_dir,
-      Path.join(to_string(:code.priv_dir(:santo_api)), "uploads")
-    )
   end
 
   @doc """

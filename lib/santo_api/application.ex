@@ -12,6 +12,7 @@ defmodule SantoApi.Application do
       SantoApi.Repo,
       {DNSCluster, query: Application.get_env(:santo_api, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SantoApi.PubSub},
+      SantoApi.RateLimit,
       # Start a worker by calling: SantoApi.Worker.start_link(arg)
       # {SantoApi.Worker, arg},
       # Start to serve requests, typically the last entry

@@ -4,6 +4,7 @@ defmodule SantoApi.Accounts do
   """
 
   import Ecto.Query, warn: false
+  alias SantoApi.RateLimit
   alias SantoApi.Repo
 
   alias SantoApi.Accounts.{Scope, User, UserToken, UserNotifier}
@@ -271,6 +272,30 @@ defmodule SantoApi.Accounts do
     {encoded_token, user_token} = UserToken.build_email_token(user, "login")
     Repo.insert!(user_token)
     UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token))
+  end
+
+  @doc """
+  Handles a request for a login link from an address someone typed.
+
+  Always returns `:ok`. Whether the address is registered, and whether it has
+  spent its share of links for the hour, are both invisible to the caller —
+  the reply has to read the same either way or it becomes an oracle for which
+  addresses have accounts.
+
+  This is the seam every caller should use. `deliver_login_instructions/2`
+  sends unconditionally and belongs to code that already has a user in hand.
+  """
+  def request_login_link(email, magic_link_url_fun)
+      when is_binary(email) and is_function(magic_link_url_fun, 1) do
+    {limit, window} = RateLimit.limits(:login_email)
+    digest = :crypto.hash(:sha256, String.downcase(email)) |> Base.encode16(case: :lower)
+
+    with {:allow, _count} <- RateLimit.check("login_email:#{digest}", limit, window),
+         %User{} = user <- get_user_by_email(email) do
+      deliver_login_instructions(user, magic_link_url_fun)
+    end
+
+    :ok
   end
 
   @doc """

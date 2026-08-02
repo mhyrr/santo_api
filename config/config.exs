@@ -24,6 +24,25 @@ config :santo_api,
   ecto_repos: [SantoApi.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Rate limit buckets (owner_surface.md §9.4). Fixed windows — see
+# `SantoApi.RateLimit` on what that costs. A bucket named in a router
+# pipeline but missing here raises at request time rather than quietly
+# serving unlimited traffic.
+#
+#   :api      — unauthenticated VIN lookup and vehicle reads
+#   :auth     — session and registration endpoints
+#   :login_email — magic links, counted per address so one mailbox cannot be
+#                  flooded from many IPs
+config :santo_api, :rate_limits,
+  api: [limit: 60, window: :timer.minutes(1)],
+  auth: [limit: 20, window: :timer.minutes(15)],
+  login_email: [limit: 5, window: :timer.hours(1)]
+
+# Artifact storage. Local disk is fine for the operator bench; owner uploads
+# (claiming photos, documents) need object storage before the first real
+# owner — see docs/design/owner_surface.md §9.4.
+config :santo_api, :storage_adapter, SantoApi.Storage.Local
+
 # Configure the endpoint
 config :santo_api, SantoApiWeb.Endpoint,
   url: [host: "localhost"],
@@ -48,6 +67,14 @@ config :phoenix_live_view,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :santo_api, SantoApi.Mailer, adapter: Swoosh.Adapters.Local
+
+# Sender identity for every outbound email. Overridden at runtime in
+# production (config/runtime.exs) so the address follows the deployed domain
+# rather than being baked into the release.
+#
+# TODO(greg): set the real sending domain and address here once DNS is
+# decided; the local default is deliberately undeliverable.
+config :santo_api, :email_from, {"Vin Santo", "no-reply@localhost"}
 
 # Configure esbuild (the version is required)
 config :esbuild,

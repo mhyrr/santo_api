@@ -9,7 +9,7 @@ defmodule SantoApi.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"SantoApi", "contact@example.com"})
+      |> from(Application.fetch_env!(:santo_api, :email_from))
       |> subject(subject)
       |> text_body(body)
 

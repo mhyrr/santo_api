@@ -15,6 +15,14 @@ defmodule SantoApiWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug SantoApiWeb.Plugs.RateLimit, bucket: :api, by: :user_or_ip
+  end
+
+  # The session and registration endpoints. Magic-link sending carries its own
+  # per-address limit in `Accounts.request_login_link/2`; this one is the
+  # per-caller ceiling on the endpoints themselves.
+  pipeline :rate_limited_auth do
+    plug SantoApiWeb.Plugs.RateLimit, bucket: :auth, by: :user_or_ip
   end
 
   scope "/", SantoApiWeb do
@@ -79,7 +87,7 @@ defmodule SantoApiWeb.Router do
   end
 
   scope "/", SantoApiWeb do
-    pipe_through [:browser]
+    pipe_through [:browser, :rate_limited_auth]
 
     live_session :current_user,
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
