@@ -219,8 +219,11 @@ defmodule SantoApi.Registry do
     # A caller may intentionally recover a duplicate claim inside a larger
     # transaction. The savepoint keeps PostgreSQL's constraint error from
     # aborting that surrounding transaction before the caller can query the
-    # existing claim.
-    with {:ok, claim} <- Repo.insert(changeset, mode: :savepoint) do
+    # existing claim. There is nothing to take a savepoint in when the caller
+    # has no transaction — the corpus scripts (TK-011).
+    mode = if Repo.in_transaction?(), do: :savepoint, else: :transaction
+
+    with {:ok, claim} <- Repo.insert(changeset, mode: mode) do
       refresh_facts(vehicle)
       {:ok, claim}
     end
