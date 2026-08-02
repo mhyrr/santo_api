@@ -225,9 +225,12 @@ defmodule SantoApi.Registry do
 
   @doc """
   Mint the grouping tag every claim and artifact of one composed entry shares
-  (owner_surface §2). Time-ordered, so entries sort chronologically by ref.
+  (owner_surface §2).
+
+  UUIDv7, monotonic: entries sort chronologically by ref, including a burst
+  composed inside one millisecond.
   """
-  def new_entry_ref, do: SantoApi.UUIDv7.generate()
+  def new_entry_ref, do: Ecto.UUID.generate(version: 7, precision: :monotonic)
 
   @doc """
   Propose a human claim against a vehicle — the bench path. Enters

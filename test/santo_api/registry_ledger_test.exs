@@ -76,12 +76,18 @@ defmodule SantoApi.RegistryLedgerTest do
       scope_date: ~D[2026-07-30]
     }
 
-    test "new_entry_ref/0 mints a time-ordered v7 uuid" do
-      a = Registry.new_entry_ref()
-      b = Registry.new_entry_ref()
+    test "new_entry_ref/0 mints a v7 uuid" do
+      assert {:ok, <<_::48, 7::4, _::12, 2::2, _::62>>} = Ecto.UUID.dump(Registry.new_entry_ref())
+    end
 
-      assert {:ok, <<_::48, 7::4, _::12, 2::2, _::62>>} = Ecto.UUID.dump(a)
-      assert a != b
+    # Time-ordering is the reason for v7, and a burst of entries composed in one
+    # breath lands inside a single millisecond. Refs that only order by the
+    # millisecond field are not ordered at all at the scale that matters.
+    test "refs minted in the same millisecond still sort in mint order" do
+      refs = Enum.map(1..100, fn _ -> Registry.new_entry_ref() end)
+
+      assert refs == Enum.sort(refs)
+      assert length(Enum.uniq(refs)) == 100
     end
 
     test "two identical events under different entries are two claims" do
