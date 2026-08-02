@@ -88,7 +88,10 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
 
     test "comes from the identity key for a pre-standard chassis" do
       assert Presenter.marque(
-               vehicle(%{}, identity_kind: :chassis, identity_key: "chassis:ferrari:pre_vin:19425")
+               vehicle(%{},
+                 identity_kind: :chassis,
+                 identity_key: "chassis:ferrari:pre_vin:19425"
+               )
              ) == "Ferrari"
     end
 

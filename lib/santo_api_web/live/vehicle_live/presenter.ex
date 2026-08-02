@@ -408,7 +408,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     code
     |> String.split("_")
     |> Enum.map_join(" ", fn
-      token -> if String.match?(token, ~r/\A[^aeiou]+\z/i), do: String.upcase(token), else: String.capitalize(token)
+      token ->
+        if String.match?(token, ~r/\A[^aeiou]+\z/i),
+          do: String.upcase(token),
+          else: String.capitalize(token)
     end)
   end
 
