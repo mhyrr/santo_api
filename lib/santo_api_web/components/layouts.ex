@@ -73,6 +73,51 @@ defmodule SantoApiWeb.Layouts do
   end
 
   @doc """
+  The public record's layout.
+
+  Deliberately bare: a car page is the whole surface, and an owner arriving
+  from a forum link has no account and nothing to navigate to yet. Chrome gets
+  added when there is somewhere to go.
+  """
+  def public(assigns) do
+    ~H"""
+    <main class="vs-face min-h-screen">
+      {@inner_content}
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  The document shell for the public record.
+
+  Its own root, not the app's: the application chrome is a generator artifact
+  and an owner arriving from a forum link should land on the car, not on a
+  navbar. The dark ground is set here so the page does not flash white before
+  the instrument face paints.
+  """
+  def public_root(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en" style="background: #141816; color-scheme: dark">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="csrf-token" content={get_csrf_token()} />
+        <.live_title default="Vin Santo">{assigns[:page_title]}</.live_title>
+        <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+        <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
+        </script>
+      </head>
+      <body class="vs-face antialiased">
+        {@inner_content}
+      </body>
+    </html>
+    """
+  end
+
+  @doc """
   Shows the flash group with standard titles and content.
 
   ## Examples

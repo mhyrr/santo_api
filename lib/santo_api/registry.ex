@@ -100,6 +100,35 @@ defmodule SantoApi.Registry do
     Repo.all(from(v in Vehicle, order_by: [desc: v.inserted_at]))
   end
 
+  @doc """
+  Resolve a car by its canonical public handle — the `/v/:public_id` path.
+  """
+  def fetch_by_public_id(public_id) when is_binary(public_id) do
+    case Repo.get_by(Vehicle, public_id: String.downcase(public_id)) do
+      %Vehicle{} = vehicle -> {:ok, vehicle}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def fetch_by_public_id(_public_id), do: {:error, :not_found}
+
+  @doc """
+  Look up an already-registered car by VIN, for the `/vin/:vin` resolver.
+
+  Deliberately read-only: a lookup must never mint a registry row as a side
+  effect. Creating on first lookup is a separate, explicit call.
+  """
+  def resolve_vin(vin) when is_binary(vin) do
+    key = "vin:" <> (vin |> String.trim() |> String.upcase())
+
+    case Repo.get_by(Vehicle, identity_key: key) do
+      %Vehicle{} = vehicle -> {:ok, vehicle}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def resolve_vin(_vin), do: {:error, :not_found}
+
   def fetch_vehicle(id) do
     with {:ok, uuid} <- Ecto.UUID.cast(id),
          %Vehicle{} = vehicle <- Repo.get(Vehicle, uuid) do
@@ -549,6 +578,55 @@ defmodule SantoApi.Registry do
   def ingest_vpic(%Vehicle{}), do: {:error, :unsupported_identity}
 
   @doc """
+  The logbook, as a page reads it (owner_surface §6).
+
+  Claims sharing an `entry_ref` were composed as one entry and present as one;
+  a claim without a ref stands alone, which is every claim the corpus ingested
+  before entries existed. Newest first.
+
+  Public by construction: admitted only, because proposed is not the record
+  (contract §3), and `visibility: :public` only. A private entry stays in the
+  ledger and out of this list.
+  """
+  def timeline(vehicle_id) do
+    Repo.all(
+      from(c in Claim,
+        join: p in Party,
+        on: p.id == c.asserted_by_party_id,
+        where:
+          c.vehicle_id == ^vehicle_id and c.state == :admitted and c.visibility == :public and
+            c.scope_kind in [:event, :observed],
+        order_by: [desc: c.scope_date, desc: c.inserted_at],
+        select: %{
+          claim_id: c.id,
+          predicate: c.predicate,
+          value: c.value,
+          scope_date: c.scope_date,
+          entry_ref: c.entry_ref,
+          artifact_id: c.artifact_id,
+          method: c.method,
+          party: p.name,
+          inserted_at: c.inserted_at
+        }
+      )
+    )
+    |> Enum.group_by(&(&1.entry_ref || &1.claim_id))
+    |> Enum.map(fn {_key, claims} -> entry(claims) end)
+    |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
+  end
+
+  defp entry([first | _rest] = claims) do
+    %{
+      entry_ref: first.entry_ref,
+      date: first.scope_date,
+      party: first.party,
+      method: first.method,
+      recorded_at: Enum.max_by(claims, & &1.inserted_at, DateTime).inserted_at,
+      claims: claims
+    }
+  end
+
+  @doc """
   The oracle pattern as a query: group live claims by predicate and
   label each `:agreement`, `:conflict`, or `:single_source`. Derived,
   never stored — nothing overwrites anything.
@@ -830,6 +908,7 @@ defmodule SantoApi.Registry do
   defp create_vehicle(identity, key, input, decode) do
     vehicle =
       Repo.insert!(%Vehicle{
+        public_id: Vehicle.mint_public_id(),
         identity_kind: IdentityKey.kind(identity),
         identity_key: key,
         candidates: IdentityKey.candidates(identity),

@@ -36,7 +36,11 @@ config :santo_api,
 config :santo_api, :rate_limits,
   api: [limit: 60, window: :timer.minutes(1)],
   auth: [limit: 20, window: :timer.minutes(15)],
-  login_email: [limit: 5, window: :timer.hours(1)]
+  login_email: [limit: 5, window: :timer.hours(1)],
+  # The public page and the VIN resolver. Generous — this is the shareable
+  # surface and a forum thread linking one car should never trip it — but the
+  # resolver is an enumeration path, so it is not unbounded.
+  public_lookup: [limit: 120, window: :timer.minutes(1)]
 
 # Artifact storage. Local disk is fine for the operator bench; owner uploads
 # (claiming photos, documents) need object storage before the first real

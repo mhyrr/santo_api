@@ -20,6 +20,27 @@ defmodule SantoApi.RegistryTest do
       assert %{"marque" => "porsche"} = vehicle.decode_snapshot
     end
 
+    test "mints a public_id — the canonical URL keys the row, not the VIN" do
+      {:ok, vehicle} = Registry.ingest(@nine_five_nine)
+
+      assert String.length(vehicle.public_id) == 10
+      assert vehicle.public_id =~ ~r/\A[a-z2-7]{10}\z/
+    end
+
+    test "the public_id survives re-ingest — a shared link must not rot" do
+      {:ok, first} = Registry.ingest(@nine_five_nine)
+      {:ok, again} = Registry.ingest(@nine_five_nine)
+
+      assert again.public_id == first.public_id
+    end
+
+    test "distinct cars get distinct public_ids" do
+      {:ok, one} = Registry.ingest(@nine_five_nine)
+      {:ok, two} = Registry.ingest(@cgt)
+
+      refute one.public_id == two.public_id
+    end
+
     test "emits admitted factory claims for every mapped decode fact" do
       {:ok, vehicle} = Registry.ingest(@nine_five_nine)
 
@@ -186,6 +207,42 @@ defmodule SantoApi.RegistryTest do
       {:ok, second} = Registry.ingest(@nine_five_nine)
 
       assert Enum.map(Registry.list_vehicles(), & &1.id) == [second.id, first.id]
+    end
+  end
+
+  describe "fetch_by_public_id/1" do
+    test "resolves the canonical public identifier" do
+      {:ok, vehicle} = Registry.ingest(@nine_five_nine)
+
+      assert {:ok, found} = Registry.fetch_by_public_id(vehicle.public_id)
+      assert found.id == vehicle.id
+    end
+
+    test "is case-insensitive, so a link typed in caps still lands" do
+      {:ok, vehicle} = Registry.ingest(@nine_five_nine)
+
+      assert {:ok, found} = Registry.fetch_by_public_id(String.upcase(vehicle.public_id))
+      assert found.id == vehicle.id
+    end
+
+    test "rejects unknown and malformed ids without touching the database twice" do
+      assert {:error, :not_found} = Registry.fetch_by_public_id("aaaaaaaaaa")
+      assert {:error, :not_found} = Registry.fetch_by_public_id("nope")
+      assert {:error, :not_found} = Registry.fetch_by_public_id(nil)
+    end
+  end
+
+  describe "resolve_vin/1" do
+    test "finds an existing car by VIN so /vin/:vin can redirect to canonical" do
+      {:ok, vehicle} = Registry.ingest(@nine_five_nine)
+
+      assert {:ok, found} = Registry.resolve_vin(" wp0zzz95zjs905016 ")
+      assert found.public_id == vehicle.public_id
+    end
+
+    test "does not create a car as a side effect of looking one up" do
+      assert {:error, :not_found} = Registry.resolve_vin(@cgt)
+      assert Registry.list_vehicles() == []
     end
   end
 

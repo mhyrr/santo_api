@@ -103,3 +103,107 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+
+/* ---------------------------------------------------------------------------
+   The public record — "the gauge cluster and the glovebox."
+
+   A car page has two natures and §6 of the owner-surface design fixes their
+   order: the living car leads, the provenance record is the foundation
+   underneath. So the page has two grounds. What the car *is* reads on an
+   instrument face — warm off-white on a green-cast charcoal, the way a car's
+   own displays read at night. What the factory *built* reads on document
+   paper. Scrolling goes from the dashboard into the glovebox.
+
+   Two inks, both rationed. Oxblood marks divergence and conflict and nothing
+   else. Instrument amber marks what the ledger has verified. If either shows
+   up as decoration it has stopped meaning anything.
+   --------------------------------------------------------------------------- */
+:root {
+  --vs-face: #141816;
+  --vs-face-raised: #1d2320;
+  --vs-hairline: #333b37;
+  --vs-dial: #ece7d9;
+  --vs-dim: #8d9088;
+  --vs-needle: #b23a2e;
+  --vs-illum: #c9a227;
+
+  --vs-paper: #ddd9cd;
+  --vs-paper-raised: #e6e2d7;
+  --vs-rule: #bab5a5;
+  --vs-ink: #23211c;
+  --vs-ink-dim: #6c675c;
+
+  /* Codes are set in mono because they *are* codes — a VIN, a paint number,
+     a date. Not for texture. */
+  --vs-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --vs-sans: "Helvetica Neue", Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.vs-face { background: var(--vs-face); color: var(--vs-dial); }
+.vs-paper { background: var(--vs-paper); color: var(--vs-ink); }
+
+/* The spec line: how an owner writes their car in a forum signature. Set
+   heavy, condensed and tight, the way it is stamped on a data plate. */
+.vs-spec {
+  font-family: var(--vs-sans);
+  font-weight: 700;
+  font-stretch: 85%;
+  letter-spacing: -0.022em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.vs-eyebrow {
+  font-family: var(--vs-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.vs-code { font-family: var(--vs-mono); font-variant-numeric: tabular-nums; }
+.vs-figure { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+/* The signature: where the car now differs from the car as built, the
+   as-built value stays on the page struck through. The registry's whole
+   claim is that it can show you both, so the page shows you both. */
+.vs-diverged {
+  border-left: 2px solid var(--vs-needle);
+  padding-left: 0.75rem;
+}
+
+.vs-was {
+  text-decoration: line-through;
+  text-decoration-color: var(--vs-needle);
+  text-decoration-thickness: 1px;
+  color: var(--vs-dim);
+}
+
+.vs-verified { color: var(--vs-illum); }
+.vs-conflicted { color: var(--vs-needle); }
+
+/* The timeline's spine. One rule, entries hung off it by date. */
+.vs-spine { border-left: 1px solid var(--vs-hairline); }
+.vs-tick::before {
+  content: "";
+  position: absolute;
+  left: -0.3125rem;
+  top: 0.5rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--vs-dim);
+}
+.vs-tick[data-owner="true"]::before { background: var(--vs-illum); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .vs-rise { animation: vs-rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+  @keyframes vs-rise {
+    from { opacity: 0; transform: translateY(0.5rem); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+:where(a, button, summary):focus-visible {
+  outline: 2px solid var(--vs-illum);
+  outline-offset: 2px;
+}

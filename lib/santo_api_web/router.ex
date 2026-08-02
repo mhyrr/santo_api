@@ -25,10 +25,28 @@ defmodule SantoApiWeb.Router do
     plug SantoApiWeb.Plugs.RateLimit, bucket: :auth, by: :user_or_ip
   end
 
+  pipeline :public_lookup do
+    plug :put_root_layout, html: {SantoApiWeb.Layouts, :public_root}
+    plug SantoApiWeb.Plugs.RateLimit, bucket: :public_lookup
+  end
+
   scope "/", SantoApiWeb do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  # The public record. No auth: an unclaimed page is the thing an owner finds
+  # before they have any reason to sign up. `/vin/:vin` resolves to the
+  # canonical `/v/:public_id` — identity is correctable, the URL is not.
+  scope "/", SantoApiWeb do
+    pipe_through [:browser, :public_lookup]
+
+    get "/vin/:vin", VehiclePageController, :resolve
+
+    live_session :public, layout: {SantoApiWeb.Layouts, :public} do
+      live "/v/:public_id", VehicleLive.Show
+    end
   end
 
   # The operator bench writes to the claim ledger, so it sits behind both an
