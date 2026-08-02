@@ -99,4 +99,51 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert Presenter.marque(vehicle(%{})) == nil
     end
   end
+
+  describe "entry_parts/1" do
+    test "a spec entry has no headline of its own, so every trait gets a line" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{predicate: "state.engine", value: %{"summary" => "3.4 flat-six, stock"}},
+            %{predicate: "state.wheels_tires", value: %{"summary" => "19x8 / 19x9.5"}}
+          ]
+        })
+
+      assert parts.headline == "Spec recorded"
+
+      assert parts.details == [
+               %{label: "Engine", value: "3.4 flat-six, stock"},
+               %{label: "Wheels & tires", value: "19x8 / 19x9.5"}
+             ]
+    end
+
+    test "a fill-up leads with what happened and keeps the reading as a detail" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{predicate: "event.fuel", value: %{"volume" => "13.1", "unit" => "gal"}},
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      assert parts.headline == "13.1 gal of fuel"
+      assert parts.details == [%{label: "Odometer", value: "41,660 mi"}]
+    end
+
+    test "a mod leads with the owner's own words" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.modification",
+              value: %{"summary" => "Wrapped it Signal Green", "sets" => []}
+            }
+          ]
+        })
+
+      assert parts.headline == "Wrapped it Signal Green"
+      assert parts.details == []
+    end
+  end
 end

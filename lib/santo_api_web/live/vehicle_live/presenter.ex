@@ -217,6 +217,30 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   """
   def entry_parts(entry) do
     ordered = Enum.sort_by(entry.claims, &headline_priority/1)
+
+    if Enum.all?(ordered, &trait_claim?/1),
+      do: spec_parts(ordered),
+      else: event_parts(ordered)
+  end
+
+  # An entry made only of trait claims is the spec panel's work (§2b), not an
+  # event. It has no "what happened" to lead with, so every trait reads as a
+  # labelled line instead of one of them being promoted into a headline.
+  defp spec_parts(claims) do
+    %{
+      headline: "Spec recorded",
+      details:
+        Enum.map(claims, &%{label: trait_label(&1.predicate), value: trait_summary(&1.value)})
+    }
+  end
+
+  defp trait_claim?(%{predicate: "state." <> _rest}), do: true
+  defp trait_claim?(_claim), do: false
+
+  defp trait_summary(%{"summary" => summary}) when is_binary(summary), do: summary
+  defp trait_summary(value), do: inspect(value)
+
+  defp event_parts(ordered) do
     lead = Enum.find(ordered, &claim_headline/1)
 
     details =

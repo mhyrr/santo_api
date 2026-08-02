@@ -205,7 +205,132 @@
   }
 }
 
-:where(a, button, summary):focus-visible {
+:where(a, button, summary, input, select, textarea):focus-visible {
   outline: 2px solid var(--vs-illum);
   outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   The composer — the instrument face in data-entry mode.
+
+   Logging happens standing at a pump with one thumb, so the target sizes are
+   generous and the fast path is vertical: three fields and a commit. A field is
+   a ruled *line*, not a box — the value sits on the face the way a figure sits
+   on a gauge, and the same treatment makes the numeric fields read as readings
+   rather than as widgets. No new inks: oxblood still means only that something
+   disagrees, and amber still means only that the ledger verified something,
+   which is why neither marks a selected tab.
+   --------------------------------------------------------------------------- */
+.vs-field {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: var(--vs-dial);
+  border: 0;
+  border-bottom: 1px solid var(--vs-hairline);
+  border-radius: 0;
+  padding: 0.5rem 0.125rem;
+  font-family: var(--vs-sans);
+  font-size: 1.0625rem;
+  /* iOS zooms the page on focus for anything under 16px. */
+  line-height: 1.4;
+  transition: border-color 0.15s ease;
+}
+
+.vs-field:focus { border-bottom-color: var(--vs-dial); }
+.vs-field::placeholder { color: var(--vs-dim); }
+textarea.vs-field { resize: vertical; }
+
+/* The date picker's own glyph is near-invisible on a dark face. */
+.vs-field::-webkit-calendar-picker-indicator { filter: invert(0.75); cursor: pointer; }
+
+/* Four keys. The selected one is lit by raising it out of the face and giving it
+   a rule along the top edge, the way a pressed key catches the backlight. */
+.vs-segment {
+  padding: 0.6875rem 0.25rem;
+  background: transparent;
+  color: var(--vs-dim);
+  border: 1px solid var(--vs-hairline);
+  border-top-width: 2px;
+  border-top-color: transparent;
+  font-family: var(--vs-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.vs-segment:hover { color: var(--vs-dial); }
+
+.vs-segment[aria-current="true"] {
+  background: var(--vs-face-raised);
+  border-top-color: var(--vs-dial);
+  color: var(--vs-dial);
+}
+
+/* The one inversion on the page, so there is never a question which control
+   commits the entry. */
+.vs-commit {
+  display: inline-block;
+  padding: 0.9375rem 1.5rem;
+  background: var(--vs-dial);
+  color: var(--vs-face);
+  border: 0;
+  font-family: var(--vs-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+}
+
+.vs-commit:hover { background: #fff; }
+
+.vs-quiet {
+  display: inline-block;
+  padding: 0.9375rem 1.5rem;
+  color: var(--vs-dim);
+  border: 1px solid var(--vs-hairline);
+  font-family: var(--vs-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.vs-quiet:hover { color: var(--vs-dial); border-color: var(--vs-dial); }
+
+/* A refusal is a disagreement between what was typed and what the record
+   accepts, which is the one other thing oxblood is for. */
+.vs-refusal {
+  color: var(--vs-needle);
+  border-left: 2px solid var(--vs-needle);
+  padding-left: 0.75rem;
+}
+
+.vs-inset {
+  background: var(--vs-face-raised);
+  border: 1px solid var(--vs-hairline);
+  padding: 1rem 1.125rem 1.125rem;
+}
+
+.vs-file { font-size: 0.8125rem; color: var(--vs-dim); }
+
+.vs-file::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  background: transparent;
+  color: var(--vs-dial);
+  border: 1px solid var(--vs-hairline);
+  font-family: var(--vs-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.vs-check {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--vs-illum);
+  flex: none;
 }

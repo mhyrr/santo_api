@@ -11,6 +11,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
   """
   use SantoApiWeb, :live_view
 
+  alias SantoApi.Owners
   alias SantoApi.Registry
   alias SantoApiWeb.VehicleLive.Presenter
 
@@ -22,7 +23,9 @@ defmodule SantoApiWeb.VehicleLive.Show do
          socket
          |> assign(:page_title, Presenter.title(vehicle))
          |> assign(:vehicle, vehicle)
-         |> assign(:timeline, Registry.timeline(vehicle.id))}
+         |> assign(:timeline, Registry.timeline(vehicle.id))
+         |> assign(:steward, Owners.steward(vehicle))
+         |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))}
 
       {:error, :not_found} ->
         raise SantoApiWeb.VehicleNotFound
@@ -33,7 +36,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
   def render(assigns) do
     ~H"""
     <article>
-      <.hero vehicle={@vehicle} />
+      <.hero vehicle={@vehicle} steward={@steward} />
+      <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
       <.logbook entries={@timeline} />
       <.current_spec vehicle={@vehicle} />
       <.record vehicle={@vehicle} />
@@ -42,9 +46,23 @@ defmodule SantoApiWeb.VehicleLive.Show do
     """
   end
 
+  # The steward's own two doors, and nobody else's. Not a call to action for a
+  # visitor — claiming is ticket E and has nothing to offer them yet.
+  attr :vehicle, :map, required: true
+
+  defp composer_bar(assigns) do
+    ~H"""
+    <div class="mx-auto -mt-6 mb-12 flex max-w-3xl flex-wrap gap-3 px-5 sm:px-8">
+      <.link navigate={~p"/v/#{@vehicle.public_id}/log"} class="vs-commit">Log an entry</.link>
+      <.link navigate={~p"/v/#{@vehicle.public_id}/spec"} class="vs-quiet">Edit the spec</.link>
+    </div>
+    """
+  end
+
   # --- the living car -------------------------------------------------------
 
   attr :vehicle, :map, required: true
+  attr :steward, :map, default: nil
 
   defp hero(assigns) do
     assigns =
@@ -71,6 +89,12 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
       <p :if={@spec == []} class="vs-rise mt-4 text-lg" style="color: var(--vs-dim)">
         Nobody has described this car yet.
+      </p>
+
+      <!-- Maintained by, never owned by: possession proof gates the log, and
+           title is layer 5's evidence to hold (owner_surface §4). -->
+      <p :if={@steward} class="vs-rise mt-5 text-sm" style="color: var(--vs-dim)">
+        Maintained by <span class="vs-code ml-1" style="color: var(--vs-dial)">{@steward.name}</span>
       </p>
 
       <dl class="vs-rise mt-10 flex flex-wrap items-baseline gap-x-10 gap-y-6">

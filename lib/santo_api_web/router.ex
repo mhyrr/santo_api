@@ -25,8 +25,13 @@ defmodule SantoApiWeb.Router do
     plug SantoApiWeb.Plugs.RateLimit, bucket: :auth, by: :user_or_ip
   end
 
-  pipeline :public_lookup do
+  # The instrument-face document shell, shared by the public record and the
+  # owner's surfaces — an owner logging a fill-up stays on the car.
+  pipeline :public_chrome do
     plug :put_root_layout, html: {SantoApiWeb.Layouts, :public_root}
+  end
+
+  pipeline :public_lookup do
     plug SantoApiWeb.Plugs.RateLimit, bucket: :public_lookup
   end
 
@@ -34,7 +39,7 @@ defmodule SantoApiWeb.Router do
   # before they have any reason to sign up. `/vin/:vin` resolves to the
   # canonical `/v/:public_id` — identity is correctable, the URL is not.
   scope "/", SantoApiWeb do
-    pipe_through [:browser, :public_lookup]
+    pipe_through [:browser, :public_chrome, :public_lookup]
 
     get "/vin/:vin", VehiclePageController, :resolve
 
@@ -45,6 +50,26 @@ defmodule SantoApiWeb.Router do
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
       live "/", VehicleLive.Index
       live "/v/:public_id", VehicleLive.Show
+    end
+  end
+
+  # The owner's own surfaces. Authenticated but *not* operator: these are the
+  # first routes in the app a non-operator may write through. Stewardship is the
+  # real gate and it is per-car, so the router can only check that somebody is
+  # signed in — each LiveView's mount checks `Owners.stewarding?/2` and sends a
+  # stranger back to the public page.
+  #
+  # Its own live_session rather than joining `:require_authenticated_user`,
+  # because these pages wear the public record's layout: an owner arriving to log
+  # a fill-up should stay on the car, not cross into the generator's chrome.
+  scope "/", SantoApiWeb do
+    pipe_through [:browser, :public_chrome, :require_authenticated_user]
+
+    live_session :owner,
+      layout: {SantoApiWeb.Layouts, :public},
+      on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do
+      live "/v/:public_id/log", OwnerLive.Composer
+      live "/v/:public_id/spec", OwnerLive.Spec
     end
   end
 
