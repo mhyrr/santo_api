@@ -323,6 +323,31 @@ defmodule SantoApiWeb.ComposerTest do
 
       refute html =~ "/log"
     end
+
+    test "lights the owner's own entries and leaves the registry's grey", ctx do
+      # A registry-sourced event, hand-entered at the bench: same `method: :human`
+      # as an owner entry, different asserting party. The party is what the tick
+      # is about (§6) — attribution, not how the row was typed.
+      {:ok, claim} =
+        Registry.propose_claim(ctx.vehicle, %{
+          "predicate" => "event.service",
+          "value" => %{"summary" => "Annual service, per the invoice", "performer" => nil},
+          "scope_date" => "2019-04-12"
+        })
+
+      {:ok, _ratified} = Registry.ratify_claim(claim.id)
+
+      {:ok, _entry} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, %{
+          date: ~D[2026-08-02],
+          claims: [%{predicate: "event.note", value: %{"text" => "My own line"}}]
+        })
+
+      {:ok, view, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+
+      assert has_element?(view, "[data-owner=true]")
+      assert has_element?(view, "[data-owner=false]")
+    end
   end
 
   defp trait_keys, do: SantoApi.Registry.Vocabulary.trait_predicates()

@@ -626,6 +626,7 @@ defmodule SantoApi.Registry do
           artifact_id: c.artifact_id,
           method: c.method,
           party: p.name,
+          party_kind: p.kind,
           inserted_at: c.inserted_at
         }
       )
@@ -640,6 +641,7 @@ defmodule SantoApi.Registry do
       entry_ref: first.entry_ref,
       date: first.scope_date,
       party: first.party,
+      party_kind: first.party_kind,
       method: first.method,
       recorded_at: Enum.max_by(claims, & &1.inserted_at, DateTime).inserted_at,
       claims: claims

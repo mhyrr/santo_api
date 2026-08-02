@@ -164,8 +164,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
   end
 
   # Owner-logged entries get the lit tick; registry-sourced ones stay grey.
-  # Attribution is the honesty, so the page shows it before it shows anything else.
-  defp owner_entry?(%{method: :human}), do: "true"
+  # Keyed on the asserting party, not the method (§6): a service event typed in
+  # at the bench off an invoice is `method: :human` too, and it is the registry
+  # speaking, not the owner. Attribution is the honesty, so the page shows it
+  # before it shows anything else.
+  defp owner_entry?(%{party_kind: :owner}), do: "true"
   defp owner_entry?(_entry), do: "false"
 
   # --- current spec ---------------------------------------------------------
