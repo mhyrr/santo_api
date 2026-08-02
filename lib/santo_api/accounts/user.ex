@@ -12,6 +12,11 @@ defmodule SantoApi.Accounts.User do
     field :operator, :boolean, default: false
     field :authenticated_at, :utc_datetime, virtual: true
 
+    # The ledger identity, minted at the first assertive act and permanent after
+    # (owner_surface §5). Nil until then. Credentials live here; attribution
+    # lives on the party, which is why the two are separate rows.
+    belongs_to :party, SantoApi.Registry.Party
+
     timestamps(type: :utc_datetime)
   end
 
