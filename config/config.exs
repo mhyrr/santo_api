@@ -7,6 +7,19 @@
 # General application configuration
 import Config
 
+config :santo_api, :scopes,
+  user: [
+    default: true,
+    module: SantoApi.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :binary_id,
+    schema_table: :users,
+    test_data_fixture: SantoApi.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
 config :santo_api,
   ecto_repos: [SantoApi.Repo],
   generators: [timestamp_type: :utc_datetime]

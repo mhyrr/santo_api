@@ -8,6 +8,28 @@ defmodule SantoApiWeb.BenchLiveTest do
   @nine_three "WP0ZZZ99ZTS392124"
   @cgt "WP0CA298X5L001502"
 
+  setup :register_and_log_in_operator
+
+  describe "access" do
+    test "anonymous visitors are sent to the log in page" do
+      conn = build_conn()
+
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(conn, ~p"/bench")
+
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} =
+               live(conn, ~p"/bench/vehicles/#{Ecto.UUID.generate()}")
+    end
+
+    test "authenticated non-operators are turned away" do
+      conn = log_in_user(build_conn(), SantoApi.AccountsFixtures.user_fixture())
+
+      assert {:error, {:redirect, %{to: "/", flash: %{"error" => error}}}} =
+               live(conn, ~p"/bench")
+
+      assert error =~ "not authorized"
+    end
+  end
+
   describe "Index" do
     test "renders the ingest form", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/bench")

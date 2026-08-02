@@ -40,6 +40,7 @@ defmodule SantoApi.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:bcrypt_elixir, "~> 3.0"},
       {:santo, path: "../santo"},
       {:tidewave, "~> 0.8", only: :dev},
       {:phoenix, "~> 1.8.9"},

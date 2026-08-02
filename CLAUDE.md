@@ -68,5 +68,7 @@ These are the evidence contract's invariants. Violating one is a design bug, not
 - Vendor values are normalized into the value shapes santo emits (e.g. `identity.model` is always `%{"code", "label"}`) so comparison compares like with like. Per-predicate equivalence lives in `Vocabulary.equivalent?/3`.
 - Uploads are content-hashed into the configured `:uploads_dir`; `storage_ref` is the basename only, so the store can move.
 - Use `:req` (`Req`) for HTTP; avoid `:httpoison`, `:tesla`, `:httpc`. External calls are stubbed in tests via `Req.Test` with fixtures under `test/support/`.
-- `/bench` is the internal operator surface (propose, ratify, adjudicate, upload). No auth yet — do not expose it publicly or add user-facing affordances to it.
+- `/bench` is the internal operator surface (propose, ratify, adjudicate, upload). It sits behind `require_authenticated_user` + `require_operator_user` (plus the matching `live_session` on_mounts). Don't add user-facing affordances to it — owner surfaces are their own routes.
+- Auth is `phx.gen.auth`, magic-link only. Passwords are deliberately not shipped in v1 (`owner_surface.md` §5): the `hashed_password` column and the `Accounts` password functions are kept so enabling them later is a UI change, not a migration. Don't wire password forms back in without Greg's call.
+- The operator flag is set out of band — `SantoApi.Accounts.set_operator(user, true)` from IEx. There is no self-serve path until the user admin surface (§9.2) exists.
 - Every corpus dossier documents sale result, paint code, production/delivery dates, delivery dealer, and service events. Those are required vocabulary fields, not optional metadata.
