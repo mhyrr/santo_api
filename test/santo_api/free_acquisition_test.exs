@@ -16,23 +16,23 @@ defmodule SantoApi.FreeAcquisitionTest do
 
     assert report.targets == 2
     assert report.registered == 2
-    assert report.transaction_claims == 2
+    assert report.transaction_claims == 3
     assert report.provider_attempts == 1
     assert report.provider_successes == 1
     assert report.provider_skips == 1
     assert report.failures == []
 
     assert Repo.aggregate(Vehicle, :count) == 2
-    assert Repo.aggregate(Artifact, :count) == 3
-    assert Repo.aggregate(Claim, :count) > 2
+    assert Repo.aggregate(Artifact, :count) == 4
+    assert Repo.aggregate(Claim, :count) > 3
 
     references = Repo.all(from(a in Artifact, where: a.kind == :reference))
-    assert length(references) == 2
+    assert length(references) == 3
     assert Enum.all?(references, &is_nil(&1.payload))
     assert Enum.all?(references, &(&1.metadata["retention"] == "pointer_only"))
 
     sale_claims = Repo.all(from(c in Claim, where: c.predicate == "event.sale"))
-    assert length(sale_claims) == 2
+    assert length(sale_claims) == 3
     assert Enum.all?(sale_claims, &(&1.state == :proposed))
   end
 
@@ -43,8 +43,25 @@ defmodule SantoApi.FreeAcquisitionTest do
     assert %{registered: 1, provider_skips: 1} = FreeAcquisition.run([entry], acquire: false)
 
     assert Repo.aggregate(Vehicle, :count) == 1
-    assert Repo.aggregate(Artifact, :count) == 1
-    assert Repo.aggregate(Claim, :count) == 1
+    assert Repo.aggregate(Artifact, :count) == 2
+    assert Repo.aggregate(Claim, :count) == 2
+  end
+
+  test "a secondary index asserts the result without becoming the sale venue" do
+    entry =
+      Cohort.load!()["entries"]
+      |> Enum.find(&(&1["id"] == "air-1996-993-wp0aa2992ts322677"))
+
+    assert %{transaction_claims: 2, failures: []} =
+             FreeAcquisition.run([entry], acquire: false)
+
+    broad_arrow_claim =
+      Claim
+      |> Repo.all()
+      |> Enum.find(&(&1.value["venue"] == "Broad Arrow Auctions"))
+      |> Repo.preload(:asserted_by_party)
+
+    assert broad_arrow_claim.asserted_by_party.name == "Hagerty Valuation Tools"
   end
 
   test "the Mix task dry run touches neither Postgres nor providers" do
@@ -54,6 +71,7 @@ defmodule SantoApi.FreeAcquisitionTest do
       end)
 
     assert output =~ "dry run: 2 targets"
+    assert output =~ "auction events: 2 (2 sold, 0 not sold)"
     assert Repo.aggregate(Vehicle, :count) == 0
     assert Repo.aggregate(Artifact, :count) == 0
   end
@@ -65,6 +83,6 @@ defmodule SantoApi.FreeAcquisitionTest do
 
   defp chassis_entry do
     Cohort.load!()["entries"]
-    |> Enum.find(&(&1["id"] == "ferrari-1969-dino-00548"))
+    |> Enum.find(&(&1["id"] == "ferrari-1972-dino-04268"))
   end
 end

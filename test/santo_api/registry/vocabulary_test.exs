@@ -85,6 +85,30 @@ defmodule SantoApi.Registry.VocabularyTest do
                  "currency" => "USD"
                })
 
+      assert :ok =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => "Mecum Auctions",
+                 "price" => 55_000,
+                 "currency" => "USD",
+                 "outcome" => "not_sold"
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => "Mecum Auctions",
+                 "price" => 55_000,
+                 "currency" => "USD",
+                 "outcome" => "pending"
+               })
+
+      assert {:error, _} =
+               Vocabulary.validate("event.sale", %{
+                 "venue" => "Bring a Trailer",
+                 "price" => 65_000,
+                 "currency" => "USD",
+                 "outcome" => "sold"
+               })
+
       assert {:error, _} =
                Vocabulary.validate("event.sale", %{
                  "venue" => nil,

@@ -1,6 +1,6 @@
 # Free acquisition corpus
 
-*Implementation note, 1 August 2026. This is the first collection run arising
+*Implementation note, 2 August 2026. This is the first collection run arising
 from `docs/research/porsche_ferrari_public_data_universe.md`.*
 
 ## Decision
@@ -22,11 +22,20 @@ on cars whose records buyers will plausibly revisit.
 
 ## Storage and rights boundary
 
-`priv/free_acquisition/targets.json` contains only the minimum transaction fact,
-vehicle identity, and an outbound source URL. Marketplace prose and media are not
-copied. Each source page becomes a pointer-only `reference` artifact; its sale
-date, result, currency, and venue become a proposed `event.sale` claim attributed
-to the venue.
+`priv/free_acquisition/targets.json` contains only minimum transaction facts,
+vehicle identity, and outbound source URLs. Marketplace prose and media are not
+copied. Each source page becomes a pointer-only `reference` artifact; its date,
+result, currency, and venue become a proposed `event.sale` claim.
+
+Direct auction pages assert their own results. When an index page supplies a
+result from another auction house, the index is the asserting party and the
+auction house remains the venue. Those are different facts and must not collapse.
+
+The claim's legacy three-field shape means `outcome` absent is a completed sale.
+`outcome: not_sold` records an unsuccessful auction appearance, and `price` is
+the reported high bid in that case. The checked-in manifest states either
+outcome explicitly; the persistence layer omits `sold` to keep existing claim
+hashes stable.
 
 Applicable VINs are then queried through the free NHTSA vPIC provider. Each
 retrieval is an immutable `api_snapshot`, even when successive response payloads
@@ -53,14 +62,36 @@ mix ecto.migrate
 mix santo.acquire.free
 ```
 
-The command is safe to resume. Vehicle identities, source references, and sale
-claims deduplicate; a fresh provider request remains a new retrieval event. The
-operator report separates materialized targets, provider attempts, skips, and
-failures so partial runs are visible rather than laundered into success.
+When only the checked-in transaction spine changed, avoid minting another set
+of immutable vPIC retrievals:
+
+```sh
+mix santo.acquire.free --skip-providers
+```
+
+The command is safe to resume. A target may carry any non-empty number of
+transactions. Vehicle identities, source references, and sale claims deduplicate;
+a fresh provider request remains a new retrieval event. The operator report
+separates materialized targets, provider attempts, skips, and failures so partial
+runs are visible rather than laundered into success.
+
+Both dry and live runs print the longitudinal result and each repeat price path.
+The 2 August manifest contains:
+
+- 40 auction events on 30 exact VIN or chassis identities;
+- 37 completed sales and three unsuccessful appearances with reported high bids;
+- 10 vehicles with repeat auction appearances;
+- seven vehicles with two or more completed sales;
+- six vehicles observed across more than one auction venue.
+
+The six venues-crossed records span Bring a Trailer paired with Mecum, Broad
+Arrow, or RM. Secondary index evidence is retained only as its outbound pointer;
+it is not promoted to first-party auction evidence.
 
 ## Next measurement
 
-The next useful report is repeat-sale persistence inside these three families:
-distinct chassis with two or more sale events, source coverage per chassis, and
-the fraction of selected auction transactions attached to a persistent record.
-Raw vehicle count remains a secondary metric.
+Use two of the repeat-sale records as the first public dossier walkthrough: one
+same-venue path and one cross-venue path. That will test whether a buyer can see
+identity, chronology, result status, evidence source, and unresolved conflicts
+without reading registry internals. Expansion beyond 30 cars should wait until
+that surface makes the persistence legible.

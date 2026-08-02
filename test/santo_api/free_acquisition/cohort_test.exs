@@ -15,11 +15,28 @@ defmodule SantoApi.FreeAcquisition.CohortTest do
                "vintage_ferrari" => 10
              },
              vin_count: 20,
-             chassis_count: 10
+             chassis_count: 10,
+             transaction_count: 40,
+             sold_count: 37,
+             not_sold_count: 3,
+             repeat_appearance_vehicle_count: 10,
+             repeat_sale_vehicle_count: 7,
+             cross_venue_vehicle_count: 6,
+             venues: %{
+               "Bring a Trailer" => 34,
+               "Broad Arrow Auctions" => 1,
+               "Mecum Auctions" => 3,
+               "RM Auctions" => 2
+             }
            }
 
     assert length(Enum.uniq_by(entries, & &1["id"])) == 30
-    assert Enum.all?(entries, &(&1["transaction"]["url"] =~ "https://"))
+
+    assert Enum.all?(entries, fn entry ->
+             Enum.all?(entry["transactions"], &(&1["url"] =~ "https://"))
+           end)
+
+    assert length(Cohort.price_paths(entries)) == 10
   end
 
   test "selects one cohort and applies a limit" do

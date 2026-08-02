@@ -35,10 +35,10 @@ defmodule SantoApi.FreeAcquisition do
     report = Map.update!(report, :targets, &(&1 + 1))
 
     case persist_target(entry) do
-      {:ok, %Vehicle{} = vehicle} ->
+      {:ok, {%Vehicle{} = vehicle, transaction_count}} ->
         report
         |> Map.update!(:registered, &(&1 + 1))
-        |> Map.update!(:transaction_claims, &(&1 + 1))
+        |> Map.update!(:transaction_claims, &(&1 + transaction_count))
         |> acquire_free_provider(entry, vehicle, acquire?)
 
       {:error, reason} ->
@@ -49,11 +49,22 @@ defmodule SantoApi.FreeAcquisition do
   defp persist_target(entry) do
     Repo.transaction(fn ->
       with {:ok, vehicle} <- register(entry["identity"]),
-           {:ok, %Artifact{} = artifact} <- reference_artifact(vehicle, entry),
-           {:ok, %Claim{}} <- sale_claim(vehicle, artifact, entry) do
-        vehicle
+           {:ok, transaction_count} <- persist_transactions(vehicle, entry) do
+        {vehicle, transaction_count}
       else
         {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp persist_transactions(vehicle, entry) do
+    entry["transactions"]
+    |> Enum.reduce_while({:ok, 0}, fn transaction, {:ok, count} ->
+      with {:ok, %Artifact{} = artifact} <- reference_artifact(vehicle, entry, transaction),
+           {:ok, %Claim{}} <- sale_claim(vehicle, artifact, transaction) do
+        {:cont, {:ok, count + 1}}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
@@ -83,9 +94,8 @@ defmodule SantoApi.FreeAcquisition do
        }),
        do: Registry.register_chassis(:ferrari, :pre_vin, number)
 
-  defp reference_artifact(vehicle, entry) do
-    transaction = entry["transaction"]
-    source_party = Registry.ensure_party(transaction["venue"], :vendor)
+  defp reference_artifact(vehicle, entry, transaction) do
+    source_party = source_party(transaction)
 
     Registry.create_reference_artifact(vehicle, source_party, %{
       source_url: transaction["url"],
@@ -99,34 +109,41 @@ defmodule SantoApi.FreeAcquisition do
     })
   end
 
-  defp sale_claim(vehicle, artifact, entry) do
-    transaction = entry["transaction"]
-    source_party = Registry.ensure_party(transaction["venue"], :vendor)
+  defp sale_claim(vehicle, artifact, transaction) do
+    source_party = source_party(transaction)
+
+    value = %{
+      "venue" => transaction["venue"],
+      "price" => transaction["price"],
+      "currency" => transaction["currency"]
+    }
+
+    value =
+      if transaction["outcome"] == "not_sold",
+        do: Map.put(value, "outcome", "not_sold"),
+        else: value
 
     attrs = %{
       predicate: "event.sale",
-      value: %{
-        "venue" => transaction["venue"],
-        "price" => transaction["price"],
-        "currency" => transaction["currency"]
-      },
+      value: value,
       scope_date: Date.from_iso8601!(transaction["date"]),
       artifact_id: artifact.id
     }
 
     case Registry.propose_claim(vehicle, source_party, attrs) do
       {:ok, %Claim{} = claim} -> {:ok, claim}
-      {:error, changeset} -> existing_sale_claim(vehicle, attrs, changeset)
+      {:error, changeset} -> existing_sale_claim(vehicle, source_party, attrs, changeset)
     end
   end
 
-  defp existing_sale_claim(vehicle, attrs, changeset) do
+  defp existing_sale_claim(vehicle, source_party, attrs, changeset) do
     if Keyword.has_key?(changeset.errors, :content_hash) do
       vehicle.id
       |> Registry.list_claims()
       |> Enum.find(fn claim ->
         claim.predicate == attrs.predicate and claim.value == attrs.value and
-          claim.scope_date == attrs.scope_date
+          claim.scope_date == attrs.scope_date and
+          claim.asserted_by_party_id == source_party.id
       end)
       |> case do
         %Claim{} = claim -> {:ok, claim}
@@ -135,6 +152,10 @@ defmodule SantoApi.FreeAcquisition do
     else
       {:error, changeset}
     end
+  end
+
+  defp source_party(transaction) do
+    Registry.ensure_party(transaction["source"] || transaction["venue"], :vendor)
   end
 
   defp acquire_free_provider(report, _entry, _vehicle, false),

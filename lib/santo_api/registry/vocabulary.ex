@@ -11,6 +11,9 @@ defmodule SantoApi.Registry.Vocabulary do
   @markets ~w(us row)
   @fuel_units ~w(gal l)
   @outing_kinds ~w(autocross track show drive other)
+  # Completed sales keep the legacy canonical shape with no outcome key.
+  # Only the exceptional result is encoded, avoiding two hashes for one fact.
+  @sale_outcomes [nil, "not_sold"]
 
   # The current-state seed traits (owner_surface.md §2b). These are the only
   # predicates an event's `sets` deltas may target — the fold's input surface.
@@ -105,9 +108,15 @@ defmodule SantoApi.Registry.Vocabulary do
       else: {:error, {:invalid_value, "provenance.delivery_dealer"}}
   end
 
-  defp validate_value("event.sale", %{"venue" => venue, "price" => price, "currency" => currency})
-       when is_binary(venue) and is_integer(price) and price >= 0 and is_binary(currency),
-       do: :ok
+  defp validate_value(
+         "event.sale",
+         %{"venue" => venue, "price" => price, "currency" => currency} = value
+       )
+       when is_binary(venue) and is_integer(price) and price >= 0 and is_binary(currency) do
+    if Map.get(value, "outcome") in @sale_outcomes,
+      do: :ok,
+      else: {:error, {:invalid_value, "event.sale"}}
+  end
 
   defp validate_value("event.service", %{"summary" => summary, "performer" => performer})
        when is_binary(summary) do

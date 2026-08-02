@@ -7,6 +7,7 @@ defmodule SantoApi.FreeAcquisition.Cohort do
   """
 
   @cohorts ~w(air_cooled_911 vintage_ferrari limited_gt)
+  @outcomes ~w(sold not_sold)
   @required_count 10
 
   def default_path do
@@ -38,17 +39,39 @@ defmodule SantoApi.FreeAcquisition.Cohort do
   end
 
   def summary(entries) do
+    transactions = Enum.flat_map(entries, & &1["transactions"])
+
     %{
       count: length(entries),
       cohorts: Enum.frequencies_by(entries, & &1["cohort"]),
       vin_count: Enum.count(entries, &(&1["identity"]["kind"] == "vin")),
-      chassis_count: Enum.count(entries, &(&1["identity"]["kind"] == "chassis"))
+      chassis_count: Enum.count(entries, &(&1["identity"]["kind"] == "chassis")),
+      transaction_count: length(transactions),
+      sold_count: Enum.count(transactions, &(&1["outcome"] == "sold")),
+      not_sold_count: Enum.count(transactions, &(&1["outcome"] == "not_sold")),
+      repeat_appearance_vehicle_count: Enum.count(entries, &(length(&1["transactions"]) > 1)),
+      repeat_sale_vehicle_count: Enum.count(entries, &(sold_transaction_count(&1) > 1)),
+      cross_venue_vehicle_count: Enum.count(entries, &(venue_count(&1) > 1)),
+      venues: Enum.frequencies_by(transactions, & &1["venue"])
     }
+  end
+
+  def price_paths(entries) do
+    entries
+    |> Enum.filter(&(length(&1["transactions"]) > 1))
+    |> Enum.map(fn entry ->
+      %{
+        id: entry["id"],
+        display_name: entry["display_name"],
+        transactions: Enum.sort_by(entry["transactions"], & &1["date"])
+      }
+    end)
+    |> Enum.sort_by(& &1.id)
   end
 
   def cohorts, do: @cohorts
 
-  defp validate(%{"version" => 1, "rights_profile" => rights, "entries" => entries})
+  defp validate(%{"version" => 2, "rights_profile" => rights, "entries" => entries})
        when is_binary(rights) and is_list(entries) do
     with :ok <- validate_count(entries),
          :ok <- validate_unique_ids(entries),
@@ -93,13 +116,13 @@ defmodule SantoApi.FreeAcquisition.Cohort do
          "display_name" => name,
          "model_year" => year,
          "identity" => identity,
-         "transaction" => transaction
+         "transactions" => transactions
        })
        when is_binary(id) and id != "" and cohort in @cohorts and is_binary(name) and
-              is_integer(year) do
+              is_integer(year) and is_list(transactions) and transactions != [] do
     with :ok <- validate_identity(identity),
-         :ok <- validate_transaction(transaction) do
-      :ok
+         :ok <- validate_transactions(transactions) do
+      validate_unique_transaction_urls(transactions)
     end
   end
 
@@ -120,17 +143,33 @@ defmodule SantoApi.FreeAcquisition.Cohort do
 
   defp validate_identity(_identity), do: {:error, :invalid_identity}
 
-  defp validate_transaction(%{
-         "venue" => venue,
-         "url" => url,
-         "date" => date,
-         "price" => price,
-         "currency" => currency
-       })
+  defp validate_transactions(transactions) do
+    if Enum.all?(transactions, &(validate_transaction(&1) == :ok)),
+      do: :ok,
+      else: {:error, :invalid_transaction}
+  end
+
+  defp validate_unique_transaction_urls(transactions) do
+    urls = Enum.map(transactions, & &1["url"])
+    if length(Enum.uniq(urls)) == length(urls), do: :ok, else: {:error, :duplicate_transaction}
+  end
+
+  defp validate_transaction(
+         %{
+           "venue" => venue,
+           "url" => url,
+           "date" => date,
+           "price" => price,
+           "currency" => currency,
+           "outcome" => outcome
+         } = transaction
+       )
        when is_binary(venue) and venue != "" and is_binary(url) and is_binary(date) and
-              is_integer(price) and price >= 0 and is_binary(currency) do
+              is_integer(price) and price >= 0 and is_binary(currency) and
+              outcome in @outcomes do
     with {:ok, _date} <- Date.from_iso8601(date),
-         %URI{scheme: "https", host: host} when is_binary(host) <- URI.parse(url) do
+         %URI{scheme: "https", host: host} when is_binary(host) <- URI.parse(url),
+         true <- valid_optional_source?(transaction["source"]) do
       :ok
     else
       _ -> {:error, :invalid_transaction}
@@ -138,6 +177,17 @@ defmodule SantoApi.FreeAcquisition.Cohort do
   end
 
   defp validate_transaction(_transaction), do: {:error, :invalid_transaction}
+
+  defp valid_optional_source?(nil), do: true
+  defp valid_optional_source?(source), do: is_binary(source) and source != ""
+
+  defp sold_transaction_count(entry) do
+    Enum.count(entry["transactions"], &(&1["outcome"] == "sold"))
+  end
+
+  defp venue_count(entry) do
+    entry["transactions"] |> Enum.map(& &1["venue"]) |> Enum.uniq() |> length()
+  end
 
   defp maybe_filter(entries, nil), do: entries
   defp maybe_filter(entries, cohort), do: Enum.filter(entries, &(&1["cohort"] == cohort))

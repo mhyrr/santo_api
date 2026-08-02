@@ -6,6 +6,7 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
   proposed sale claims, then runs every applicable free provider.
 
       mix santo.acquire.free
+      mix santo.acquire.free --skip-providers
       mix santo.acquire.free --dry-run
       mix santo.acquire.free --cohort limited_gt --limit 5
 
@@ -20,20 +21,24 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
   alias SantoApi.FreeAcquisition.Cohort
   alias SantoApi.Repo
 
-  @switches [dry_run: :boolean, cohort: :string, limit: :integer]
+  @switches [dry_run: :boolean, skip_providers: :boolean, cohort: :string, limit: :integer]
 
   @impl Mix.Task
   def run(args) do
     opts = parse!(args)
     manifest = Cohort.load!()
     entries = Cohort.select(manifest, opts)
+    summary = Cohort.summary(entries)
 
     if opts[:dry_run] do
-      print_summary("dry run", Cohort.summary(entries))
+      print_summary("dry run", summary)
+      print_price_paths(entries)
     else
       Mix.Task.run("app.start")
       ensure_migrated!()
-      report = FreeAcquisition.run(entries)
+      print_summary("cohort", summary)
+      print_price_paths(entries)
+      report = FreeAcquisition.run(entries, acquire: !opts[:skip_providers])
       print_report(report)
 
       if report.failures != [] do
@@ -88,6 +93,51 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
     end
 
     Mix.shell().info("  identities: #{summary.vin_count} VIN, #{summary.chassis_count} chassis")
+
+    Mix.shell().info(
+      "  auction events: #{summary.transaction_count} " <>
+        "(#{summary.sold_count} sold, #{summary.not_sold_count} not sold)"
+    )
+
+    Mix.shell().info(
+      "  longitudinal: #{summary.repeat_appearance_vehicle_count} repeat appearances, " <>
+        "#{summary.repeat_sale_vehicle_count} repeat sales, " <>
+        "#{summary.cross_venue_vehicle_count} cross-venue"
+    )
+
+    venues =
+      summary.venues
+      |> Enum.sort_by(fn {venue, count} -> {-count, venue} end)
+      |> Enum.map_join(", ", fn {venue, count} -> "#{venue} #{count}" end)
+
+    Mix.shell().info("  venues: #{venues}")
+  end
+
+  defp print_price_paths(entries) do
+    for path <- Cohort.price_paths(entries) do
+      transactions = Enum.map_join(path.transactions, " -> ", &format_transaction/1)
+      Mix.shell().info("  #{path.id}: #{transactions}")
+    end
+  end
+
+  defp format_transaction(transaction) do
+    result =
+      if transaction["outcome"] == "sold",
+        do: "sold",
+        else: "high bid, not sold"
+
+    "#{transaction["date"]} #{transaction["venue"]} " <>
+      "#{transaction["currency"]} #{format_integer(transaction["price"])} #{result}"
+  end
+
+  defp format_integer(integer) do
+    integer
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.graphemes()
+    |> Enum.chunk_every(3)
+    |> Enum.map_join(",", &Enum.join/1)
+    |> String.reverse()
   end
 
   defp print_report(report) do
