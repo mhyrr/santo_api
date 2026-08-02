@@ -261,6 +261,10 @@ layer, no ledger contact). "Artifacts-in-waiting" stays literal: a later
 acquisition can snapshot a link target into a real artifact through the
 provider machinery, with rights handled then.
 
+**Not built.** Ticket F shipped the composer without links — the table does not
+exist and Note mode takes text and photos only. Nothing in the ledger wants it,
+so it moved to ticket G rather than riding along.
+
 ---
 
 ## 2b. Current state — the second projection
@@ -881,15 +885,29 @@ not deferred to a second walk.
   identity is entry identity for events; corpus re-run green is the
   acceptance test.
 
+### Decided 2026-08-02 (Greg, during ticket F)
+
+- §6 privacy default: **everything public.** Entries *and* uploaded photos
+  default `visibility: :public`, with one toggle per entry covering both. The
+  middle line this doc floated — entries public, documents private — was
+  rejected as a rule to explain for a distinction the composer would have had
+  to make the owner draw. The TK-008 migration had already defaulted both
+  columns to public, so nothing migrated.
+- §9.1 handles: **immutable, and chosen at the stewardship grant.** The party
+  name joins every claim's `content_hash`, so `ensure_party/2` refuses a rename
+  outright rather than ignoring the argument. Taking the handle at the grant
+  means no party exists until there is something to attribute — no placeholder
+  ever gets hashed. Case and surrounding space normalize once, on the way in,
+  because the normalized form is what becomes permanent.
+
 ### Decisions still queued for the walk, in order
 
 3. §8 — MCP confirm semantics: agent-mediated entries land `:proposed` until
    the owner confirms (one word in the chat). The alternative — trusting the
    tool call itself as the owner's act — saves a word and lets mishearings
    into the record silently. Recommendation: keep the confirm.
-4. §6 — privacy default (entries public, uploaded documents private?).
-5. §9.1 — handles immutable (party name is hashed into claims), and the
-   deletion posture: credentials delete, party + claims persist. The
-   ledger-integrity vs right-to-erasure line, in Greg's words.
+5. §9.1 — the deletion posture: credentials delete, party + claims persist.
+   The ledger-integrity vs right-to-erasure line, in Greg's words. Not yet
+   blocking: nothing deletes an account today.
 6. §1 — mobile-web-only v1 (no native app).
 7. §10 — the §11 rewrite text and ticket cut A–L.
