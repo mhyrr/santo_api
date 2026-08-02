@@ -152,6 +152,19 @@ across the registry: predicate → `{value, status}`.
 - Recomputed inside every transaction that writes claims. Reading facts costs
   one row; the receipts underneath are for sale moments, disputes, appraisals.
 
+**The second projection** (added 2026-08-02, owner_surface §2b). `facts` answers
+what the factory built. `current_state` answers what the car *is* — latest
+admitted observed-scope claim per predicate, plus the `sets` deltas carried by
+admitted `event.modification` and `event.outing` claims. It is a sibling map on
+the vehicle, folded from the same ledger in the same transaction hook
+(`refresh_projections/1`) and **never computed from `facts`**: a swapped car has
+a thin factory column and a full current-state one, so factory can't be the
+baseline. Its precedence deliberately inverts §8's — latest scope date wins,
+ties to the latest insertion — because facts asks what was true at birth. Only
+admitted claims fold; a proposed entry never mutates public state. Divergence
+between the two maps (originality vs. build story) is computed at render, never
+stored, same doctrine as conflicts.
+
 Canonical examples of evidence-borne facts santo can never claim: paint-to-sample
 color (Kardex/PPS/COA territory), European delivery (delivery provenance ≠ VIN
 market). They enter as proposed claims from artifacts or owners and become

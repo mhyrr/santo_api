@@ -29,11 +29,14 @@ contract before touching anything under `lib/santo_api/registry/`.
   asserting party; basis fields (`vehicle_id`, `party_id`, `method`, `state`,
   `content_hash`) are stamped, never cast. A cast basis field lets a caller forge
   provenance; a wrong hash silently collapses two distinct claims into one.
-- **Fact materialization and comparison** — `refresh_facts/1`,
-  `claim_comparison/1`, `Vocabulary.equivalent?/3`. This is the arithmetic:
-  precedence (admitted > proposed, ties to earliest), conflict detection,
-  verified/unverified/conflicted status. Get it wrong and the product lies about
-  what's been verified, which is the one thing it sells.
+- **Projection and comparison** — `refresh_projections/1`, `claim_comparison/1`,
+  `Vocabulary.equivalent?/3`. This is the arithmetic. `facts`: precedence
+  (admitted > proposed, ties to earliest), conflict detection,
+  verified/unverified/conflicted status. `current_state`: admitted only, latest
+  scope date wins, ties to latest insertion — the inverse tiebreak, because
+  facts asks what was true at birth and current state asks what is true now.
+  Get either wrong and the product lies about the car, which is the one thing
+  it sells.
 - **Identity keying** — `registry/identity_key.ex` and `Registry.ingest/1`. The key
   decides which physical chassis a row is about. A wrong key merges two cars or
   splits one; `:disputed` rows carry candidates as data and there is no merge
@@ -54,7 +57,7 @@ These are the evidence contract's invariants. Violating one is a design bug, not
 - **External evidence enters `:proposed`.** Only santo-derived decode facts enter `:admitted`. Ratification is one state flip with who and when (`ratified_by_party_id`, `ratified_at`), not a workflow. Who may ratify depends on scope: owners self-ratify event/observed claims on cars they steward; factory/provenance claims ratify only at the operator gate or by evidence.
 - **The predicate vocabulary is closed.** Only predicates in `registry/vocabulary.ex` exist; adding one is a reviewed code change, like santo's compiled data. Same for provider capabilities in `providers/capability.ex`.
 - **Conflicts and verification tiers are derived, never stored.** `claim_comparison/1` computes agreement/conflict/single_source at read time. Nothing overwrites anything.
-- **`vehicle.facts` is factory/provenance scope only.** Event-scoped material (service, modification, sale) is logbook territory and never flattens into facts. Observed claims (e.g. `observation.mileage`) deliberately never appear there either.
+- **`vehicle.facts` is factory/provenance scope only.** Event-scoped material (service, modification, sale) is logbook territory and never flattens into facts. Observed claims (e.g. `observation.mileage`) deliberately never appear there either — they fold into `vehicle.current_state`, the second projection, which is computed independently and never reads `facts`.
 - **Providers acquire; they never persist claims or decide truth.** Per-provider interpretation lives Registry-side (`acquisition_facts/1`). Providers own transport, diagnostics, and rights metadata.
 - **LLMs extract, code computes.** Extraction proposes claims (`method: :llm_extract`) with the artifact attached. Precedence, comparison, and hashing stay deterministic. No blending.
 - **Evidence comes from licensed feeds, government/public sources, and owner-supplied artifacts.** No unlicensed scraping. Listing text and comments are proposed claims until corroborated.

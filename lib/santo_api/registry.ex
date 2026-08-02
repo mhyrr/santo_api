@@ -248,7 +248,7 @@ defmodule SantoApi.Registry do
     mode = if Repo.in_transaction?(), do: :savepoint, else: :transaction
 
     with {:ok, claim} <- Repo.insert(changeset, mode: mode) do
-      refresh_facts(vehicle)
+      refresh_projections(vehicle)
       {:ok, claim}
     end
   end
@@ -290,7 +290,7 @@ defmodule SantoApi.Registry do
                     changeset = prepare_adjudication(changeset, claim_a)
                     apply_adjudication_outcome!(changeset, claim_a, claim_b)
                     adjudication = Repo.insert!(changeset)
-                    refresh_facts(Repo.get!(Vehicle, claim_a.vehicle_id))
+                    refresh_projections(Repo.get!(Vehicle, claim_a.vehicle_id))
                     adjudication
 
                   {:error, reason} ->
@@ -331,7 +331,7 @@ defmodule SantoApi.Registry do
               |> Repo.update!()
 
             {:ok, vehicle} = fetch_vehicle(claim.vehicle_id)
-            refresh_facts(vehicle)
+            refresh_projections(vehicle)
             claim
 
           %Claim{state: state} ->
@@ -585,20 +585,89 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
-  Recompute the one-row view (contract §8): factory/provenance claims
-  flatten into `vehicle.facts`; event-scoped claims stay in the logbook.
-  Runs inside every claim-writing path; call it after any out-of-band
-  claim state change.
-  """
-  def refresh_facts(%Vehicle{} = vehicle) do
-    facts =
-      vehicle.id
-      |> live_claim_entries()
-      |> Enum.filter(&(&1.scope_kind == :factory))
-      |> Enum.group_by(& &1.predicate)
-      |> Map.new(fn {predicate, entries} -> {predicate, fact(predicate, entries)} end)
+  Recompute both derived maps in one write.
 
-    vehicle |> Ecto.Changeset.change(facts: facts) |> Repo.update!()
+  `facts` is the one-row view of the factory record (contract §8):
+  factory/provenance claims flatten into it, event-scoped claims stay in the
+  logbook. `current_state` is what the car is now (owner_surface §2b), folded
+  from the same ledger but never from `facts`.
+
+  Runs inside every claim-writing path; call it after any out-of-band claim
+  state change. Both maps are replayable by construction — drop them and this
+  rebuilds them identically.
+  """
+  def refresh_projections(%Vehicle{} = vehicle) do
+    entries = live_claim_entries(vehicle.id)
+
+    vehicle
+    |> Ecto.Changeset.change(
+      facts: materialized_facts(entries),
+      current_state: folded_current_state(entries)
+    )
+    |> Repo.update!()
+  end
+
+  defp materialized_facts(entries) do
+    entries
+    |> Enum.filter(&(&1.scope_kind == :factory))
+    |> Enum.group_by(& &1.predicate)
+    |> Map.new(fn {predicate, group} -> {predicate, fact(predicate, group)} end)
+  end
+
+  # The fold (owner_surface §2b). Admitted claims only: a proposed entry must
+  # never mutate public state, or the §8 confirm gate stops meaning anything.
+  # Latest scope date wins, ties to latest insertion — deliberately the inverse
+  # of facts, which ties to earliest. Facts asks what was true at birth; this
+  # asks what is true now, so recency winning is the semantics.
+  defp folded_current_state(entries) do
+    entries
+    |> Enum.filter(&(&1.state == :admitted))
+    |> Enum.flat_map(&trait_candidates/1)
+    |> Enum.group_by(& &1.predicate)
+    |> Map.new(fn {predicate, candidates} ->
+      {predicate, candidates |> Enum.max_by(&recency/1) |> trait_entry()}
+    end)
+  end
+
+  # The two inputs §2b names: an observation states a trait directly; an event's
+  # `sets` deltas state one as a consequence of what happened. An event without
+  # deltas stays timeline-only.
+  defp trait_candidates(%{scope_kind: :observed} = entry),
+    do: [candidate(entry, entry.predicate, entry.value, "observed")]
+
+  defp trait_candidates(%{scope_kind: :event, value: %{"sets" => sets}} = entry)
+       when is_list(sets) do
+    for %{"predicate" => predicate, "value" => value} <- sets do
+      candidate(entry, predicate, value, "event")
+    end
+  end
+
+  defp trait_candidates(_entry), do: []
+
+  defp candidate(entry, predicate, value, source) do
+    %{
+      predicate: predicate,
+      value: value,
+      source: source,
+      claim_id: entry.claim_id,
+      scope_date: entry.scope_date,
+      inserted_at: entry.inserted_at
+    }
+  end
+
+  # An undated claim cannot out-rank a dated one: "we don't know when" loses.
+  defp recency(%{scope_date: nil} = candidate), do: {{0, 0, 0}, insertion(candidate)}
+  defp recency(candidate), do: {Date.to_erl(candidate.scope_date), insertion(candidate)}
+
+  defp insertion(candidate), do: DateTime.to_unix(candidate.inserted_at, :microsecond)
+
+  defp trait_entry(candidate) do
+    %{
+      "value" => candidate.value,
+      "as_of" => candidate.scope_date && Date.to_iso8601(candidate.scope_date),
+      "source" => candidate.source,
+      "claim_id" => candidate.claim_id
+    }
   end
 
   defp fact(predicate, entries) do
@@ -737,7 +806,7 @@ defmodule SantoApi.Registry do
       )
     end
 
-    refresh_facts(vehicle)
+    refresh_projections(vehicle)
     artifact
   end
 
@@ -768,7 +837,7 @@ defmodule SantoApi.Registry do
 
     emit_claims(vehicle, decode)
     open_evidence_requests(vehicle, identity)
-    refresh_facts(vehicle)
+    refresh_projections(vehicle)
   end
 
   defp snapshot({:ok, decoded}), do: Terms.sanitize(decoded)

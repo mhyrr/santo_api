@@ -4,6 +4,12 @@ defmodule SantoApi.Registry.Vehicle do
   of `Santo.Identity.key/1`. The surrogate id is the stable reference —
   identity is an attribute, correctable by adjudication (contract §1).
   A `:disputed` row carries its candidate identities as data.
+
+  Two derived maps hang off the row, both folded from the ledger and both
+  replayable: `facts` is what the factory built (contract §8), `current_state`
+  is what the car is now (owner_surface §2b). They are computed independently
+  — divergence between them is the build story, and it is calculated at render
+  time, never stored.
   """
 
   use Ecto.Schema
@@ -19,6 +25,7 @@ defmodule SantoApi.Registry.Vehicle do
     field :decode_snapshot, :map
     field :santo_version, :string
     field :facts, :map, default: %{}
+    field :current_state, :map, default: %{}
     timestamps(type: :utc_datetime_usec)
   end
 end
