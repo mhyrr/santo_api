@@ -85,6 +85,21 @@ defmodule SantoApiWeb.Layouts do
       {@inner_content}
     </main>
 
+    <!-- Nothing for a visitor arriving from a forum link. A signed-in operator
+         gets one line, so landing here after a magic link is not a dead end. -->
+    <div
+      :if={@current_scope}
+      class="mx-auto flex max-w-3xl flex-wrap items-baseline gap-x-5 px-5 pb-10 text-xs sm:px-8"
+      style="color: var(--vs-ink-dim)"
+    >
+      <span>{@current_scope.user.email}</span>
+      <.link :if={@current_scope.user.operator} navigate={~p"/bench"} class="underline">
+        Bench
+      </.link>
+      <.link navigate={~p"/users/settings"} class="underline">Settings</.link>
+      <.link href={~p"/users/log-out"} method="delete" class="underline">Log out</.link>
+    </div>
+
     <.flash_group flash={@flash} />
     """
   end

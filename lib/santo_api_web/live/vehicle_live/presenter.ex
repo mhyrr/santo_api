@@ -52,6 +52,8 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   leads, because a car's year and model are what it was born as.
   """
   def title(%Vehicle{} = vehicle) do
+    # Built from the record only. A marque inferred from the identity key is
+    # not a name for the car, so it belongs in the fallback, not here.
     [
       fact(vehicle, "identity.model_year"),
       fact(vehicle, "identity.marque") |> titlecase(),
@@ -60,10 +62,37 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" ")
     |> case do
-      "" -> "Unidentified chassis"
+      "" -> untitled(vehicle)
       name -> name
     end
   end
+
+  # A pre-standard chassis we cannot decode is not unidentified — we know
+  # exactly which car it is, we just do not know what to call it. Saying
+  # "unidentified" would understate the record.
+  defp untitled(%Vehicle{identity_kind: :chassis} = vehicle) do
+    [marque(vehicle), "chassis", chassis(vehicle)]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
+
+  defp untitled(%Vehicle{} = vehicle), do: marque(vehicle) || "Undecoded chassis"
+
+  @doc """
+  The marque, from the factory record where we have one and from the identity
+  key otherwise — a pre-standard chassis carries its marque in the key.
+  """
+  def marque(%Vehicle{} = vehicle) do
+    case fact(vehicle, "identity.marque") do
+      marque when is_binary(marque) -> titlecase(marque)
+      _absent -> marque_from_key(vehicle.identity_key)
+    end
+  end
+
+  defp marque_from_key("chassis:" <> rest),
+    do: rest |> String.split(":") |> hd() |> titlecase()
+
+  defp marque_from_key(_key), do: nil
 
   @doc """
   The spec line — how an owner writes their car in a forum signature.
@@ -355,9 +384,33 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp fact_value(_predicate, value) when is_integer(value), do: Integer.to_string(value)
   defp fact_value(_predicate, value), do: inspect(value)
 
-  defp model_name(%{"label" => label}) when is_binary(label), do: label
-  defp model_name(%{"code" => code}) when is_binary(code), do: humanize(code)
+  # Both fields are real names and which one a person uses depends on the car.
+  # A 911 is `code: "911", label: "993"` and Porsche people say 993 — the label
+  # is the generation and it is the more specific of the two. A Carrera GT is
+  # `code: "carrera_gt", label: "980"` and nobody calls it a 980. The line
+  # between them: a numeric label only loses to a code that is a *word*.
+  defp model_name(%{"code" => code, "label" => label}) when is_binary(label) do
+    if numeric?(label) and is_binary(code) and named?(code),
+      do: model_from_code(code),
+      else: label
+  end
+
+  defp model_name(%{"code" => code}) when is_binary(code), do: model_from_code(code)
   defp model_name(_absent), do: nil
+
+  defp numeric?(value), do: String.match?(value, ~r/\A\d+\z/)
+
+  defp named?(code), do: String.match?(code, ~r/[a-z]/i)
+
+  # "carrera_gt" reads as "Carrera GT": words capitalise, and a token with no
+  # vowel in it is an initialism (gt, rs, gts) rather than a word.
+  defp model_from_code(code) do
+    code
+    |> String.split("_")
+    |> Enum.map_join(" ", fn
+      token -> if String.match?(token, ~r/\A[^aeiou]+\z/i), do: String.upcase(token), else: String.capitalize(token)
+    end)
+  end
 
   defp titlecase(nil), do: nil
   defp titlecase(value) when is_binary(value), do: String.capitalize(value)

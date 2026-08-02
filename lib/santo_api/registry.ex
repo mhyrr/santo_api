@@ -578,6 +578,26 @@ defmodule SantoApi.Registry do
   def ingest_vpic(%Vehicle{}), do: {:error, :unsupported_identity}
 
   @doc """
+  How many logbook entries each car has, keyed by vehicle id.
+
+  One grouped query for the whole registry, so the index can show its rows
+  without a count per car. Same visibility rules as `timeline/1`, and entries
+  are counted the way that function groups them.
+  """
+  def entry_counts do
+    Repo.all(
+      from(c in Claim,
+        where:
+          c.state == :admitted and c.visibility == :public and
+            c.scope_kind in [:event, :observed],
+        group_by: c.vehicle_id,
+        select: {c.vehicle_id, count(fragment("distinct coalesce(?, ?)", c.entry_ref, c.id))}
+      )
+    )
+    |> Map.new()
+  end
+
+  @doc """
   The logbook, as a page reads it (owner_surface §6).
 
   Claims sharing an `entry_ref` were composed as one entry and present as one;

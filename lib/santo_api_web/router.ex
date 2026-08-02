@@ -30,12 +30,6 @@ defmodule SantoApiWeb.Router do
     plug SantoApiWeb.Plugs.RateLimit, bucket: :public_lookup
   end
 
-  scope "/", SantoApiWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
-  end
-
   # The public record. No auth: an unclaimed page is the thing an owner finds
   # before they have any reason to sign up. `/vin/:vin` resolves to the
   # canonical `/v/:public_id` — identity is correctable, the URL is not.
@@ -44,7 +38,12 @@ defmodule SantoApiWeb.Router do
 
     get "/vin/:vin", VehiclePageController, :resolve
 
-    live_session :public, layout: {SantoApiWeb.Layouts, :public} do
+    # Anonymous is the normal case here, so the scope is mounted but never
+    # required — it only decides whether the page admits you are signed in.
+    live_session :public,
+      layout: {SantoApiWeb.Layouts, :public},
+      on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
+      live "/", VehicleLive.Index
       live "/v/:public_id", VehicleLive.Show
     end
   end
