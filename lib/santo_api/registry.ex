@@ -137,6 +137,10 @@ defmodule SantoApi.Registry do
   Store an uploaded file as an artifact: content-hashed into the artifact
   store, deduped by sha. `storage_ref` is a basename and carries no location,
   so the store can move without rewriting rows — see `SantoApi.Storage`.
+
+  `:source_party` is the party that supplied the file; it defaults to Vin Santo
+  for the bench path. Because artifacts dedupe on content, an upload of bytes we
+  already hold returns the existing row and keeps its original supplier.
   """
   def create_upload_artifact(%{path: path, filename: filename, kind: kind} = attrs) do
     content = File.read!(path)
@@ -158,7 +162,8 @@ defmodule SantoApi.Registry do
            storage_ref: storage_ref,
            mime: attrs[:mime],
            source_url: attrs[:source_url],
-           source_party_id: vin_santo_party().id,
+           entry_ref: attrs[:entry_ref],
+           source_party_id: source_party_id(attrs[:source_party]),
            acquired_at: DateTime.utc_now(),
            metadata: Map.merge(attrs[:metadata] || %{}, %{"filename" => filename})
          })}
@@ -205,9 +210,28 @@ defmodule SantoApi.Registry do
     end
   end
 
+  defp source_party_id(%Party{id: id}), do: id
+  defp source_party_id(nil), do: vin_santo_party().id
+
+  @doc """
+  Show or hide a claim or artifact. Presentation only (owner_surface §6): the
+  ledger row, its hash, its state, and its tier are all untouched — this governs
+  who is shown the row, not whether it counts.
+  """
+  def set_visibility(%schema{} = row, visibility)
+      when schema in [Claim, Artifact] and visibility in [:public, :private] do
+    row |> Ecto.Changeset.change(visibility: visibility) |> Repo.update()
+  end
+
+  @doc """
+  Mint the grouping tag every claim and artifact of one composed entry shares
+  (owner_surface §2). Time-ordered, so entries sort chronologically by ref.
+  """
+  def new_entry_ref, do: SantoApi.UUIDv7.generate()
+
   @doc """
   Propose a human claim against a vehicle — the bench path. Enters
-  `:proposed`; `ratify_claim/1` is the gate.
+  `:proposed`; `ratify_claim/2` is the gate.
   """
   def propose_claim(%Vehicle{} = vehicle, attrs) do
     propose_claim(vehicle, vin_santo_party(), attrs)
@@ -229,8 +253,13 @@ defmodule SantoApi.Registry do
     end
   end
 
-  def ratify_claim(claim_id), do: flip_claim(claim_id, :admitted)
-  def reject_claim(claim_id), do: flip_claim(claim_id, :rejected)
+  @doc """
+  The ratification gate: one state flip with who and when attached
+  (contract §8). The deciding party defaults to Vin Santo — the bench —
+  and is supplied explicitly on the owner self-ratification path.
+  """
+  def ratify_claim(claim_id, party \\ nil), do: flip_claim(claim_id, :admitted, party)
+  def reject_claim(claim_id, party \\ nil), do: flip_claim(claim_id, :rejected, party)
 
   @doc """
   Resolve two live claims into the append-only casebook.
@@ -282,7 +311,9 @@ defmodule SantoApi.Registry do
     end
   end
 
-  defp flip_claim(claim_id, new_state) do
+  defp flip_claim(claim_id, new_state, party) do
+    decider = party || vin_santo_party()
+
     result =
       Repo.transaction(fn ->
         case Repo.get(Claim, claim_id) do
@@ -290,7 +321,15 @@ defmodule SantoApi.Registry do
             Repo.rollback(:not_found)
 
           %Claim{state: :proposed} = claim ->
-            claim = claim |> Ecto.Changeset.change(state: new_state) |> Repo.update!()
+            claim =
+              claim
+              |> Ecto.Changeset.change(
+                state: new_state,
+                ratified_by_party_id: decider.id,
+                ratified_at: DateTime.utc_now()
+              )
+              |> Repo.update!()
+
             {:ok, vehicle} = fetch_vehicle(claim.vehicle_id)
             refresh_facts(vehicle)
             claim

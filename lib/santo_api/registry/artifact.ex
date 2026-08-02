@@ -25,6 +25,10 @@ defmodule SantoApi.Registry.Artifact do
     )
 
     field(:acquisition_id, Ecto.UUID)
+
+    # Shared with the claims of the same composed entry, so a three-photo
+    # entry hangs together where a claim's single `artifact_id` cannot.
+    field(:entry_ref, Ecto.UUID)
     field(:sha256, :string)
     field(:payload, :map)
     field(:storage_ref, :string)
@@ -32,6 +36,10 @@ defmodule SantoApi.Registry.Artifact do
     field(:source_url, :string)
     field(:acquired_at, :utc_datetime_usec)
     field(:metadata, :map, default: %{})
+
+    # Presentation state (owner_surface §6). The artifact itself never changes;
+    # this only governs who is shown it.
+    field(:visibility, Ecto.Enum, values: [:public, :private], default: :public)
     timestamps(type: :utc_datetime_usec)
   end
 end

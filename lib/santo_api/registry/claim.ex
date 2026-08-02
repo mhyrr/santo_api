@@ -30,6 +30,21 @@ defmodule SantoApi.Registry.Claim do
     field :method, Ecto.Enum, values: [:santo, :structured_api, :llm_extract, :human]
     field :method_meta, :map, default: %{}
     field :content_hash, :string
+
+    # The grouping tag shared by every claim of one composed entry. Not an
+    # entry store: no table, no lifecycle, no state of its own.
+    field :entry_ref, Ecto.UUID
+
+    # Presentation state (owner_surface §6): mutable, outside `content_hash`,
+    # no bearing on admission or tier. A private claim is still in the ledger.
+    field :visibility, Ecto.Enum, values: [:public, :private], default: :public
+
+    # Ratification is "one state flip with who and when attached" (contract §8).
+    # Null on claims that never passed the gate: santo decode facts, born
+    # admitted, and claims admitted by an adjudication, whose decider is on the
+    # adjudication row.
+    belongs_to :ratified_by_party, Party
+    field :ratified_at, :utc_datetime_usec
     timestamps(type: :utc_datetime_usec)
   end
 
@@ -40,7 +55,7 @@ defmodule SantoApi.Registry.Claim do
   """
   def propose_changeset(%Vehicle{} = vehicle, %Party{} = party, attrs) do
     %__MODULE__{}
-    |> cast(attrs, [:predicate, :value, :scope_date, :artifact_id])
+    |> cast(attrs, [:predicate, :value, :scope_date, :artifact_id, :entry_ref])
     |> validate_required([:predicate, :value])
     |> validate_vocabulary()
     |> put_basis(vehicle, party)
@@ -69,6 +84,7 @@ defmodule SantoApi.Registry.Claim do
     value = get_field(changeset, :value)
     scope_kind = get_field(changeset, :scope_kind)
     scope_date = get_field(changeset, :scope_date)
+    entry_ref = get_field(changeset, :entry_ref)
 
     changeset
     |> put_change(:vehicle_id, vehicle.id)
@@ -77,14 +93,45 @@ defmodule SantoApi.Registry.Claim do
     |> put_change(:state, :proposed)
     |> put_change(
       :content_hash,
-      hash(vehicle.identity_key, predicate, value, scope_kind, scope_date, :human, party.name)
+      hash(
+        vehicle.identity_key,
+        predicate,
+        value,
+        scope_kind,
+        scope_date,
+        :human,
+        party.name,
+        entry_ref
+      )
     )
   end
 
-  def hash(identity_key, predicate, value, scope_kind, scope_date, method, party_name) do
-    payload =
-      Jason.encode!([identity_key, predicate, value, scope_kind, scope_date, method, party_name])
+  @doc """
+  The attestation seam: a deterministic digest of a claim's substance.
 
-    :crypto.hash(:sha256, payload) |> Base.encode16(case: :lower)
+  For event-scoped claims `entry_ref` joins the payload, because occurrence
+  identity *is* entry identity — two identical ten-gallon fill-ups on one day
+  are two events, and without the ref they would collapse into one claim. The
+  narrowing is deliberate: re-proposing "the same" event from a different entry
+  makes a second claim rather than deduping (owner_surface §2, ratified
+  2026-08-01).
+
+  Factory- and observed-scope hashing never sees `entry_ref`, and neither does
+  an event claim that carries none — so every hash already in the corpus stands.
+  """
+  def hash(
+        identity_key,
+        predicate,
+        value,
+        scope_kind,
+        scope_date,
+        method,
+        party_name,
+        entry_ref \\ nil
+      ) do
+    base = [identity_key, predicate, value, scope_kind, scope_date, method, party_name]
+    payload = if scope_kind == :event and entry_ref, do: base ++ [entry_ref], else: base
+
+    :crypto.hash(:sha256, Jason.encode!(payload)) |> Base.encode16(case: :lower)
   end
 end

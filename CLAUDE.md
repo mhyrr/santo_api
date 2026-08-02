@@ -51,7 +51,7 @@ migrations — is fine to delegate to `elixir-dev`.
 These are the evidence contract's invariants. Violating one is a design bug, not a style nit.
 
 - **Claims are append-only.** Corrections are a new claim plus an adjudication — never an edit, never a delete. Adjudication changes which claim is live; both stay in the ledger.
-- **External evidence enters `:proposed`.** Only santo-derived decode facts enter `:admitted`. Ratification is one state flip with who and when, not a workflow.
+- **External evidence enters `:proposed`.** Only santo-derived decode facts enter `:admitted`. Ratification is one state flip with who and when (`ratified_by_party_id`, `ratified_at`), not a workflow. Who may ratify depends on scope: owners self-ratify event/observed claims on cars they steward; factory/provenance claims ratify only at the operator gate or by evidence.
 - **The predicate vocabulary is closed.** Only predicates in `registry/vocabulary.ex` exist; adding one is a reviewed code change, like santo's compiled data. Same for provider capabilities in `providers/capability.ex`.
 - **Conflicts and verification tiers are derived, never stored.** `claim_comparison/1` computes agreement/conflict/single_source at read time. Nothing overwrites anything.
 - **`vehicle.facts` is factory/provenance scope only.** Event-scoped material (service, modification, sale) is logbook territory and never flattens into facts. Observed claims (e.g. `observation.mileage`) deliberately never appear there either.

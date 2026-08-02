@@ -64,6 +64,11 @@ A typed assertion about one vehicle.
   computed from basis, never stored.
 - **state**: `proposed → admitted | rejected`, later `superseded | retracted`.
   Proposed claims are the ratification gate; only admitted claims are the record.
+  External evidence enters `:proposed`. *Who* may ratify depends on scope
+  (amended 2026-08-01, owner_surface §3): owners self-ratify event- and
+  observed-scope claims on cars they steward; factory- and provenance-scope
+  claims ratify only at the operator gate or by corroborating evidence.
+  `Vocabulary.scope_kind/1` is where that line is drawn.
 - Claims are append-only and content-hashed (the attestation seam, §8). A
   correction is a new claim plus an adjudication linking the two — never an edit.
 
@@ -153,7 +158,16 @@ market). They enter as proposed claims from artifacts or owners and become
 verified facts through the gate.
 
 Ratification, named precisely: one state flip, `proposed → admitted`, with who
-and when attached. Not a workflow.
+and when attached. Not a workflow. The who and when are columns —
+`ratified_by_party_id` and `ratified_at` (TK-008) — and they are null exactly
+when no ratification happened: santo decode facts, which are born `:admitted`,
+and claims admitted by an adjudication, whose decider lives on the adjudication
+row instead.
+
+The scope split above is what lets an owner's own logbook entry admit without an
+operator in the loop. It is low-stakes by construction: event-scoped claims never
+enter `facts`, never conflict, and never move any verified status. What carries
+the honesty is attribution and tier (§7), both mechanical.
 
 ## 9. Seams deliberately left, not built
 
