@@ -176,15 +176,71 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   One entry's headline: what happened, in the entry's own words where it has
   them. Falls back to the claim type, never to filler.
   """
-  def entry_headline(entry) do
-    entry.claims
-    |> Enum.map(&claim_headline/1)
-    |> Enum.reject(&is_nil/1)
-    |> case do
-      [] -> entry_label(hd(entry.claims).predicate)
-      [headline | _rest] -> headline
-    end
+  def entry_headline(entry), do: entry_parts(entry).headline
+
+  @doc """
+  One entry, split into the line that says what happened and the details that
+  add to it.
+
+  A detail earns its place only if it is not already the headline: the
+  performer on a service is worth a line, the odometer reading on an entry
+  that *is* an odometer reading is not.
+  """
+  def entry_parts(entry) do
+    ordered = Enum.sort_by(entry.claims, &headline_priority/1)
+    lead = Enum.find(ordered, &claim_headline/1)
+
+    details =
+      ordered
+      |> Enum.reject(&(&1 == lead))
+      |> Enum.map(&%{label: entry_label(&1.predicate), value: claim_detail(&1)})
+      |> Enum.reject(&is_nil(&1.value))
+
+    headline =
+      case lead do
+        nil -> entry_label(hd(ordered).predicate)
+        claim -> claim_headline(claim)
+      end
+
+    details =
+      if lead && second_fact?(lead),
+        do: [%{label: entry_label(lead.predicate), value: claim_detail(lead)} | details],
+        else: details
+
+    %{headline: headline, details: details}
   end
+
+  # Whether a claim's detail is a *second* fact or the same one again. A
+  # service's headline is what was done and its detail is who did it — two
+  # facts. An odometer's detail is its reading, which the headline already was.
+  defp second_fact?(%{predicate: "event.service"}), do: true
+  defp second_fact?(%{predicate: "event.outing"}), do: true
+  defp second_fact?(_claim), do: false
+
+  @doc "The one extra fact an entry's claim carries beyond its headline."
+  def claim_detail(%{predicate: "observation.mileage", value: miles}) when is_integer(miles),
+    do: "#{delimit(miles)} mi"
+
+  def claim_detail(%{predicate: "event.service", value: %{"performer" => performer}})
+      when is_binary(performer),
+      do: performer
+
+  def claim_detail(%{predicate: "event.outing", value: %{"venue" => venue}})
+      when is_binary(venue),
+      do: venue
+
+  def claim_detail(%{
+        predicate: "event.sale",
+        value: %{"price" => price, "currency" => currency}
+      }),
+      do: money(price, currency)
+
+  def claim_detail(_claim), do: nil
+
+  # What happened leads. The odometer on a fill-up is a detail of the fill-up,
+  # so a reading only becomes the headline when it is the whole entry.
+  defp headline_priority(%{predicate: "observation." <> _rest}), do: 1
+  defp headline_priority(_claim), do: 0
 
   defp claim_headline(%{predicate: "event.service", value: %{"summary" => summary}}), do: summary
   defp claim_headline(%{predicate: "event.modification", value: %{"summary" => s}}), do: s
@@ -197,6 +253,9 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
 
   defp claim_headline(%{predicate: "event.fuel", value: %{"volume" => v, "unit" => unit}}),
     do: "#{v} #{unit} of fuel"
+
+  defp claim_headline(%{predicate: "observation.mileage", value: miles}) when is_integer(miles),
+    do: "#{delimit(miles)} miles"
 
   defp claim_headline(_claim), do: nil
 

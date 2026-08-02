@@ -99,6 +99,48 @@ defmodule SantoApiWeb.VehicleLiveTest do
     refute html =~ "this has not been confirmed"
   end
 
+  test "an entry says its details once — what happened leads, the reading follows", %{conn: conn} do
+    vehicle = car()
+    fill_up = Registry.new_entry_ref()
+
+    admit(vehicle, %{
+      predicate: "event.fuel",
+      value: %{"volume" => "13.1", "unit" => "gal"},
+      scope_date: ~D[2026-06-14],
+      entry_ref: fill_up
+    })
+
+    admit(vehicle, %{
+      predicate: "observation.mileage",
+      value: 74_310,
+      scope_date: ~D[2026-06-14],
+      entry_ref: fill_up
+    })
+
+    {:ok, live, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    entry = live |> element("li.vs-tick", "13.1 gal") |> render()
+
+    # The fill-up is what happened; the odometer is a detail of it.
+    assert entry =~ "13.1 gal of fuel"
+    assert entry =~ "74,310 mi"
+  end
+
+  test "an odometer entry on its own does not print its reading twice", %{conn: conn} do
+    vehicle = car()
+
+    admit(vehicle, %{
+      predicate: "observation.mileage",
+      value: 74_310,
+      scope_date: ~D[2026-06-14]
+    })
+
+    {:ok, live, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    entry = live |> element("li.vs-tick", "74,310") |> render()
+
+    assert entry =~ "74,310 miles"
+    assert length(String.split(entry, "74,310")) - 1 == 1
+  end
+
   test "a private entry is off the page but still in the ledger", %{conn: conn} do
     vehicle = car()
 

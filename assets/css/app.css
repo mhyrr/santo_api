@@ -186,8 +186,10 @@
 .vs-tick::before {
   content: "";
   position: absolute;
-  left: -0.3125rem;
-  top: 0.5rem;
+  /* Centred on the spine, which sits one list-padding to the left. Any less
+     and the dot lands on the date and eats its first digit. */
+  left: -1.75rem;
+  top: 0.4rem;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 9999px;

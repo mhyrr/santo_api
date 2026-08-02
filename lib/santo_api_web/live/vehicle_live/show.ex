@@ -51,7 +51,6 @@ defmodule SantoApiWeb.VehicleLive.Show do
       assigns
       |> assign(:spec, Presenter.spec_line(assigns.vehicle))
       |> assign(:odometer, Presenter.odometer(assigns.vehicle))
-      |> assign(:paint_code, Presenter.paint_code(assigns.vehicle))
 
     ~H"""
     <header class="mx-auto max-w-3xl px-5 pt-16 pb-14 sm:px-8 sm:pt-24">
@@ -85,11 +84,6 @@ defmodule SantoApiWeb.VehicleLive.Show do
             read {Presenter.on_date(@odometer.as_of)}
           </dd>
         </div>
-
-        <div :if={@paint_code}>
-          <dt class="vs-eyebrow" style="color: var(--vs-dim)">Paint</dt>
-          <dd class="vs-code vs-figure mt-1 text-3xl font-semibold">{@paint_code}</dd>
-        </div>
       </dl>
     </header>
     """
@@ -100,6 +94,13 @@ defmodule SantoApiWeb.VehicleLive.Show do
   attr :entries, :list, required: true
 
   defp logbook(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :entries,
+        Enum.map(assigns.entries, &Map.put(&1, :parts, Presenter.entry_parts(&1)))
+      )
+
     ~H"""
     <section class="mx-auto max-w-3xl px-5 pb-16 sm:px-8" aria-labelledby="logbook-heading">
       <h2 id="logbook-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
@@ -117,12 +118,15 @@ defmodule SantoApiWeb.VehicleLive.Show do
             {Presenter.on_date(entry.date) || "Undated"}
           </p>
 
-          <h3 class="mt-1.5 text-lg leading-snug">{Presenter.entry_headline(entry)}</h3>
+          <h3 class="mt-1.5 text-lg leading-snug">{entry.parts.headline}</h3>
 
-          <ul class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <li :for={claim <- entry.claims} style="color: var(--vs-dim)">
-              <span class="vs-eyebrow">{Presenter.entry_label(claim.predicate)}</span>
-              <span :if={detail(claim)} class="ml-1.5">{detail(claim)}</span>
+          <ul
+            :if={entry.parts.details != []}
+            class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+          >
+            <li :for={detail <- entry.parts.details} style="color: var(--vs-dim)">
+              <span class="vs-eyebrow">{detail.label}</span>
+              <span class="ml-1.5">{detail.value}</span>
             </li>
           </ul>
 
@@ -139,18 +143,6 @@ defmodule SantoApiWeb.VehicleLive.Show do
   # Attribution is the honesty, so the page shows it before it shows anything else.
   defp owner_entry?(%{method: :human}), do: "true"
   defp owner_entry?(_entry), do: "false"
-
-  defp detail(%{predicate: "observation.mileage", value: miles}) when is_integer(miles),
-    do: "#{Presenter.delimit(miles)} mi"
-
-  defp detail(%{predicate: "event.service", value: %{"performer" => performer}})
-       when is_binary(performer),
-       do: performer
-
-  defp detail(%{predicate: "event.sale", value: %{"price" => price, "currency" => currency}}),
-    do: Presenter.money(price, currency)
-
-  defp detail(_claim), do: nil
 
   # --- current spec ---------------------------------------------------------
 
