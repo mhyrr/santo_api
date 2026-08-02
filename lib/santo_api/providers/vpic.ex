@@ -45,6 +45,7 @@ defmodule SantoApi.Providers.Vpic do
          {:ok, %{payload: payload, url: url}} <- fetch(vin) do
       {:ok,
        %Acquisition{
+         acquisition_id: Ecto.UUID.generate(),
          provider: descriptor().id,
          capability: request.capability,
          coverage: coverage(payload),

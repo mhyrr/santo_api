@@ -433,16 +433,16 @@ Next:
 8. Build the Porsche qualification corpus and a per-capability gap report in
    `docs/research/`. Add commercial providers only against named gaps.
 
-## 9. Known mismatch in the current code
+## 9. Acquisition identity
 
-`Registry.persist_acquisition/2` reuses an artifact when the response payload has
-the same SHA-256. The evidence contract says a re-fetch is a new artifact, because
-acquisition time and lookup coverage are part of the evidence. Claims should
-remain content-deduplicated; acquisitions should not.
+Implemented 1 August 2026. Every completed provider request receives an
+`acquisition_id`; that UUID, rather than the response payload hash, is the
+idempotency key for persistence. Re-fetching identical response bytes creates a
+new `api_snapshot` artifact with its own acquisition time and diagnostics.
+Re-persisting the same acquisition object returns its existing artifact.
 
-Do not bury this by changing the documentation. Fix it when provider acquisitions
-are persisted, with separate tests for:
-
-- two identical source responses acquired at different times;
-- one proposed claim per identical assertion;
-- diagnostics retained for both attempts.
+Claims remain content-deduplicated independently. The artifact SHA uniqueness
+constraint now applies only to non-snapshot artifacts, preserving the upload and
+reference dedupe behavior without collapsing retrieval events. Tests cover two
+identical responses acquired at different times, one proposed claim per identical
+assertion, both diagnostics, and replaying the same acquisition object.

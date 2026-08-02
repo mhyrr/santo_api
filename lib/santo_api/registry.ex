@@ -48,11 +48,55 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  Register a trusted pre-standard chassis identity that Santo does not yet
+  decode. This is deliberately atom-only: callers must choose a reviewed
+  marque and era rather than turning external strings into atoms.
+  """
+  def register_chassis(marque, era, number)
+      when marque in [:ferrari, :porsche] and is_atom(era) and is_binary(number) do
+    case String.trim(number) do
+      "" ->
+        {:error, :invalid_chassis_number}
+
+      normalized ->
+        identity = {:chassis, marque, era, normalized}
+
+        {:ok, vehicle} =
+          Repo.transaction(fn -> upsert_vehicle(identity, normalized, nil) end)
+
+        {:ok, vehicle}
+    end
+  end
+
+  def register_chassis(_marque, _era, _number), do: {:error, :invalid_chassis_identity}
+
+  @doc """
+  Register a reviewed standard VIN that Santo can identify but cannot decode.
+
+  This is intentionally limited to Ferrari's WMI. It gives external providers
+  a stable vehicle row without manufacturing factory claims from a generic VIN.
+  """
+  def register_vin(:ferrari, vin) when is_binary(vin) do
+    normalized = vin |> String.trim() |> String.upcase()
+
+    if byte_size(normalized) == 17 and String.starts_with?(normalized, "ZFF") do
+      {:ok, vehicle} =
+        Repo.transaction(fn -> upsert_vehicle({:vin, normalized}, normalized, nil) end)
+
+      {:ok, vehicle}
+    else
+      {:error, :invalid_vin_identity}
+    end
+  end
+
+  def register_vin(_marque, _vin), do: {:error, :invalid_vin_identity}
+
+  @doc """
   All vehicles, most recently ingested first. Bench-only listing — there
   is no scoping or pagination yet, matching the rest of the registry.
   """
   def list_vehicles do
-    Repo.all(from v in Vehicle, order_by: [desc: v.inserted_at])
+    Repo.all(from(v in Vehicle, order_by: [desc: v.inserted_at]))
   end
 
   def fetch_vehicle(id) do
@@ -65,25 +109,26 @@ defmodule SantoApi.Registry do
   end
 
   def list_claims(vehicle_id) do
-    Repo.all(from c in Claim, where: c.vehicle_id == ^vehicle_id, order_by: c.predicate)
+    Repo.all(from(c in Claim, where: c.vehicle_id == ^vehicle_id, order_by: c.predicate))
   end
 
   def list_evidence_requests(vehicle_id) do
-    Repo.all(from r in EvidenceRequest, where: r.vehicle_id == ^vehicle_id, order_by: r.subject)
+    Repo.all(from(r in EvidenceRequest, where: r.vehicle_id == ^vehicle_id, order_by: r.subject))
   end
 
   def list_artifacts(vehicle_id) do
     Repo.all(
-      from a in Artifact, where: a.vehicle_id == ^vehicle_id, order_by: [desc: a.inserted_at]
+      from(a in Artifact, where: a.vehicle_id == ^vehicle_id, order_by: [desc: a.inserted_at])
     )
   end
 
   def list_adjudications(vehicle_id) do
     Repo.all(
-      from a in Adjudication,
+      from(a in Adjudication,
         where: a.vehicle_id == ^vehicle_id,
         order_by: [desc: a.inserted_at],
         preload: [:claim_a, :claim_b, :prevailing_claim, :decided_by_party, :evidence_request]
+      )
     )
   end
 
@@ -96,7 +141,7 @@ defmodule SantoApi.Registry do
     content = File.read!(path)
     sha = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
 
-    case Repo.get_by(Artifact, sha256: sha) do
+    case non_snapshot_artifact_by_sha(sha) do
       %Artifact{} = existing ->
         {:ok, existing}
 
@@ -121,6 +166,46 @@ defmodule SantoApi.Registry do
     end
   end
 
+  @doc """
+  Persist a source pointer without copying the referenced page. Reference
+  artifacts are content-deduplicated and carry their reuse posture in metadata.
+  """
+  def create_reference_artifact(
+        %Vehicle{} = vehicle,
+        %Party{} = source_party,
+        %{source_url: source_url} = attrs
+      )
+      when is_binary(source_url) and source_url != "" do
+    kind = attrs[:kind] || :reference
+    metadata = attrs[:metadata] || %{}
+
+    sha =
+      artifact_sha(%{
+        "vehicle" => vehicle.identity_key,
+        "source_party" => source_party.name,
+        "kind" => to_string(kind),
+        "source_url" => source_url,
+        "metadata" => metadata
+      })
+
+    case non_snapshot_artifact_by_sha(sha) do
+      %Artifact{} = existing ->
+        {:ok, existing}
+
+      nil ->
+        {:ok,
+         Repo.insert!(%Artifact{
+           vehicle_id: vehicle.id,
+           source_party_id: source_party.id,
+           kind: kind,
+           sha256: sha,
+           source_url: source_url,
+           acquired_at: attrs[:acquired_at] || DateTime.utc_now(),
+           metadata: metadata
+         })}
+    end
+  end
+
   defp uploads_dir do
     Application.get_env(
       :santo_api,
@@ -140,7 +225,11 @@ defmodule SantoApi.Registry do
   def propose_claim(%Vehicle{} = vehicle, %Party{} = party, attrs) do
     changeset = Claim.propose_changeset(vehicle, party, attrs)
 
-    with {:ok, claim} <- Repo.insert(changeset) do
+    # A caller may intentionally recover a duplicate claim inside a larger
+    # transaction. The savepoint keeps PostgreSQL's constraint error from
+    # aborting that surrounding transaction before the caller can query the
+    # existing claim.
+    with {:ok, claim} <- Repo.insert(changeset, mode: :savepoint) do
       refresh_facts(vehicle)
       {:ok, claim}
     end
@@ -228,10 +317,11 @@ defmodule SantoApi.Registry do
          {:ok, claim_b_uuid} <- Ecto.UUID.cast(claim_b_id) do
       claims =
         Repo.all(
-          from c in Claim,
+          from(c in Claim,
             where: c.id in ^[claim_a_uuid, claim_b_uuid],
             order_by: c.id,
             lock: "FOR UPDATE"
+          )
         )
 
       by_id = Map.new(claims, &{&1.id, &1})
@@ -300,10 +390,11 @@ defmodule SantoApi.Registry do
 
         request =
           Repo.one(
-            from r in EvidenceRequest,
+            from(r in EvidenceRequest,
               where:
                 r.vehicle_id == ^claim.vehicle_id and r.subject == ^claim.predicate and
                   r.status == :open
+            )
           ) ||
             Repo.insert!(%EvidenceRequest{
               vehicle_id: claim.vehicle_id,
@@ -379,6 +470,33 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  Acquire evidence for a vehicle through a registered provider and persist the
+  immutable retrieval. The request identity must name the supplied vehicle.
+  """
+  def acquire(%Vehicle{} = vehicle, provider_id, %Request{} = request) do
+    if IdentityKey.serialize(request.identity) == vehicle.identity_key do
+      with {:ok, %Acquisition{} = acquisition} <- Providers.acquire(provider_id, request) do
+        record_acquisition(vehicle, acquisition)
+      end
+    else
+      {:error, :identity_mismatch}
+    end
+  end
+
+  @doc """
+  Persist one already-completed provider acquisition. Re-persisting the same
+  acquisition id is idempotent; a fresh retrieval has a fresh id even when its
+  payload bytes are unchanged.
+  """
+  def record_acquisition(%Vehicle{} = vehicle, %Acquisition{} = acquisition) do
+    with {:ok, _uuid} <- Ecto.UUID.cast(acquisition.acquisition_id) do
+      Repo.transaction(fn -> persist_acquisition(vehicle, acquisition) end)
+    else
+      :error -> {:error, :invalid_acquisition_id}
+    end
+  end
+
+  @doc """
   Fetch a vPIC snapshot for a VIN-identified vehicle, store it as an
   api_snapshot artifact, and emit its facts as `:proposed` claims — the
   ratification gate applies to external evidence. Pre-1981 chassis
@@ -387,9 +505,8 @@ defmodule SantoApi.Registry do
   def ingest_vpic(%Vehicle{identity_kind: :vin} = vehicle) do
     vin = String.trim_leading(vehicle.identity_key, "vin:")
 
-    with {:ok, request} <- Request.new(:generic_specifications, {:vin, vin}),
-         {:ok, %Acquisition{} = acquisition} <- Providers.acquire(:nhtsa_vpic, request) do
-      Repo.transaction(fn -> persist_acquisition(vehicle, acquisition) end)
+    with {:ok, request} <- Request.new(:generic_specifications, {:vin, vin}) do
+      acquire(vehicle, :nhtsa_vpic, request)
     end
   end
 
@@ -412,7 +529,7 @@ defmodule SantoApi.Registry do
 
   defp live_claim_entries(vehicle_id) do
     Repo.all(
-      from c in Claim,
+      from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
         where: c.vehicle_id == ^vehicle_id and c.state in [:admitted, :proposed],
@@ -430,6 +547,7 @@ defmodule SantoApi.Registry do
           scope_date: c.scope_date,
           inserted_at: c.inserted_at
         }
+      )
     )
   end
 
@@ -527,23 +645,33 @@ defmodule SantoApi.Registry do
     sha = :crypto.hash(:sha256, Jason.encode!(acquisition.payload)) |> Base.encode16(case: :lower)
 
     artifact =
-      Repo.get_by(Artifact, sha256: sha) ||
-        Repo.insert!(%Artifact{
-          kind: :api_snapshot,
-          sha256: sha,
-          payload: acquisition.payload,
-          source_url: acquisition.source_url,
-          source_party_id: party.id,
-          mime: acquisition.media_type,
-          acquired_at: acquisition.acquired_at,
-          metadata: %{
-            "provider" => to_string(acquisition.provider),
-            "capability" => to_string(acquisition.capability),
-            "coverage" => to_string(acquisition.coverage),
-            "rights_profile" => acquisition.rights_profile,
-            "diagnostics" => acquisition.diagnostics
-          }
-        })
+      case Repo.get_by(Artifact, acquisition_id: acquisition.acquisition_id) do
+        %Artifact{vehicle_id: vehicle_id} = existing when vehicle_id == vehicle.id ->
+          existing
+
+        %Artifact{} ->
+          Repo.rollback(:acquisition_identity_mismatch)
+
+        nil ->
+          Repo.insert!(%Artifact{
+            acquisition_id: acquisition.acquisition_id,
+            vehicle_id: vehicle.id,
+            kind: :api_snapshot,
+            sha256: sha,
+            payload: acquisition.payload,
+            source_url: acquisition.source_url,
+            source_party_id: party.id,
+            mime: acquisition.media_type,
+            acquired_at: acquisition.acquired_at,
+            metadata: %{
+              "provider" => to_string(acquisition.provider),
+              "capability" => to_string(acquisition.capability),
+              "coverage" => to_string(acquisition.coverage),
+              "rights_profile" => acquisition.rights_profile,
+              "diagnostics" => acquisition.diagnostics
+            }
+          })
+      end
 
     for {predicate, value} <- acquisition_facts(acquisition) do
       :ok = Vocabulary.validate(predicate, value)
@@ -602,7 +730,7 @@ defmodule SantoApi.Registry do
         candidates: IdentityKey.candidates(identity),
         input: input,
         decode_snapshot: snapshot(decode),
-        santo_version: santo_version()
+        santo_version: if(is_nil(decode), do: nil, else: santo_version())
       })
 
     emit_claims(vehicle, decode)
@@ -612,6 +740,7 @@ defmodule SantoApi.Registry do
 
   defp snapshot({:ok, decoded}), do: Terms.sanitize(decoded)
   defp snapshot({:ambiguous, readings}), do: %{"ambiguous" => Terms.sanitize(readings)}
+  defp snapshot(nil), do: nil
 
   defp santo_version, do: to_string(Application.spec(:santo, :vsn))
 
@@ -679,4 +808,18 @@ defmodule SantoApi.Registry do
   end
 
   defp open_evidence_requests(_vehicle, _identity), do: :ok
+
+  defp non_snapshot_artifact_by_sha(sha) do
+    Repo.one(
+      from(a in Artifact,
+        where: a.sha256 == ^sha and a.kind != :api_snapshot,
+        limit: 1
+      )
+    )
+  end
+
+  defp artifact_sha(payload) do
+    :crypto.hash(:sha256, Jason.encode!(payload))
+    |> Base.encode16(case: :lower)
+  end
 end

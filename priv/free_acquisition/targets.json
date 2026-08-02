@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "generated_on": "2026-08-01",
+  "rights_profile": "public-pointer-only-v1",
+  "entries": [
+    {
+      "id": "air-1985-930-wp0zzz93zfs000352",
+      "cohort": "air_cooled_911",
+      "display_name": "1985 Porsche 911 Turbo",
+      "model_year": 1985,
+      "identity": {"kind": "vin", "value": "WP0ZZZ93ZFS000352"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1985-porsche-911-turbo-4/", "date": "2018-01-12", "price": 115000, "currency": "USD"}
+    },
+    {
+      "id": "air-1987-930-wp0jb093xhs051078",
+      "cohort": "air_cooled_911",
+      "display_name": "1987 Porsche 911 Turbo",
+      "model_year": 1987,
+      "identity": {"kind": "vin", "value": "WP0JB093XHS051078"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1987-porsche-911-turbo-5/", "date": "2017-04-28", "price": 65000, "currency": "USD"}
+    },
+    {
+      "id": "air-1989-930-wp0jb0938ks050521",
+      "cohort": "air_cooled_911",
+      "display_name": "1989 Porsche 911 Turbo M505 Slant Nose",
+      "model_year": 1989,
+      "identity": {"kind": "vin", "value": "WP0JB0938KS050521"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1989-porsche-911-turbo-coupe-10/", "date": "2024-09-30", "price": 177930, "currency": "USD"}
+    },
+    {
+      "id": "air-1986-930-wp0jb0936gs050718",
+      "cohort": "air_cooled_911",
+      "display_name": "1986 Porsche 911 Turbo",
+      "model_year": 1986,
+      "identity": {"kind": "vin", "value": "WP0JB0936GS050718"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1986-porsche-911-turbo-7/", "date": "2017-04-14", "price": 76000, "currency": "USD"}
+    },
+    {
+      "id": "air-1988-930-wp0eb0932js070215",
+      "cohort": "air_cooled_911",
+      "display_name": "1988 Porsche 911 Turbo Cabriolet",
+      "model_year": 1988,
+      "identity": {"kind": "vin", "value": "WP0EB0932JS070215"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1988-porsche-911-turbo-cabriolet/", "date": "2015-09-16", "price": 101000, "currency": "USD"}
+    },
+    {
+      "id": "air-1996-993-wp0aa2998ts322912",
+      "cohort": "air_cooled_911",
+      "display_name": "1996 Porsche 911 Carrera 4S",
+      "model_year": 1996,
+      "identity": {"kind": "vin", "value": "WP0AA2998TS322912"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1996-porsche-911-carrera-4s-53/", "date": "2021-07-13", "price": 142000, "currency": "USD"}
+    },
+    {
+      "id": "air-1996-993-wp0aa2990ts321110",
+      "cohort": "air_cooled_911",
+      "display_name": "1996 Porsche 911 Carrera 4S",
+      "model_year": 1996,
+      "identity": {"kind": "vin", "value": "WP0AA2990TS321110"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1996-porsche-911-carrera-4s-95/", "date": "2023-09-06", "price": 138000, "currency": "USD"}
+    },
+    {
+      "id": "air-1996-993-wp0aa2992ts322677",
+      "cohort": "air_cooled_911",
+      "display_name": "1996 Porsche 911 Carrera 4S",
+      "model_year": 1996,
+      "identity": {"kind": "vin", "value": "WP0AA2992TS322677"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1996-porsche-911-carrera-4s-94/", "date": "2023-07-05", "price": 146000, "currency": "USD"}
+    },
+    {
+      "id": "air-1996-993-wp0aa2991ts320306",
+      "cohort": "air_cooled_911",
+      "display_name": "1996 Porsche 911 Carrera 4S",
+      "model_year": 1996,
+      "identity": {"kind": "vin", "value": "WP0AA2991TS320306"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1996-porsche-911-carrera-4s-81/", "date": "2023-02-25", "price": 164993, "currency": "USD"}
+    },
+    {
+      "id": "air-1996-993-wp0aa2994ts321353",
+      "cohort": "air_cooled_911",
+      "display_name": "1996 Porsche 911 Carrera 4S",
+      "model_year": 1996,
+      "identity": {"kind": "vin", "value": "WP0AA2994TS321353"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1996-porsche-911-carrera-4s-90/", "date": "2023-03-24", "price": 130000, "currency": "USD"}
+    },
+
+    {
+      "id": "ferrari-1972-dino-05316",
+      "cohort": "vintage_ferrari",
+      "display_name": "1972 Ferrari Dino 246 GTS",
+      "model_year": 1972,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "05316"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1973-ferrari-dino-246-gts-8/", "date": "2024-01-12", "price": 505505, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1979-512bb-28543",
+      "cohort": "vintage_ferrari",
+      "display_name": "1979 Ferrari 512 BB",
+      "model_year": 1979,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "28543"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1979-ferrari-512-bb-2/", "date": "2019-07-02", "price": 265000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1977-308gtb-21083",
+      "cohort": "vintage_ferrari",
+      "display_name": "1977 Ferrari 308 GTB",
+      "model_year": 1977,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "21083"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1977-ferrari-308-gtb/", "date": "2016-01-14", "price": 66666, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1979-512bb-f102bb27117",
+      "cohort": "vintage_ferrari",
+      "display_name": "1979 Ferrari 512 BB",
+      "model_year": 1979,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "F102BB27117"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1979-ferrari-512-bb-8/", "date": "2024-10-30", "price": 290000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1969-dino-00548",
+      "cohort": "vintage_ferrari",
+      "display_name": "1969 Ferrari Dino 246 GT",
+      "model_year": 1969,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "00548"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1969-ferrari-dino/", "date": "2020-05-13", "price": 390000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1976-308gtb-19425",
+      "cohort": "vintage_ferrari",
+      "display_name": "1976 Ferrari 308 GTB Vetroresina",
+      "model_year": 1976,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "19425"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1976-ferrari-308-gtb-17/", "date": "2026-04-29", "price": 160000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1977-308gtb-22953",
+      "cohort": "vintage_ferrari",
+      "display_name": "1977 Ferrari 308 GTB Project",
+      "model_year": 1977,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "22953"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1977-ferrari-308-gtb-37/", "date": "2024-07-03", "price": 35250, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1973-daytona-16613",
+      "cohort": "vintage_ferrari",
+      "display_name": "1973 Ferrari 365 GTB/4 Daytona",
+      "model_year": 1973,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "16613"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1973-ferrari-365-gtb4/", "date": "2026-01-21", "price": 500000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1972-dino-04268",
+      "cohort": "vintage_ferrari",
+      "display_name": "1972 Ferrari Dino 246 GTS",
+      "model_year": 1972,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "04268"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1972-ferrari-dino-246-gts-3/", "date": "2023-07-27", "price": 630000, "currency": "USD"}
+    },
+    {
+      "id": "ferrari-1971-dino-01438",
+      "cohort": "vintage_ferrari",
+      "display_name": "1971 Ferrari Dino 246 GT",
+      "model_year": 1971,
+      "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "01438"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/1971-ferrari-dino-246-gt-4/", "date": "2024-05-21", "price": 451000, "currency": "USD"}
+    },
+
+    {
+      "id": "gt-2005-carrera-gt-wp0ca298x5l001256",
+      "cohort": "limited_gt",
+      "display_name": "2005 Porsche Carrera GT",
+      "model_year": 2005,
+      "identity": {"kind": "vin", "value": "WP0CA298X5L001256"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2005-porsche-carrera-gt-37/", "date": "2026-07-22", "price": 4568000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2018-gt3-touring-wp0ac2a97js176473",
+      "cohort": "limited_gt",
+      "display_name": "2018 Porsche 911 GT3 Touring",
+      "model_year": 2018,
+      "identity": {"kind": "vin", "value": "WP0AC2A97JS176473"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2018-porsche-911-gt3-touring-63/", "date": "2025-09-24", "price": 315000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2015-918-wp0ca2a13fs800821",
+      "cohort": "limited_gt",
+      "display_name": "2015 Porsche 918 Spyder Weissach",
+      "model_year": 2015,
+      "identity": {"kind": "vin", "value": "WP0CA2A13FS800821"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2015-porsche-918-spyder-18/", "date": "2025-04-24", "price": 2610000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2016-gt3rs-wp0af2a99gs187118",
+      "cohort": "limited_gt",
+      "display_name": "2016 Porsche 911 GT3 RS",
+      "model_year": 2016,
+      "identity": {"kind": "vin", "value": "WP0AF2A99GS187118"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2016-porsche-911-gt3-rs-95/", "date": "2025-11-12", "price": 193500, "currency": "USD"}
+    },
+    {
+      "id": "gt-2019-gt3rs-wp0af2a90ks164903",
+      "cohort": "limited_gt",
+      "display_name": "2019 Porsche 911 GT3 RS",
+      "model_year": 2019,
+      "identity": {"kind": "vin", "value": "WP0AF2A90KS164903"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2019-porsche-911-gt3-rs-62/", "date": "2026-04-13", "price": 256000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2024-gt3rs-wp0af2a96rs272209",
+      "cohort": "limited_gt",
+      "display_name": "2024 Porsche 911 GT3 RS Weissach",
+      "model_year": 2024,
+      "identity": {"kind": "vin", "value": "WP0AF2A96RS272209"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2024-porsche-911-gt3-rs-60/", "date": "2026-02-09", "price": 398000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2015-458-speciale-zff75vfa8f0205055",
+      "cohort": "limited_gt",
+      "display_name": "2015 Ferrari 458 Speciale",
+      "model_year": 2015,
+      "identity": {"kind": "vin", "value": "ZFF75VFA8F0205055"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2015-ferrari-458-speciale-36/", "date": "2026-06-11", "price": 1129000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2019-488-pista-zff90hla2k0247423",
+      "cohort": "limited_gt",
+      "display_name": "2019 Ferrari 488 Pista",
+      "model_year": 2019,
+      "identity": {"kind": "vin", "value": "ZFF90HLA2K0247423"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2019-ferrari-488-pista-20/", "date": "2026-03-12", "price": 785000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2020-488-pista-zff90hla5l0249975",
+      "cohort": "limited_gt",
+      "display_name": "2020 Ferrari 488 Pista",
+      "model_year": 2020,
+      "identity": {"kind": "vin", "value": "ZFF90HLA5L0249975"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2020-ferrari-488-pista-atelier/", "date": "2023-03-10", "price": 581000, "currency": "USD"}
+    },
+    {
+      "id": "gt-2016-gt3rs-wp0af2a98gs192441",
+      "cohort": "limited_gt",
+      "display_name": "2016 Porsche 911 GT3 RS",
+      "model_year": 2016,
+      "identity": {"kind": "vin", "value": "WP0AF2A98GS192441"},
+      "transaction": {"venue": "Bring a Trailer", "url": "https://bringatrailer.com/listing/2016-porsche-911-gt3-rs-47/", "date": "2023-08-06", "price": 198500, "currency": "USD"}
+    }
+  ]
+}

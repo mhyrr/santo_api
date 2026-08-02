@@ -12,6 +12,7 @@ defmodule SantoApi.Providers.Acquisition do
   @type coverage :: :complete | :partial | :none | :unknown
 
   @enforce_keys [
+    :acquisition_id,
     :provider,
     :capability,
     :coverage,
@@ -22,6 +23,7 @@ defmodule SantoApi.Providers.Acquisition do
     :rights_profile
   ]
   defstruct [
+    :acquisition_id,
     :provider,
     :capability,
     :coverage,
@@ -34,6 +36,7 @@ defmodule SantoApi.Providers.Acquisition do
   ]
 
   @type t :: %__MODULE__{
+          acquisition_id: Ecto.UUID.t(),
           provider: atom(),
           capability: Capability.t(),
           coverage: coverage(),

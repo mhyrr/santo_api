@@ -4,6 +4,12 @@
 site was bulk-fetched, no access control was bypassed, and publicly visible pages
 are treated as pointers unless their terms affirm reuse.*
 
+*Implementation update, 1 August 2026: the first free qualification cohort is
+specified in [`../design/free_acquisition_corpus.md`](../design/free_acquisition_corpus.md).
+It checks in 30 transaction-selected identities and bare sale facts, retains
+marketplace pages as pointer-only artifacts, and enriches applicable VINs through
+NHTSA vPIC. External records remain outside application seeds.*
+
 ## Executive answer
 
 The thesis holds for auction-grade *history*, with one hard exception: public and

@@ -2,7 +2,7 @@ defmodule SantoApi.RegistryTest do
   use SantoApi.DataCase, async: false
 
   alias SantoApi.Registry
-  alias SantoApi.Registry.{Claim, EvidenceRequest, Vehicle}
+  alias SantoApi.Registry.{Artifact, Claim, EvidenceRequest, Vehicle}
 
   @cgt "WP0CA298X5L001502"
   @nine_five_nine "WP0ZZZ95ZJS905016"
@@ -95,6 +95,64 @@ defmodule SantoApi.RegistryTest do
       assert request.subject == "identity"
       assert request.status == :open
       assert Enum.sort(request.evidence_classes) == ["engine_number", "kardex"]
+    end
+  end
+
+  describe "register_chassis/3" do
+    test "registers a trusted Ferrari chassis outside Santo's current adapters" do
+      assert {:ok, %Vehicle{} = vehicle} =
+               Registry.register_chassis(:ferrari, :pre_vin, " 00548 ")
+
+      assert vehicle.identity_kind == :chassis
+      assert vehicle.identity_key == "chassis:ferrari:pre_vin:00548"
+      assert vehicle.input == "00548"
+      assert is_nil(vehicle.decode_snapshot)
+      assert is_nil(vehicle.santo_version)
+      assert Registry.list_claims(vehicle.id) == []
+    end
+
+    test "stores a pointer without pretending the referenced page was copied" do
+      {:ok, vehicle} = Registry.register_chassis(:ferrari, :pre_vin, "00548")
+      source = Registry.ensure_party("Bring a Trailer", :vendor)
+
+      attrs = %{
+        source_url: "https://bringatrailer.com/listing/1969-ferrari-dino/",
+        metadata: %{"rights_profile" => "public-pointer-only-v1"}
+      }
+
+      assert {:ok, %Artifact{} = first} =
+               Registry.create_reference_artifact(vehicle, source, attrs)
+
+      assert {:ok, %Artifact{} = second} =
+               Registry.create_reference_artifact(vehicle, source, attrs)
+
+      assert first.id == second.id
+      assert first.kind == :reference
+      assert is_nil(first.payload)
+      assert is_nil(first.storage_ref)
+      assert first.source_url == attrs.source_url
+    end
+  end
+
+  describe "register_vin/2" do
+    test "registers a reviewed Ferrari VIN without inventing decode claims" do
+      assert {:ok, %Vehicle{} = vehicle} =
+               Registry.register_vin(:ferrari, " zff75vfa8f0205055 ")
+
+      assert vehicle.identity_kind == :vin
+      assert vehicle.identity_key == "vin:ZFF75VFA8F0205055"
+      assert vehicle.input == "ZFF75VFA8F0205055"
+      assert is_nil(vehicle.decode_snapshot)
+      assert is_nil(vehicle.santo_version)
+      assert Registry.list_claims(vehicle.id) == []
+    end
+
+    test "rejects unreviewed marques and non-Ferrari VINs" do
+      assert {:error, :invalid_vin_identity} =
+               Registry.register_vin(:porsche, "WP0CA298X5L001256")
+
+      assert {:error, :invalid_vin_identity} =
+               Registry.register_vin(:ferrari, "WP0CA298X5L001256")
     end
   end
 

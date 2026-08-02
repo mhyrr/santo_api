@@ -43,6 +43,7 @@ defmodule SantoApi.ProvidersTest do
                Providers.acquire(:nhtsa_vpic, request)
 
       assert acquisition.provider == :nhtsa_vpic
+      assert {:ok, _uuid} = Ecto.UUID.cast(acquisition.acquisition_id)
       assert acquisition.capability == :generic_specifications
       assert acquisition.coverage == :complete
       assert acquisition.payload["VIN"] == @vin

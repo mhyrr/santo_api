@@ -3,6 +3,7 @@ defmodule SantoApi.RegistryEvidenceTest do
 
   alias SantoApi.Registry
   alias SantoApi.Registry.Artifact
+  alias SantoApi.Providers.{Acquisition, Request}
   alias SantoApi.VpicFixtures
 
   @cgt "WP0CA298X5L001502"
@@ -42,12 +43,32 @@ defmodule SantoApi.RegistryEvidenceTest do
       assert model_claim.value == %{"code" => "911", "label" => nil}
     end
 
-    test "re-running the lookup duplicates nothing" do
+    test "re-running an unchanged lookup records a new retrieval but not duplicate claims" do
       stub_vpic()
       {:ok, vehicle} = Registry.ingest(@cgt)
 
       {:ok, first} = Registry.ingest_vpic(vehicle)
       {:ok, second} = Registry.ingest_vpic(vehicle)
+
+      refute first.id == second.id
+      assert first.sha256 == second.sha256
+      refute first.acquisition_id == second.acquisition_id
+      assert first.metadata["diagnostics"] == second.metadata["diagnostics"]
+      assert first.metadata["diagnostics"]["error_code"] == "0"
+      assert Repo.aggregate(Artifact, :count) == 2
+      assert length(Registry.list_claims(vehicle.id)) == 5 + 3
+    end
+
+    test "re-persisting one acquisition object is idempotent" do
+      stub_vpic()
+      {:ok, vehicle} = Registry.ingest(@cgt)
+      {:ok, request} = Request.new(:generic_specifications, {:vin, @cgt})
+
+      assert {:ok, %Acquisition{} = acquisition} =
+               SantoApi.Providers.acquire(:nhtsa_vpic, request)
+
+      assert {:ok, first} = Registry.record_acquisition(vehicle, acquisition)
+      assert {:ok, second} = Registry.record_acquisition(vehicle, acquisition)
 
       assert first.id == second.id
       assert Repo.aggregate(Artifact, :count) == 1
