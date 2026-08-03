@@ -31,6 +31,75 @@ defmodule SantoApiWeb.UserLive.Settings do
         />
         <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
       </.form>
+
+      <div class="mt-12">
+        <.header>
+          Assistant access
+          <:subtitle>
+            A token lets an assistant you already use — Claude, ChatGPT — read and write
+            the logbooks of cars you maintain, on your behalf. Entries it writes are
+            attributed to you. Changing your email or password revokes every token.
+          </:subtitle>
+        </.header>
+
+        <div :if={@minted} class="mt-4 rounded-box bg-base-200 p-4">
+          <p class="text-sm font-medium">
+            Copy this now — it is not shown again.
+          </p>
+          <input
+            id="minted-token"
+            type="text"
+            readonly
+            value={@minted}
+            class="input input-bordered mt-2 w-full font-mono text-xs"
+          />
+        </div>
+
+        <.form
+          for={@token_form}
+          id="mcp_token_form"
+          phx-submit="mint_token"
+          class="mt-4 flex items-end gap-2"
+        >
+          <div class="grow">
+            <.input field={@token_form[:name]} type="text" label="Name this token" />
+          </div>
+          <.button phx-disable-with="Minting...">Mint token</.button>
+        </.form>
+
+        <table :if={@tokens != []} class="table mt-4">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Created</th>
+              <th>Last used</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={token <- @tokens}>
+              <td>{token.name}</td>
+              <td>{Calendar.strftime(token.inserted_at, "%Y-%m-%d")}</td>
+              <td>
+                {if token.last_used_at,
+                  do: Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC"),
+                  else: "Never used"}
+              </td>
+              <td class="text-right">
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  phx-click="revoke_token"
+                  phx-value-id={token.id}
+                  data-confirm="Revoke this token? Any assistant using it stops working."
+                >
+                  Revoke
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </Layouts.app>
     """
   end
@@ -57,8 +126,19 @@ defmodule SantoApiWeb.UserLive.Settings do
       socket
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
+      |> assign(:minted, nil)
+      |> load_tokens()
 
     {:ok, socket}
+  end
+
+  # `minted` is assigned only by the event that mints, so it survives exactly
+  # one render and no remount can bring it back — the shown-once rule is the
+  # assign's lifetime rather than a flag we have to remember to clear.
+  defp load_tokens(socket) do
+    socket
+    |> assign(:tokens, Accounts.list_mcp_tokens(socket.assigns.current_scope.user))
+    |> assign(:token_form, to_form(%{"name" => ""}, as: :token))
   end
 
   @impl true
@@ -93,5 +173,32 @@ defmodule SantoApiWeb.UserLive.Settings do
       changeset ->
         {:noreply, assign(socket, :email_form, to_form(changeset, action: :insert))}
     end
+  end
+
+  def handle_event("mint_token", %{"token" => %{"name" => name}}, socket) do
+    user = socket.assigns.current_scope.user
+    true = Accounts.sudo_mode?(user)
+
+    case Accounts.mint_mcp_token(user, name) do
+      {:ok, plaintext, _record} ->
+        {:noreply, socket |> assign(:minted, plaintext) |> load_tokens()}
+
+      {:error, :name_required} ->
+        form = to_form(%{"name" => name}, as: :token, errors: [name: {"Name this token", []}])
+        {:noreply, assign(socket, :token_form, form)}
+    end
+  end
+
+  def handle_event("revoke_token", %{"id" => id}, socket) do
+    user = socket.assigns.current_scope.user
+    true = Accounts.sudo_mode?(user)
+
+    {:ok, :revoked} = Accounts.revoke_mcp_token(user, id)
+
+    {:noreply,
+     socket
+     |> assign(:minted, nil)
+     |> load_tokens()
+     |> put_flash(:info, "Token revoked.")}
   end
 end

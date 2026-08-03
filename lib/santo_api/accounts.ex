@@ -306,6 +306,89 @@ defmodule SantoApi.Accounts do
     :ok
   end
 
+  ## MCP tokens — the agent surface's credential (owner_surface §8, §9.1)
+
+  @doc """
+  Mints a token for the agent surface. Returns `{:ok, plaintext, record}`.
+
+  The plaintext is returned exactly once and is not recoverable afterwards —
+  only its digest is stored. A caller that loses it mints another.
+
+  The name is required rather than optional: a settings page listing three
+  unnamed tokens gives a user no way to decide which one to revoke, which is
+  the moment the list exists for.
+  """
+  def mint_mcp_token(%User{} = user, name) when is_binary(name) do
+    case String.trim(name) do
+      "" ->
+        {:error, :name_required}
+
+      trimmed ->
+        {plaintext, token} = UserToken.build_mcp_token(user, trimmed)
+        {:ok, plaintext, Repo.insert!(token)}
+    end
+  end
+
+  @doc """
+  Resolves an MCP token to the caller's scope, stamping the token as used.
+
+  The stamp is a plain `update_all` outside any transaction the caller may
+  hold: recording that a credential was used must not be undone by rolling
+  back the work it authorized. A leaked token that only ever caused failed
+  writes is exactly the one whose use we most want on the record.
+  """
+  def fetch_mcp_scope(token) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_mcp_token_query(token),
+         {%User{} = user, %UserToken{} = record} <- Repo.one(query) do
+      Repo.update_all(from(t in UserToken, where: t.id == ^record.id),
+        set: [last_used_at: DateTime.utc_now(:second)]
+      )
+
+      {:ok, Scope.for_user(user)}
+    else
+      _invalid -> {:error, :invalid_token}
+    end
+  end
+
+  def fetch_mcp_scope(_token), do: {:error, :invalid_token}
+
+  @doc """
+  The user's MCP tokens, newest first, with no credential material in them.
+
+  Selects fields explicitly rather than returning the schema, so that adding a
+  column to `users_tokens` can never quietly start rendering a digest on a
+  settings page.
+  """
+  def list_mcp_tokens(%User{} = user) do
+    Repo.all(
+      from(t in UserToken,
+        where: t.user_id == ^user.id and t.context == "mcp",
+        order_by: [desc: t.inserted_at],
+        select: %{
+          id: t.id,
+          name: t.name,
+          inserted_at: t.inserted_at,
+          last_used_at: t.last_used_at
+        }
+      )
+    )
+  end
+
+  @doc """
+  Revokes one of the caller's own tokens. Scoped by `user_id` so that an id
+  from elsewhere revokes nothing.
+  """
+  def revoke_mcp_token(%User{} = user, token_id) do
+    case Repo.delete_all(
+           from(t in UserToken,
+             where: t.id == ^token_id and t.user_id == ^user.id and t.context == "mcp"
+           )
+         ) do
+      {1, _} -> {:ok, :revoked}
+      {0, _} -> {:error, :not_found}
+    end
+  end
+
   ## Operators
 
   @doc """
