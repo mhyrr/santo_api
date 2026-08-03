@@ -6,6 +6,7 @@ defmodule SantoApiWeb.BenchLive.Index do
 
   use SantoApiWeb, :live_view
 
+  alias SantoApi.Owners
   alias SantoApi.Registry
 
   @impl true
@@ -14,6 +15,7 @@ defmodule SantoApiWeb.BenchLive.Index do
      socket
      |> assign(:input, "")
      |> assign(:error, nil)
+     |> assign(:waiting_claims, length(Owners.list_pending_challenges()))
      |> stream(:vehicles, Registry.list_vehicles())}
   end
 
@@ -28,11 +30,23 @@ defmodule SantoApiWeb.BenchLive.Index do
     end
   end
 
+  defp claims_waiting(0), do: "No claims waiting"
+  defp claims_waiting(1), do: "1 claim waiting"
+  defp claims_waiting(count), do: "#{count} claims waiting"
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash}>
       <.header>Vehicle Registry Bench</.header>
+
+      <!-- Somebody has been waiting since they took that photograph, so the
+           count is on the way in rather than behind a menu. -->
+      <p class="mb-4">
+        <.link navigate={~p"/bench/claims"} class="link">
+          {claims_waiting(@waiting_claims)}
+        </.link>
+      </p>
 
       <form id="ingest-form" phx-submit="ingest">
         <.input

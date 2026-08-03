@@ -138,6 +138,18 @@ defmodule SantoApi.Registry do
     end
   end
 
+  @doc """
+  One artifact by id, for the surfaces that serve its bytes.
+  """
+  def fetch_artifact(id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(id),
+         %Artifact{} = artifact <- Repo.get(Artifact, uuid) do
+      {:ok, artifact}
+    else
+      _absent -> {:error, :not_found}
+    end
+  end
+
   def list_claims(vehicle_id) do
     Repo.all(from(c in Claim, where: c.vehicle_id == ^vehicle_id, order_by: c.predicate))
   end

@@ -80,12 +80,17 @@ defmodule SantoApiWeb.Router do
   scope "/", SantoApiWeb do
     pipe_through [:browser, :require_authenticated_user, :require_operator_user]
 
+    # Artifact bytes live behind the same gate: serving them publicly is an open
+    # rights question, and a possession proof is somebody's VIN plate.
+    get "/bench/artifacts/:id", ArtifactController, :show
+
     live_session :require_operator,
       on_mount: [
         {SantoApiWeb.UserAuth, :require_authenticated},
         {SantoApiWeb.UserAuth, :require_operator}
       ] do
       live "/bench", BenchLive.Index
+      live "/bench/claims", BenchLive.Claims
       live "/bench/vehicles/:id", BenchLive.Show
     end
   end
