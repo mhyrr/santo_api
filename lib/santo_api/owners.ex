@@ -20,7 +20,7 @@ defmodule SantoApi.Owners do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Accounts.User
-  alias SantoApi.Owners.{Challenge, Stewardship}
+  alias SantoApi.Owners.{Challenge, Notifier, Stewardship}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
@@ -355,10 +355,28 @@ defmodule SantoApi.Owners do
     with {:ok, party} <- ensure_party(user, challenge.handle),
          {:ok, artifact} <- store_proof(challenge, party, photo),
          {:ok, private} <- Registry.set_visibility(artifact, :private) do
-      {:ok,
-       challenge
-       |> Ecto.Changeset.change(status: :submitted, proof_artifact_id: private.id)
-       |> Repo.update!()}
+      submitted =
+        challenge
+        |> Ecto.Changeset.change(status: :submitted, proof_artifact_id: private.id)
+        |> Repo.update!()
+
+      announce_submission(submitted, user)
+      {:ok, submitted}
+    end
+  end
+
+  # The incumbent hears about a claim on their car when it is made, not when it
+  # is decided (§4). They are the party with the evidence that settles it.
+  defp announce_submission(%Challenge{} = challenge, user) do
+    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+    Notifier.claim_received(user, vehicle)
+
+    case active_stewardship(vehicle) do
+      %Stewardship{user_id: incumbent_id} when incumbent_id != user.id ->
+        Notifier.counter_claim(Repo.get!(User, incumbent_id), vehicle, challenge.handle)
+
+      _uncontested ->
+        :ok
     end
   end
 
@@ -405,20 +423,25 @@ defmodule SantoApi.Owners do
     vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
     proof = Repo.get!(Artifact, challenge.proof_artifact_id)
 
-    Repo.transaction(fn ->
-      case grant_stewardship(user, vehicle,
-             handle: challenge.handle,
-             proof_artifact: proof,
-             decided_by: operator
-           ) do
-        {:ok, stewardship} ->
-          decide!(challenge, :approved, operator, nil)
-          stewardship
+    granted =
+      Repo.transaction(fn ->
+        case grant_stewardship(user, vehicle,
+               handle: challenge.handle,
+               proof_artifact: proof,
+               decided_by: operator
+             ) do
+          {:ok, stewardship} ->
+            decide!(challenge, :approved, operator, nil)
+            stewardship
 
-        {:error, reason} ->
-          Repo.rollback(reason)
-      end
-    end)
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, _stewardship} <- granted, do: Notifier.claim_approved(user, vehicle)
+
+    granted
   end
 
   @doc """
@@ -429,7 +452,15 @@ defmodule SantoApi.Owners do
       when is_binary(reason) do
     case Repo.get(Challenge, challenge.id) do
       %Challenge{status: status} = current when status in [:issued, :submitted] ->
-        {:ok, decide!(current, :denied, operator, reason)}
+        denied = decide!(current, :denied, operator, reason)
+
+        Notifier.claim_denied(
+          Repo.get!(User, denied.user_id),
+          Repo.get!(Vehicle, denied.vehicle_id),
+          reason
+        )
+
+        {:ok, denied}
 
       %Challenge{} ->
         {:error, :not_pending}
