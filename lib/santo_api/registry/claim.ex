@@ -45,6 +45,13 @@ defmodule SantoApi.Registry.Claim do
     # adjudication row.
     belongs_to :ratified_by_party, Party
     field :ratified_at, :utc_datetime_usec
+
+    # Withdrawal, attributed separately from ratification (owner_surface §8).
+    # A claim can be admitted on one day and retracted on another, and the two
+    # acts have different authors; one pair of columns could not hold both.
+    belongs_to :retracted_by_party, Party
+    field :retracted_at, :utc_datetime_usec
+
     timestamps(type: :utc_datetime_usec)
   end
 
@@ -88,10 +95,19 @@ defmodule SantoApi.Registry.Claim do
     artifact_id = get_field(changeset, :artifact_id)
     evidence_ref = if opts[:distinct_by_artifact], do: artifact_id
 
+    # `:human` unless the caller says otherwise — the agent surface stamps
+    # `:llm_extract` so the ledger records that a model sat between the owner
+    # and the claim (owner_surface §8). Still an option rather than an attr:
+    # method is basis, and a cast basis field lets a caller forge provenance.
+    # It joins the hash, so the same fill-up typed and dictated are two claims
+    # with two different source chains, which is the honest reading.
+    method = Keyword.get(opts, :method, :human)
+
     changeset
     |> put_change(:vehicle_id, vehicle.id)
     |> put_change(:asserted_by_party_id, party.id)
-    |> put_change(:method, :human)
+    |> put_change(:method, method)
+    |> put_change(:method_meta, Keyword.get(opts, :method_meta, %{}))
     |> put_change(:state, :proposed)
     |> put_change(
       :content_hash,
@@ -101,7 +117,7 @@ defmodule SantoApi.Registry.Claim do
         value,
         scope_kind,
         scope_date,
-        :human,
+        method,
         party.name,
         entry_ref,
         evidence_ref

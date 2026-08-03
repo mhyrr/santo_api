@@ -307,7 +307,7 @@ defmodule SantoApi.Registry do
   end
 
   defp require_distinct_artifact(changeset, opts) do
-    if opts[:distinct_by_artifact] and is_nil(Ecto.Changeset.get_field(changeset, :artifact_id)),
+    if opts[:distinct_by_artifact] && is_nil(Ecto.Changeset.get_field(changeset, :artifact_id)),
       do: Ecto.Changeset.add_error(changeset, :artifact_id, "is required for artifact identity"),
       else: changeset
   end
@@ -319,6 +319,76 @@ defmodule SantoApi.Registry do
   """
   def ratify_claim(claim_id, party \\ nil), do: flip_claim(claim_id, :admitted, party)
   def reject_claim(claim_id, party \\ nil), do: flip_claim(claim_id, :rejected, party)
+
+  @doc """
+  Withdraw a claim: the author taking back their own assertion.
+
+  The third correction mode, and the one the owner surface runs on. The other
+  two do not fit a person fixing what they typed:
+
+    * **Adjudication** settles a dispute *between* parties and requires
+      evidence for a supersede outcome. Somebody correcting a typo has no
+      document to produce, and event-scoped claims are refused outright
+      (`:events_do_not_conflict`) because two fill-ups are two occurrences,
+      not a disagreement.
+    * **Rejection** is the gate saying no. Retraction is the author saying
+      never mind, which is a different fact about the same row.
+
+  Only the asserting party may retract, checked here rather than in the caller
+  so the ledger cannot be talked out of it. Stewardship is a separate question
+  and stays in `SantoApi.Owners` — this only establishes that the party
+  withdrawing the assertion is the party that made it.
+
+  The row survives with its `content_hash` and value intact; the state flip is
+  the whole edit. Both projections filter on `:admitted`, so a retracted claim
+  leaves `facts`, `current_state`, and the timeline without any of them
+  needing to learn a new state.
+  """
+  def retract_claim(claim_id, %Party{} = party) do
+    result =
+      Repo.transaction(fn ->
+        case fetch_claim_for_update(claim_id) do
+          {:ok, %Claim{asserted_by_party_id: asserter}} when asserter != party.id ->
+            Repo.rollback(:not_asserting_party)
+
+          {:ok, %Claim{state: state} = claim} when state in [:proposed, :admitted] ->
+            claim =
+              claim
+              |> Ecto.Changeset.change(
+                state: :retracted,
+                retracted_by_party_id: party.id,
+                retracted_at: DateTime.utc_now()
+              )
+              |> Repo.update!()
+
+            {:ok, vehicle} = fetch_vehicle(claim.vehicle_id)
+            refresh_projections(vehicle)
+            claim
+
+          {:ok, %Claim{state: state}} ->
+            Repo.rollback({:not_live, state})
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, claim} -> {:ok, claim}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Casts before querying so a malformed id is `:not_found` rather than an
+  # Ecto.Query cast error surfacing out of a tool call as a 500.
+  defp fetch_claim_for_update(claim_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(claim_id),
+         %Claim{} = claim <- Repo.one(from(c in Claim, where: c.id == ^uuid, lock: "FOR UPDATE")) do
+      {:ok, claim}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
 
   @doc """
   Resolve two live claims into the append-only casebook.

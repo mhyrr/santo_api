@@ -70,7 +70,31 @@ A typed assertion about one vehicle.
   claims ratify only at the operator gate or by corroborating evidence.
   `Vocabulary.scope_kind/1` is where that line is drawn.
 - Claims are append-only and content-hashed (the attestation seam, §8). A
-  correction is a new claim plus an adjudication linking the two — never an edit.
+  correction is never an edit. There are two correction modes, and which one
+  applies is decided by *who is correcting whom* (amended 2026-08-03, Greg,
+  during ticket H):
+  - **Between parties** — a new claim plus an adjudication linking the two (§5).
+    This is a dispute, so it demands evidence and it is an operator's call.
+  - **By the asserting party, over its own claim** — the claim flips to
+    `:retracted` with `retracted_by_party_id` and `retracted_at`, and the
+    corrected assertion is written as a new claim. No adjudication row: there
+    is no disagreement to record, only an author who restated themselves. No
+    evidence requirement: somebody fixing what they typed has no document to
+    produce. `Registry.retract_claim/2` enforces that the retracting party is
+    the asserting party; stewardship is a separate question and stays in
+    `SantoApi.Owners`.
+
+  Adjudication could not have served the second case even if we wanted it to:
+  `validate_claim_pair/2` refuses event-scoped claims outright
+  (`:events_do_not_conflict`, because two fill-ups are two occurrences rather
+  than a disagreement), and every logbook entry is event scope.
+
+  The rule this expresses is that owner-supplied data belongs to the owner:
+  anything a person asserted, they may revise, whatever its scope kind. Claims
+  from santo, a provider feed, or any third party are not theirs to touch, and
+  a conflict with one of those produces both sources (`claim_comparison/1`)
+  rather than an edit. `identity_key` sits outside all of it — the VIN is not
+  a claim, it is what makes the row that car.
 
 **Decided (B):** closed-small predicate vocabulary — only predicates with vendored
 validators exist; adding one is a code change, like santo's compiled data. Revisit
