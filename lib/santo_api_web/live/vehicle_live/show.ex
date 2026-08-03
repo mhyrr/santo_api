@@ -26,6 +26,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:timeline, Owners.timeline(socket.assigns.current_scope, vehicle))
          |> assign(:steward, Owners.steward(vehicle))
          |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))
+         |> assign(:my_handle, my_handle(socket.assigns.current_scope))
          |> assign(:signed_in?, signed_in?(socket.assigns.current_scope))}
 
       {:error, :not_found} ->
@@ -36,6 +37,18 @@ defmodule SantoApiWeb.VehicleLive.Show do
   defp signed_in?(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{}}), do: true
   defp signed_in?(_anonymous), do: false
 
+  # Which entries this caller may correct, matched on the asserting handle
+  # rather than on stewardship alone: a previous steward's entries share
+  # `party_kind: :owner` and are not this owner's to remove.
+  defp my_handle(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{} = user}) do
+    case Owners.party(user) do
+      %SantoApi.Registry.Party{name: name} -> name
+      nil -> nil
+    end
+  end
+
+  defp my_handle(_anonymous), do: nil
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -43,7 +56,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
       <.hero vehicle={@vehicle} steward={@steward} />
       <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
       <.claim_bar :if={not @stewarding?} vehicle={@vehicle} signed_in?={@signed_in?} />
-      <.logbook entries={@timeline} />
+      <.logbook entries={@timeline} my_handle={@my_handle} />
       <.current_spec vehicle={@vehicle} />
       <.record vehicle={@vehicle} />
       <.colophon vehicle={@vehicle} />
@@ -143,6 +156,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   attr :entries, :list, required: true
 
+  attr :my_handle, :string, default: nil
+
   defp logbook(assigns) do
     assigns =
       assign(
@@ -198,6 +213,19 @@ defmodule SantoApiWeb.VehicleLive.Show do
             </span>
           </p>
 
+          <p :if={entry.party == @my_handle} class="mt-2 text-xs">
+            <button
+              type="button"
+              class="underline underline-offset-4 transition-opacity hover:opacity-65"
+              style="color: var(--vs-dim)"
+              phx-click="delete_entry"
+              phx-value-entry_ref={entry.entry_ref}
+              data-confirm="Remove this entry from the car's record?"
+            >
+              Remove
+            </button>
+          </p>
+
           <p :if={entry.evidence != []} class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
             <a
               :for={{evidence, index} <- Enum.with_index(entry.evidence)}
@@ -215,6 +243,25 @@ defmodule SantoApiWeb.VehicleLive.Show do
       </ol>
     </section>
     """
+  end
+
+  @impl true
+  def handle_event("delete_entry", %{"entry_ref" => entry_ref}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Owners.retract_entry(scope, vehicle, entry_ref) do
+      {:ok, _count} ->
+        {:ok, vehicle} = Registry.fetch_vehicle(vehicle.id)
+
+        {:noreply,
+         socket
+         |> assign(:vehicle, vehicle)
+         |> assign(:timeline, Owners.timeline(scope, vehicle))
+         |> put_flash(:info, "Entry removed.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That entry is not yours to remove.")}
+    end
   end
 
   # Owner-logged entries get the lit tick; registry-sourced ones stay grey.
