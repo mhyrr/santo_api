@@ -40,7 +40,11 @@ config :santo_api, :rate_limits,
   # The public page and the VIN resolver. Generous — this is the shareable
   # surface and a forum thread linking one car should never trip it — but the
   # resolver is an enumeration path, so it is not unbounded.
-  public_lookup: [limit: 120, window: :timer.minutes(1)]
+  public_lookup: [limit: 120, window: :timer.minutes(1)],
+  # The agent surface, keyed per token rather than per address: the budget
+  # belongs to the credential, so a runaway assistant spends only its owner's.
+  # Room for a conversation that logs a season of track days in one sitting.
+  mcp: [limit: 120, window: :timer.minutes(1)]
 
 # Artifact storage. Local disk is fine for the operator bench; owner uploads
 # (claiming photos, documents) need object storage before the first real

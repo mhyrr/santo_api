@@ -55,4 +55,5 @@ config :santo_api, :rate_limits,
   auth: [limit: 1_000_000, window: :timer.minutes(15)],
   # Kept small and real: it is keyed per address, and every test uses a fresh
   # one, so exercising it here cannot throttle anything else.
-  login_email: [limit: 3, window: :timer.hours(1)]
+  login_email: [limit: 3, window: :timer.hours(1)],
+  mcp: [limit: 1_000_000, window: :timer.minutes(1)]

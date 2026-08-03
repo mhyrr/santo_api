@@ -95,6 +95,13 @@ defmodule SantoApiWeb.Router do
     end
   end
 
+  # The agent entry surface (owner_surface §8). Deliberately in no pipeline:
+  # it carries a bearer token, not a session, so fetching one would only invite
+  # a cookie to authorize a write. `Plug.Parsers` runs inside the plug, after
+  # the credential is checked, so an unauthorized caller never gets a body
+  # parsed on its behalf.
+  forward "/mcp", SantoApiWeb.MCP.Plug
+
   scope "/api", SantoApiWeb do
     pipe_through :api
 

@@ -670,30 +670,48 @@ tranche 7, the credibility unlock).
   doesn't fit falls into the note residual, never rejected. Creates the
   claims `:proposed` under one `entry_ref` and returns a human-readable echo
   for the assistant to read back.
-- `confirm_entry(entry_ref)` / `discard_entry(entry_ref)` — the §3
-  ratification (or rejection), invoked after the owner says yes in the chat.
-- `attach_link(vehicle, url, label?)` — link curation (§2).
+- `amend_entry(vehicle, entry_ref, claims[])` / `delete_entry(vehicle,
+  entry_ref)` — correction, which replaced the confirm step (decided
+  2026-08-03). Retract-and-relog under the same `entry_ref`; the withdrawn
+  values stay in the ledger.
+- `attach_link(vehicle, url, label?)` — link curation (§2). *Not built in
+  ticket H:* it needs `vehicle_links`, which is TK-016's table.
 - `get_timeline(vehicle)` — read-back, so the assistant can answer "when did
   I last change the oil?" — retrieval is half the reason to keep a log, and
   it makes the assistant a *reader* of the record, not just a scribe.
 
 **Doctrine mapping.** Asserting party: the owner (the token is theirs).
-Method: `:llm_extract`, with the calling agent identified in `method_meta` —
-the ledger records that a model mediated. State: `:proposed` until
-`confirm_entry`; the assistant echoes the parsed entry back ("Logging: 13.1
-gal, $67.45, odometer 41,660 — confirm?") and the owner's yes triggers the
-confirm call. Unconfirmed entries also appear in the composer's pending queue,
-so nothing strands. The confirm step costs one word and is the entire
-difference between "the owner said it" and "a model heard it" — LLMs extract,
-the owner ratifies, code computes. Nothing auto-admits. `GREG'S CALL` if he'd
-rather trust the tool call itself as the owner's assertive act and skip the
-confirm; recommendation is to keep it.
+Method: `:llm_extract`, with the calling surface in `method_meta` — the ledger
+records that a model mediated. State: **admitted on arrival**. The tool call is
+the owner's assertive act (Greg, 2026-08-03), so `log_entry` runs the same
+propose-and-self-ratify transaction the composer does, and the §3 scope split
+still applies — a factory-scope claim from an agent waits at the operator gate
+like any other.
 
-**Auth:** a per-user token minted in account settings (scoped to the user's
-stewardships, revocable) for v1; OAuth when a real client demands it. MCP
-server implementation rides the existing Phoenix app — Tidewave already
-demonstrates MCP-in-Phoenix in this repo's dev stack; whether via a small
-library or hand-rolled streamable HTTP, keep the dependency footprint minimal.
+The confirm step this section originally argued for was cut. Its guarantee was
+weaker than it read: nothing in the protocol makes an assistant stop and ask,
+so `log_entry` followed immediately by `confirm_entry` was always available to
+a badly-behaved client. What replaces it is cheaper and does more — the tool
+description tells the assistant to read the entry back, which catches a
+mishearing in the same breath, and `amend_entry`/`delete_entry` make anything
+that slips through correctable for as long as the car exists.
+
+**Auth:** a per-user token minted in account settings, scoped to the user's
+stewardships *read at call time* — so a revoked stewardship stops a live token
+mid-flight, not at the next mint. Revocable, shown once, last-used stamped.
+No OAuth in v1: the spec makes authorization OPTIONAL, and a static bearer
+token is a deliberate deviation from its SHOULD. The 401 still carries
+`WWW-Authenticate` so a client is told what to present.
+
+**Transport (settled in ticket H):** hand-rolled, `SantoApiWeb.MCP.Plug`, no
+new dependency. `POST /mcp` returns `application/json`; `GET /mcp` returns 405,
+declining to open an SSE stream, which the spec explicitly permits and which
+costs nothing because every tool here answers off a Postgres query. Stateless:
+MCP 2026-07-28 removed sessions and the initialize handshake outright, and
+`Mcp-Session-Id` was only ever a server MAY before that, so storing nothing is
+correct for both that revision and the 2025-06-18 clients shipping today.
+Tidewave, vendored in this project's own `deps/`, serves MCP from Phoenix in
+exactly these two routes.
 
 **Corrections as signal (revrec lesson, unchanged):** when an owner edits a
 proposed entry before confirming, the delta is captured in `method_meta` —
@@ -943,12 +961,44 @@ not deferred to a second walk.
   context authorizes. This was the hole ticket F opened and it is closed; the
   rest of ticket G (flipping visibility after the fact, links, export) is not.
 
+### Decided 2026-08-03, during ticket H
+
+- §8 confirm semantics: **no confirm step.** The tool call is the owner's
+  assertive act, and `log_entry` proposes and self-ratifies in one transaction
+  exactly as the composer does. This doc's recommendation (keep the confirm)
+  was rejected on the ground that entry friction is what kills a logbook, and
+  §0's landscape survey is a list of products that died of it. `confirm_entry`,
+  `discard_entry`, and the composer's pending queue are all struck from the
+  ticket; the assistant is instead told to read the entry back, which catches a
+  mishearing while the owner is still talking and costs no round trip.
+- §8 correction, the safety property that replaces it: **anything an owner put
+  in, they can change later.** The line is the **asserting party, not the scope
+  kind** — an owner-typed `build.paint_code` is as editable as a fill-up,
+  because they typed it. Claims from santo, vPIC, Classiche, or any provider
+  are not editable by an owner at all; a conflict there produces both sources.
+  The VIN is not a claim and cannot change: a different VIN is a different car.
+- Editing and ratification are **orthogonal**. This decides who may revise an
+  assertion; §3's scope split still decides when one enters the record. A
+  corrected factory claim is still proposed and still waits at the operator
+  gate.
+- The mechanism is retract-and-relog under the same `entry_ref`, not
+  adjudication (`evidence_contract.md` §3 carries the amended wording).
+  Greg: "We shouldn't do this adjudication nonsense... I don't know anything
+  the user is actually entering themselves. They should be able to edit as they
+  see fit." Owner-side only — the operator adjudication machinery TK-003 built
+  is untouched.
+- Edge cases in the fold — a corrected observation re-entering `current_state`
+  with a fresh insertion order — are **deferred**: "we should just assume
+  generally that whatever the owner puts in is right."
+- §8 transport: **hand-rolled**, one Plug, no new dependency. MCP 2026-07-28
+  deleted sessions and the initialize handshake, so the state management a
+  library would have absorbed is the state the protocol just removed; Tidewave
+  (vendored in this project's `deps/`) serves MCP from Phoenix the same way.
+  Bearer token, no OAuth in v1 — authorization is OPTIONAL in the spec and
+  §8 already deferred OAuth to "when a real client demands it."
+
 ### Decisions still queued for the walk, in order
 
-3. §8 — MCP confirm semantics: agent-mediated entries land `:proposed` until
-   the owner confirms (one word in the chat). The alternative — trusting the
-   tool call itself as the owner's act — saves a word and lets mishearings
-   into the record silently. Recommendation: keep the confirm.
 5. §9.1 — the deletion posture: credentials delete, party + claims persist.
    The ledger-integrity vs right-to-erasure line, in Greg's words. Not yet
    blocking: nothing deletes an account today.
