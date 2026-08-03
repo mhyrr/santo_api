@@ -159,6 +159,26 @@ defmodule SantoApiWeb.VehicleLiveTest do
     assert Enum.any?(Registry.list_claims(vehicle.id), &(&1.id == claim.id))
   end
 
+  test "the steward sees their own private entry, marked private", %{conn: conn} do
+    vehicle = car()
+    user = SantoApi.AccountsFixtures.user_fixture()
+    {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle, handle: "mhyrr")
+
+    claim =
+      admit(vehicle, %{
+        predicate: "event.note",
+        value: %{"text" => "kept in the second garage"},
+        scope_date: ~D[2025-06-01]
+      })
+
+    {:ok, _hidden} = Registry.set_visibility(claim, :private)
+
+    {:ok, _live, html} = live(log_in_user(conn, user), ~p"/v/#{vehicle.public_id}")
+
+    assert html =~ "kept in the second garage"
+    assert html =~ "Not on the public page"
+  end
+
   test "a conflicted fact says sources disagree instead of picking quietly", %{conn: conn} do
     vehicle = car()
     other_source = Registry.ensure_party("Kardex copy", :registry)

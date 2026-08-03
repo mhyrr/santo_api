@@ -342,6 +342,36 @@ defmodule SantoApi.OwnersEntryTest do
     end
   end
 
+  describe "timeline/2 — the owner's own view" do
+    test "the steward sees the entry they hid; nobody else does", ctx do
+      {:ok, _entry} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, Map.put(fill_up(), :visibility, :private))
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      assert entry.visibility == :private
+
+      assert Owners.timeline(Scope.for_user(user_fixture()), ctx.vehicle) == []
+      assert Owners.timeline(nil, ctx.vehicle) == []
+    end
+
+    test "a revoked steward loses the private view but keeps the public one", ctx do
+      {:ok, _private} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, Map.put(fill_up(), :visibility, :private))
+
+      {:ok, _public} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, %{
+          date: ~D[2026-08-03],
+          claims: [%{predicate: "event.note", value: %{"text" => "washed it"}}]
+        })
+
+      stewardship = Owners.stewardship(ctx.scope, ctx.vehicle)
+      {:ok, _revoked} = Owners.revoke_stewardship(stewardship, "sold the car")
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      assert entry.visibility == :public
+    end
+  end
+
   describe "last_entry_defaults/2" do
     test "is empty for a car with no entries", ctx do
       assert Owners.last_entry_defaults(ctx.scope, ctx.vehicle) == %{}

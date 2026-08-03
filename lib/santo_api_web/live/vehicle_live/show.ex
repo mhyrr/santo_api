@@ -23,7 +23,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
          socket
          |> assign(:page_title, Presenter.title(vehicle))
          |> assign(:vehicle, vehicle)
-         |> assign(:timeline, Registry.timeline(vehicle.id))
+         |> assign(:timeline, Owners.timeline(socket.assigns.current_scope, vehicle))
          |> assign(:steward, Owners.steward(vehicle))
          |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))}
 
@@ -156,6 +156,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
           <p class="mt-2 text-xs" style="color: var(--vs-dim)">
             Recorded by {entry.party}
+            <!-- Only the steward is ever handed a private entry, so this line
+                 marks their own view rather than announcing a hole to a visitor. -->
+            <span :if={entry.visibility == :private} class="vs-eyebrow ml-2">
+              Not on the public page
+            </span>
           </p>
         </li>
       </ol>

@@ -607,14 +607,22 @@ defmodule SantoApi.Registry do
   Public by construction: admitted only, because proposed is not the record
   (contract §3), and `visibility: :public` only. A private entry stays in the
   ledger and out of this list.
+
+  `include_private: true` is the owner's own view (owner_surface §6) — a private
+  entry has to be visible to the person who wrote it or the toggle is a trap.
+  Who may ask for it is `SantoApi.Owners.timeline/2`'s decision, not this
+  function's: the ledger reads, the owner context authorizes.
   """
-  def timeline(vehicle_id) do
+  def timeline(vehicle_id, opts \\ []) do
+    include_private = Keyword.get(opts, :include_private, false)
+
     Repo.all(
       from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
         where:
-          c.vehicle_id == ^vehicle_id and c.state == :admitted and c.visibility == :public and
+          c.vehicle_id == ^vehicle_id and c.state == :admitted and
+            (c.visibility == :public or ^include_private) and
             c.scope_kind in [:event, :observed],
         order_by: [desc: c.scope_date, desc: c.inserted_at],
         select: %{
@@ -625,6 +633,7 @@ defmodule SantoApi.Registry do
           entry_ref: c.entry_ref,
           artifact_id: c.artifact_id,
           method: c.method,
+          visibility: c.visibility,
           party: p.name,
           party_kind: p.kind,
           inserted_at: c.inserted_at
@@ -643,9 +652,16 @@ defmodule SantoApi.Registry do
       party: first.party,
       party_kind: first.party_kind,
       method: first.method,
+      visibility: entry_visibility(claims),
       recorded_at: Enum.max_by(claims, & &1.inserted_at, DateTime).inserted_at,
       claims: claims
     }
+  end
+
+  # One hidden part hides the entry. Showing the rest of it would present a
+  # fill-up whose odometer the owner deliberately withheld as a whole fill-up.
+  defp entry_visibility(claims) do
+    if Enum.any?(claims, &(&1.visibility == :private)), do: :private, else: :public
   end
 
   @doc """

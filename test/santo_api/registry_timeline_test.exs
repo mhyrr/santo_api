@@ -124,6 +124,61 @@ defmodule SantoApi.RegistryTimelineTest do
     assert Enum.any?(Registry.list_claims(vehicle.id), &(&1.id == claim.id))
   end
 
+  test "a private entry is readable when the caller is allowed to see it, and says so" do
+    {:ok, vehicle} = Registry.ingest(@nine_three)
+
+    public =
+      admit(vehicle, %{
+        predicate: "event.note",
+        value: %{"text" => "washed it"},
+        scope_date: ~D[2026-01-02]
+      })
+
+    private =
+      admit(vehicle, %{
+        predicate: "event.note",
+        value: %{"text" => "where I keep it"},
+        scope_date: ~D[2026-01-01]
+      })
+
+    {:ok, _hidden} = Registry.set_visibility(private, :private)
+
+    assert [shown] = Registry.timeline(vehicle.id)
+    assert shown.visibility == :public
+
+    assert [newest, oldest] = Registry.timeline(vehicle.id, include_private: true)
+    assert newest.visibility == :public
+    assert hd(newest.claims).claim_id == public.id
+    assert oldest.visibility == :private
+    assert hd(oldest.claims).claim_id == private.id
+  end
+
+  test "an entry is private if any part of it is — a half-shown entry would mislead" do
+    {:ok, vehicle} = Registry.ingest(@nine_three)
+    entry_ref = Registry.new_entry_ref()
+
+    admit(vehicle, %{
+      predicate: "event.fuel",
+      value: fuel("13.1"),
+      scope_date: ~D[2026-03-01],
+      entry_ref: entry_ref
+    })
+
+    mileage =
+      admit(vehicle, %{
+        predicate: "observation.mileage",
+        value: 51_200,
+        scope_date: ~D[2026-03-01],
+        entry_ref: entry_ref
+      })
+
+    {:ok, _hidden} = Registry.set_visibility(mileage, :private)
+
+    assert [entry] = Registry.timeline(vehicle.id, include_private: true)
+    assert entry.visibility == :private
+    assert length(entry.claims) == 2
+  end
+
   test "factory claims are the record, not the logbook — they never appear" do
     {:ok, vehicle} = Registry.ingest(@nine_three)
     admit(vehicle, %{predicate: "build.variant", value: "coupe"})

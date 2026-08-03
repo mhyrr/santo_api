@@ -207,6 +207,18 @@ defmodule SantoApi.Owners do
   defp user_id(%User{id: id}), do: id
   defp user_id(nil), do: nil
 
+  @doc """
+  The logbook as this caller may read it (owner_surface §6).
+
+  The steward of a car sees their private entries; everybody else sees the
+  public page. This is the read half of the privacy toggle, and it has to exist
+  wherever the toggle does — an entry only its author can hide and nobody at all
+  can see is a hole, not a feature.
+  """
+  def timeline(scope, %Vehicle{} = vehicle) do
+    Registry.timeline(vehicle.id, include_private: stewarding?(scope, vehicle))
+  end
+
   ## Entries — the composer's write path
 
   @doc """
