@@ -25,12 +25,16 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:vehicle, vehicle)
          |> assign(:timeline, Owners.timeline(socket.assigns.current_scope, vehicle))
          |> assign(:steward, Owners.steward(vehicle))
-         |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))}
+         |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))
+         |> assign(:signed_in?, signed_in?(socket.assigns.current_scope))}
 
       {:error, :not_found} ->
         raise SantoApiWeb.VehicleNotFound
     end
   end
+
+  defp signed_in?(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{}}), do: true
+  defp signed_in?(_anonymous), do: false
 
   @impl true
   def render(assigns) do
@@ -38,6 +42,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
     <article>
       <.hero vehicle={@vehicle} steward={@steward} />
       <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
+      <.claim_bar :if={not @stewarding?} vehicle={@vehicle} signed_in?={@signed_in?} />
       <.logbook entries={@timeline} />
       <.current_spec vehicle={@vehicle} />
       <.record vehicle={@vehicle} />
@@ -46,8 +51,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
     """
   end
 
-  # The steward's own two doors, and nobody else's. Not a call to action for a
-  # visitor — claiming is ticket E and has nothing to offer them yet.
+  # The steward's own two doors, and nobody else's.
   attr :vehicle, :map, required: true
 
   defp composer_bar(assigns) do
@@ -55,6 +59,28 @@ defmodule SantoApiWeb.VehicleLive.Show do
     <div class="mx-auto -mt-6 mb-12 flex max-w-3xl flex-wrap gap-3 px-5 sm:px-8">
       <.link navigate={~p"/v/#{@vehicle.public_id}/log"} class="vs-commit">Log an entry</.link>
       <.link navigate={~p"/v/#{@vehicle.public_id}/spec"} class="vs-quiet">Edit the spec</.link>
+    </div>
+    """
+  end
+
+  # The seeded-but-incomplete page is the bait (§4): the one thing an owner who
+  # stumbles onto their own car should be able to do is say so. It stays quiet
+  # on a car somebody else maintains — the claim page explains that a second
+  # claim goes to an operator, and the invitation should not imply otherwise.
+  attr :vehicle, :map, required: true
+  attr :signed_in?, :boolean, required: true
+
+  defp claim_bar(assigns) do
+    ~H"""
+    <div class="mx-auto -mt-6 mb-12 flex max-w-3xl flex-wrap items-baseline gap-3 px-5 sm:px-8">
+      <.link :if={@signed_in?} navigate={~p"/v/#{@vehicle.public_id}/claim"} class="vs-quiet">
+        This is my car
+      </.link>
+
+      <p :if={not @signed_in?} class="text-sm" style="color: var(--vs-dim)">
+        Is this your car? <.link navigate={~p"/users/log-in"} class="underline">Sign in</.link>
+        and prove it with a photo of the VIN plate.
+      </p>
     </div>
     """
   end

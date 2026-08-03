@@ -68,6 +68,7 @@ defmodule SantoApiWeb.Router do
     live_session :owner,
       layout: {SantoApiWeb.Layouts, :public},
       on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do
+      live "/v/:public_id/claim", OwnerLive.Claim
       live "/v/:public_id/log", OwnerLive.Composer
       live "/v/:public_id/spec", OwnerLive.Spec
     end

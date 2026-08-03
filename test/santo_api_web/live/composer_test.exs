@@ -319,9 +319,9 @@ defmodule SantoApiWeb.ComposerTest do
     end
 
     test "offers a visitor no composer", ctx do
-      {:ok, _view, html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      {:ok, view, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
 
-      refute html =~ "/log"
+      refute has_element?(view, "a[href='/v/#{ctx.vehicle.public_id}/log']")
     end
 
     test "lights the owner's own entries and leaves the registry's grey", ctx do
