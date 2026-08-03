@@ -606,10 +606,11 @@ defmodule SantoApi.Owners do
   defp write_entry(vehicle, party, date, claim_attrs, attrs) do
     entry_ref = Registry.new_entry_ref()
     visibility = Map.get(attrs, :visibility, :public)
+    opts = basis_opts(attrs)
 
     result =
       Repo.transaction(fn ->
-        claims = Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1))
+        claims = Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
 
         artifacts =
           Enum.map(Map.get(attrs, :photos, []), &write_photo!(vehicle, party, entry_ref, &1))
@@ -627,7 +628,18 @@ defmodule SantoApi.Owners do
     end
   end
 
-  defp write_claim!(vehicle, party, date, entry_ref, %{predicate: predicate, value: value}) do
+  # Basis travels as options, never as attrs: `method` is stamped and hashed,
+  # and a cast basis field lets a caller forge provenance. The composer sends
+  # nothing and gets `:human`; the agent surface sends `:llm_extract` plus the
+  # calling client, so the ledger records that a model mediated the entry.
+  defp basis_opts(attrs) do
+    case Map.get(attrs, :method) do
+      nil -> []
+      method -> [method: method, method_meta: Map.get(attrs, :method_meta, %{})]
+    end
+  end
+
+  defp write_claim!(vehicle, party, date, entry_ref, %{predicate: predicate, value: value}, opts) do
     attrs = %{
       "predicate" => predicate,
       "value" => value,
@@ -635,7 +647,7 @@ defmodule SantoApi.Owners do
       "entry_ref" => entry_ref
     }
 
-    case Registry.propose_claim(vehicle, party, attrs) do
+    case Registry.propose_claim(vehicle, party, attrs, opts) do
       {:ok, claim} ->
         maybe_self_ratify!(claim, party)
 
@@ -671,6 +683,19 @@ defmodule SantoApi.Owners do
 
       %Claim{state: :admitted} = claim ->
         claim
+
+      # The author changing their mind back. `content_hash` is still held by
+      # the row they withdrew, so re-asserting has to revive it or collide with
+      # it — and reviving is the honest reading: this is the same assertion by
+      # the same party, and refusing would mean an owner could undo a
+      # correction exactly once. Guarded on the asserting party, because the
+      # act being undone is their own withdrawal and nobody else's.
+      %Claim{state: :retracted, asserted_by_party_id: asserter} = claim
+      when asserter == party.id ->
+        claim
+        |> Ecto.Changeset.change(state: :proposed, retracted_by_party_id: nil, retracted_at: nil)
+        |> Repo.update!()
+        |> maybe_self_ratify!(party)
 
       # Rejected or superseded: this exact assertion has already been ruled on.
       # Quietly resurrecting it would let the composer undo an adjudication.
@@ -718,6 +743,129 @@ defmodule SantoApi.Owners do
   defp apply_visibility!(row, :private) do
     case Registry.set_visibility(row, :private) do
       {:ok, updated} -> updated
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  ## Corrections — the owner's own data, revised (owner_surface §8)
+
+  @doc """
+  Revise an entry the caller logged.
+
+  The line is the **asserting party**, not the scope kind (Greg, 2026-08-03):
+  a claim is yours to change because you made it, not because of what it is
+  about. An owner-typed `build.paint_code` is as editable as a fill-up;
+  a santo decode fact or a vPIC assertion on the same car is not editable at
+  all, and a disagreement with one of those produces both sources rather than
+  an edit. `identity_key` sits outside this entirely — the VIN is not a claim,
+  it is what makes the row that car.
+
+  Only the claims that actually changed are touched. An amendment that churned
+  every claim would attribute a fresh assertion to the owner for facts they
+  never restated, and would burn a retraction on a row that was never wrong.
+
+  Editing and ratification stay orthogonal. This decides who may revise an
+  assertion; `compose_entry/3`'s scope split still decides when one enters the
+  record. A corrected factory claim is still proposed, and still waits.
+  """
+  def amend_entry(scope, %Vehicle{} = vehicle, entry_ref, attrs) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         {:ok, claim_attrs} <- entry_claims(attrs),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, existing} <- fetch_own_entry(vehicle, party, entry_ref) do
+      date = amend_date(attrs, existing)
+      opts = basis_opts(attrs)
+
+      result =
+        Repo.transaction(fn ->
+          keep = Enum.map(claim_attrs, &{&1.predicate, &1.value})
+
+          existing
+          |> Enum.reject(&({&1.predicate, &1.value} in keep))
+          |> Enum.each(&retract!(&1, party))
+
+          claims =
+            Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
+
+          %{entry_ref: entry_ref, claims: claims}
+        end)
+
+      case result do
+        {:ok, entry} -> {:ok, entry}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Withdraw an entry the caller logged, whole. Returns how many claims went.
+
+  Deleting a logbook line is retracting the claims it was made of — the rows
+  stay, their state flips, and the entry leaves every projection because both
+  of them read `:admitted` only.
+  """
+  def retract_entry(scope, %Vehicle{} = vehicle, entry_ref) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, existing} <- fetch_own_entry(vehicle, party, entry_ref) do
+      Repo.transaction(fn ->
+        Enum.each(existing, &retract!(&1, party))
+        length(existing)
+      end)
+    end
+  end
+
+  @doc """
+  Withdraw one claim the caller asserted on a car they steward.
+
+  The single-claim door behind both paths above, exposed because the agent
+  surface hands out claim ids and an assistant asked to remove one line of a
+  three-line entry should not have to restate the other two.
+  """
+  def retract_claim(scope, %Vehicle{} = vehicle, claim_id) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle) do
+      party = party(%User{id: stewardship.user_id})
+      Registry.retract_claim(claim_id, party)
+    end
+  end
+
+  # The caller's own live claims of one entry. Somebody else's claims sharing
+  # the ref — an operator's note on the same entry, say — are invisible here
+  # rather than refused, so an owner amending their fill-up never discovers
+  # they cannot because a third party wrote alongside them.
+  defp fetch_own_entry(vehicle, party, entry_ref) do
+    case Ecto.UUID.cast(entry_ref) do
+      {:ok, ref} ->
+        Repo.all(
+          from(c in Claim,
+            where:
+              c.vehicle_id == ^vehicle.id and c.entry_ref == ^ref and
+                c.asserted_by_party_id == ^party.id and c.state in [:proposed, :admitted]
+          )
+        )
+        |> case do
+          [] -> {:error, :entry_not_found}
+          claims -> {:ok, claims}
+        end
+
+      :error ->
+        {:error, :entry_not_found}
+    end
+  end
+
+  # An amendment keeps the entry's date unless the owner supplies a new one.
+  # They are correcting what the car read that day, not asserting something
+  # new about today.
+  defp amend_date(attrs, [%Claim{scope_date: existing} | _rest]) do
+    case entry_date(attrs) do
+      {:ok, date} -> date
+      {:error, _missing} -> existing
+    end
+  end
+
+  defp retract!(%Claim{} = claim, party) do
+    case Registry.retract_claim(claim.id, party) do
+      {:ok, retracted} -> retracted
       {:error, reason} -> Repo.rollback(reason)
     end
   end
