@@ -447,6 +447,36 @@ Carrera GT's VIN plate at a show and claims a $4.5M car:
   cars qualify) get a mandatory closer look at step 4 regardless of vision
   confidence.
 
+**What shipped (ticket E, 2026-08-03).** Steps 1–3 and 5 as written. Step 4 is
+the operator queue at `/bench/claims` **without** the vision pre-check: its
+output was always a proposal an operator approves, auto-approve was always a
+later flip, and at a few claims a week the operator reads the photograph either
+way — so the model call would buy nothing today, and TK-004 is where extraction
+gets designed properly. The high-value flag came out with it: a mandatory look
+is what every claim already gets. Proof photos render at `/bench` only, through
+an operator-gated artifact route; serving artifact images publicly is still
+blocked on a rights call.
+
+**What ticket E settled that this section did not.**
+
+- **The handle is chosen when the code is issued and minted when the photo
+  arrives** — not at the grant. The §9.1 rule was "no party exists until there
+  is something to attribute," and a proof photo is something to attribute:
+  `create_upload_artifact/1` stamps a source party, and stamping Vin Santo on an
+  owner's photograph would say the registry supplied it. Validating the handle
+  at issue also keeps an operator from finding out at approval that the name is
+  taken.
+- **Expiry governs the window between the code and the photograph only.** Once
+  proof is in, a slow operator cannot cost the claimant their claim. A code that
+  lapses before a photo is retired and replaced.
+- **A counter-claim issues a code and refuses at approval.** Refusing the second
+  claimant up front leaves them nothing to escalate; refusing at approval leaves
+  the claim in the queue with the incumbent intact — which is the escalation
+  this section asks for. The incumbent is emailed when the claim is *made*, not
+  when it is decided: they hold the evidence that settles it. Resolving the
+  dispute is still ticket K's queue; today the operator revokes the incumbent by
+  hand and then approves.
+
 **What an unclaimed page shows:** identity, facts with tier display, the
 registry-sourced timeline (sale events, service events from documents), links
 we hold, and the claim CTA — "Is this your car?". The seeded-but-incomplete
@@ -899,6 +929,19 @@ not deferred to a second walk.
   means no party exists until there is something to attribute — no placeholder
   ever gets hashed. Case and surrounding space normalize once, on the way in,
   because the normalized form is what becomes permanent.
+
+### Decided 2026-08-03, during ticket E
+
+- §4 step 4: **no vision pre-check in v1**, and no value/notability threshold —
+  every claim gets a person, which is what the threshold was for. The model's
+  read becomes a proposal on the queue screen when volume argues for it.
+- §9.1 handles, refined: **chosen at issue, minted at proof.** The grant is no
+  longer the first thing there is to attribute; the possession photograph is.
+- §6 the owner's own view: a private entry is visible to the steward of the car
+  and marked *not on the public page*. `Registry.timeline/2` takes the option
+  and `Owners.timeline/2` decides who may pass it — the ledger reads, the owner
+  context authorizes. This was the hole ticket F opened and it is closed; the
+  rest of ticket G (flipping visibility after the fact, links, export) is not.
 
 ### Decisions still queued for the walk, in order
 
