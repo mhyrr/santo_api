@@ -20,7 +20,7 @@ defmodule SantoApi.Owners do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Accounts.User
-  alias SantoApi.Owners.Stewardship
+  alias SantoApi.Owners.{Challenge, Stewardship}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
@@ -199,6 +199,297 @@ defmodule SantoApi.Owners do
 
   defp active_stewardship(%Vehicle{} = vehicle) do
     Repo.one(from(s in Stewardship, where: s.vehicle_id == ^vehicle.id and s.status == :active))
+  end
+
+  ## Claiming — proof of possession (owner_surface §4)
+
+  @challenge_ttl_hours 72
+
+  @doc """
+  Start a claim: mint the code the claimant will write on paper and photograph
+  next to the VIN plate (§4 steps 1–2).
+
+  The code is what makes the photo proof. It did not exist when a stranger
+  photographed the car at a show, so satisfying it means going back to the
+  physical car — which for a high-value car is a problem of physical access,
+  not of this flow.
+
+  One live challenge per person per car: asking again hands back the code
+  already issued rather than inventing a second one to compare against. A code
+  that ran out of time is retired and replaced.
+
+  A car somebody else maintains still issues — §4 escalates a second claimant to
+  an operator, and refusing here would leave them nothing to escalate.
+
+  ## Options
+
+    * `:handle` — the permanent public handle, required for a claimant who has
+      no ledger identity yet. Settled here rather than at the operator's desk,
+      and immutable from the moment a claim is attributed to it (§9.1).
+  """
+  def issue_challenge(%User{} = user, %Vehicle{} = vehicle, opts \\ []) do
+    with :ok <- refuse_own_car(user, vehicle) do
+      case live_challenge(user, vehicle) do
+        %Challenge{} = live ->
+          {:ok, live}
+
+        nil ->
+          with {:ok, handle} <- settle_handle(user, opts[:handle]) do
+            {:ok,
+             Repo.insert!(%Challenge{
+               user_id: user.id,
+               vehicle_id: vehicle.id,
+               handle: handle,
+               code: Challenge.mint_code(),
+               status: :issued,
+               expires_at: DateTime.add(DateTime.utc_now(), @challenge_ttl_hours, :hour)
+             })}
+          end
+      end
+    end
+  end
+
+  defp refuse_own_car(user, vehicle) do
+    case Repo.get_by(Stewardship, user_id: user.id, vehicle_id: vehicle.id, status: :active) do
+      %Stewardship{} -> {:error, :already_stewarded}
+      nil -> :ok
+    end
+  end
+
+  # A code past its window is retired on the way past, which is what keeps the
+  # one-live-challenge index true without a job sweeping the table.
+  defp live_challenge(user, vehicle) do
+    Repo.one(
+      from(c in Challenge,
+        where:
+          c.user_id == ^user.id and c.vehicle_id == ^vehicle.id and
+            c.status in [:issued, :submitted]
+      )
+    )
+    |> case do
+      %Challenge{status: :issued} = challenge ->
+        if expired?(challenge), do: retire(challenge) && nil, else: challenge
+
+      other ->
+        other
+    end
+  end
+
+  defp retire(%Challenge{} = challenge) do
+    challenge |> Ecto.Changeset.change(status: :expired) |> Repo.update!()
+  end
+
+  # Expiry governs the window between issuing a code and photographing it.
+  # Once a photo is in, a slow operator must not cost the claimant their claim.
+  defp expired?(%Challenge{expires_at: expires_at}) do
+    DateTime.compare(DateTime.utc_now(), expires_at) == :gt
+  end
+
+  # The handle has to be grantable before a code goes out, or an operator
+  # discovers at approval time that the name is taken and has nothing to do
+  # about it.
+  defp settle_handle(user, given) do
+    case party(user) do
+      %Party{name: name} ->
+        if is_nil(given) or normalize_handle(given) == name,
+          do: {:ok, name},
+          else: {:error, :handle_immutable}
+
+      nil ->
+        validate_available(given)
+    end
+  end
+
+  defp validate_available(nil), do: {:error, :handle_required}
+
+  defp validate_available(given) when is_binary(given) do
+    changeset = Party.handle_changeset(given)
+
+    cond do
+      not changeset.valid? -> {:error, changeset}
+      handle_taken?(Ecto.Changeset.get_field(changeset, :name)) -> {:error, :handle_taken}
+      true -> {:ok, Ecto.Changeset.get_field(changeset, :name)}
+    end
+  end
+
+  # Taken means held by a party or spoken for by a live claim. The second half
+  # matters because two claimants reserving one name would both pass here and
+  # the loser would find out at the operator's desk.
+  defp handle_taken?(name) do
+    Repo.exists?(from(p in Party, where: p.name == ^name and p.kind == :owner)) or
+      Repo.exists?(
+        from(c in Challenge, where: c.handle == ^name and c.status in [:issued, :submitted])
+      )
+  end
+
+  @doc """
+  Attach the possession photo and hand the claim to an operator (§4 step 3).
+
+  The photo is stored as the claimant's own artifact, not ours: the registry did
+  not supply it and must not be recorded as having done so. That is what mints
+  the claimant's party — the handle they chose at issue becomes permanent here,
+  at the first moment there is something to attribute it to.
+
+  Private on arrival. A photo of a VIN plate is the owner's, serving artifact
+  images publicly is an open rights question, and a proof photo is read at the
+  bench and nowhere else.
+  """
+  def submit_proof(%Challenge{} = challenge, %{path: _path, filename: _filename} = photo) do
+    case Repo.get(Challenge, challenge.id) do
+      %Challenge{status: status} = current when status in [:issued, :submitted] ->
+        if status == :issued and expired?(current),
+          do: {:error, :expired},
+          else: attach_proof(current, photo)
+
+      %Challenge{} ->
+        {:error, :not_pending}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp attach_proof(%Challenge{} = challenge, photo) do
+    user = Repo.get!(User, challenge.user_id)
+
+    with {:ok, party} <- ensure_party(user, challenge.handle),
+         {:ok, artifact} <- store_proof(challenge, party, photo),
+         {:ok, private} <- Registry.set_visibility(artifact, :private) do
+      {:ok,
+       challenge
+       |> Ecto.Changeset.change(status: :submitted, proof_artifact_id: private.id)
+       |> Repo.update!()}
+    end
+  end
+
+  defp store_proof(challenge, party, photo) do
+    Registry.create_upload_artifact(%{
+      vehicle_id: challenge.vehicle_id,
+      path: photo.path,
+      filename: photo.filename,
+      mime: photo[:mime],
+      kind: :photo,
+      source_party: party,
+      metadata: %{"purpose" => "possession_proof", "challenge_code" => challenge.code}
+    })
+  end
+
+  @doc """
+  The operator's decision, and the only door to a stewardship (§4 steps 4–5).
+
+  An approval is one transaction: the grant, with the proof and the deciding
+  operator attached, and the claim's own status. A car somebody already
+  maintains refuses — `{:error, :already_stewarded}` leaves the claim in the
+  queue, which is the escalation §4 asks for: the incumbent keeps the car until
+  a person adjudicates the dispute.
+  """
+  def approve_challenge(%Challenge{} = challenge, %User{} = operator) do
+    case Repo.get(Challenge, challenge.id) do
+      %Challenge{status: :submitted, proof_artifact_id: artifact_id} = current
+      when not is_nil(artifact_id) ->
+        grant_from(current, operator)
+
+      %Challenge{status: :issued} ->
+        {:error, :no_proof}
+
+      %Challenge{} ->
+        {:error, :not_pending}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp grant_from(%Challenge{} = challenge, operator) do
+    user = Repo.get!(User, challenge.user_id)
+    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+    proof = Repo.get!(Artifact, challenge.proof_artifact_id)
+
+    Repo.transaction(fn ->
+      case grant_stewardship(user, vehicle,
+             handle: challenge.handle,
+             proof_artifact: proof,
+             decided_by: operator
+           ) do
+        {:ok, stewardship} ->
+          decide!(challenge, :approved, operator, nil)
+          stewardship
+
+        {:error, reason} ->
+          Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  Turn a claim down, with the reason the claimant is owed. Grants nothing and
+  writes nothing; the claimant may photograph the car again with a fresh code.
+  """
+  def deny_challenge(%Challenge{} = challenge, %User{} = operator, reason)
+      when is_binary(reason) do
+    case Repo.get(Challenge, challenge.id) do
+      %Challenge{status: status} = current when status in [:issued, :submitted] ->
+        {:ok, decide!(current, :denied, operator, reason)}
+
+      %Challenge{} ->
+        {:error, :not_pending}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  defp decide!(challenge, status, operator, reason) do
+    challenge
+    |> Ecto.Changeset.change(
+      status: status,
+      reason: reason,
+      decided_by_user_id: operator.id,
+      decided_at: DateTime.utc_now()
+    )
+    |> Repo.update!()
+  end
+
+  @doc """
+  Where this person stands on this car — the latest claim they made, whatever
+  became of it, or `nil` if they never made one.
+  """
+  def challenge(%User{} = user, %Vehicle{} = vehicle) do
+    Repo.one(
+      from(c in Challenge,
+        where: c.user_id == ^user.id and c.vehicle_id == ^vehicle.id,
+        order_by: [desc: c.inserted_at],
+        limit: 1
+      )
+    )
+  end
+
+  @doc "Whether somebody else already maintains the car this claim is for."
+  def contested?(%Challenge{} = challenge) do
+    Repo.exists?(
+      from(s in Stewardship,
+        where:
+          s.vehicle_id == ^challenge.vehicle_id and s.status == :active and
+            s.user_id != ^challenge.user_id
+      )
+    )
+  end
+
+  @doc """
+  The claiming queue (§9.2): claims with a photo, waiting on a person. Oldest
+  first — somebody has been waiting since they took that picture.
+
+  Nothing auto-approves. At this volume an operator is looking at every photo,
+  which is also how we learn what the abuse actually looks like.
+  """
+  def list_pending_challenges do
+    Repo.all(
+      from(c in Challenge,
+        where: c.status == :submitted,
+        order_by: [asc: c.inserted_at],
+        preload: [:user, :vehicle, :proof_artifact]
+      )
+    )
   end
 
   defp artifact_id(%Artifact{id: id}), do: id
