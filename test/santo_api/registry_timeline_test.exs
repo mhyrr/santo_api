@@ -198,4 +198,40 @@ defmodule SantoApi.RegistryTimelineTest do
     assert [entry] = Registry.timeline(vehicle.id)
     assert entry.party == "Vin Santo"
   end
+
+  test "an entry carries unique public source links from its joined artifacts" do
+    {:ok, vehicle} = Registry.ingest(@nine_three)
+    party = Registry.ensure_party("RM Auctions", :vendor)
+    entry_ref = Registry.new_entry_ref()
+    url = "https://example.com/auction/one-car"
+
+    {:ok, artifact} =
+      Registry.create_reference_artifact(vehicle, party, %{
+        source_url: url,
+        metadata: %{"rights_profile" => "public-pointer-only-v1"}
+      })
+
+    for attrs <- [
+          %{
+            predicate: "event.sale",
+            value: %{"venue" => "RM Auctions", "price" => 352_000, "currency" => "USD"},
+            scope_date: ~D[2014-01-17],
+            artifact_id: artifact.id,
+            entry_ref: entry_ref
+          },
+          %{
+            predicate: "observation.mileage",
+            value: 41_000,
+            scope_date: ~D[2014-01-17],
+            artifact_id: artifact.id,
+            entry_ref: entry_ref
+          }
+        ] do
+      {:ok, claim} = Registry.propose_claim(vehicle, party, attrs)
+      {:ok, _admitted} = Registry.ratify_claim(claim.id)
+    end
+
+    assert [entry] = Registry.timeline(vehicle.id)
+    assert entry.evidence == [%{url: url, source: "RM Auctions"}]
+  end
 end

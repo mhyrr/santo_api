@@ -114,11 +114,15 @@ defmodule SantoApi.FreeAcquisition.Cohort do
          "id" => id,
          "cohort" => cohort,
          "display_name" => name,
+         "marque" => marque,
+         "model" => %{"code" => model_code, "label" => model_label},
          "model_year" => year,
          "identity" => identity,
          "transactions" => transactions
        })
        when is_binary(id) and id != "" and cohort in @cohorts and is_binary(name) and
+              is_binary(marque) and marque != "" and is_binary(model_code) and
+              model_code != "" and is_binary(model_label) and model_label != "" and
               is_integer(year) and is_list(transactions) and transactions != [] do
     with :ok <- validate_identity(identity),
          :ok <- validate_transactions(transactions) do

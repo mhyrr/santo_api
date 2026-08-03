@@ -2,11 +2,13 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
   @shortdoc "Materialize the free transaction-weighted collector-car cohort"
 
   @moduledoc """
-  Loads the checked-in free-acquisition manifest, creates source-reference and
-  proposed sale claims, then runs every applicable free provider.
+  Loads the checked-in free-acquisition manifest, creates source-reference,
+  identity, and sale claims, then runs every applicable free provider. Sales
+  stay proposed unless an operator passes `--ratify-sales`.
 
       mix santo.acquire.free
       mix santo.acquire.free --skip-providers
+      mix santo.acquire.free --skip-providers --ratify-sales
       mix santo.acquire.free --dry-run
       mix santo.acquire.free --cohort limited_gt --limit 5
 
@@ -21,7 +23,13 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
   alias SantoApi.FreeAcquisition.Cohort
   alias SantoApi.Repo
 
-  @switches [dry_run: :boolean, skip_providers: :boolean, cohort: :string, limit: :integer]
+  @switches [
+    dry_run: :boolean,
+    skip_providers: :boolean,
+    ratify_sales: :boolean,
+    cohort: :string,
+    limit: :integer
+  ]
 
   @impl Mix.Task
   def run(args) do
@@ -38,7 +46,13 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
       ensure_migrated!()
       print_summary("cohort", summary)
       print_price_paths(entries)
-      report = FreeAcquisition.run(entries, acquire: !opts[:skip_providers])
+
+      report =
+        FreeAcquisition.run(entries,
+          acquire: !opts[:skip_providers],
+          ratify: opts[:ratify_sales]
+        )
+
       print_report(report)
 
       if report.failures != [] do
@@ -146,6 +160,14 @@ defmodule Mix.Tasks.Santo.Acquire.Free do
     )
 
     Mix.shell().info("  transaction claims: #{report.transaction_claims}")
+    Mix.shell().info("  identity claims: #{report.identity_claims}")
+
+    if report.sales_ratified + report.sales_already_ratified > 0 do
+      Mix.shell().info(
+        "  sales ratified: #{report.sales_ratified} newly admitted, " <>
+          "#{report.sales_already_ratified} already admitted"
+      )
+    end
 
     Mix.shell().info(
       "  providers: #{report.provider_successes}/#{report.provider_attempts} succeeded, " <>

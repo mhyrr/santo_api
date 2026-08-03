@@ -315,6 +315,15 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp outing_kind(nil), do: "Outing"
   defp outing_kind(kind), do: String.capitalize(kind)
 
+  defp sale_headline(%{
+         "venue" => venue,
+         "price" => price,
+         "currency" => currency,
+         "outcome" => "not_sold"
+       }) do
+    "High bid of #{money(price, currency)} at #{venue}; not sold"
+  end
+
   defp sale_headline(%{"venue" => venue, "price" => price, "currency" => currency}) do
     "Sold at #{venue} for #{money(price, currency)}"
   end

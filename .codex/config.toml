@@ -1,0 +1,11 @@
+# Mix opens a loopback listener for cross-process coordination before running
+# tasks, and the test suite connects to Postgres on localhost:5432.
+[permissions.global-safe.network]
+enabled = true
+mode = "limited"
+allow_local_binding = true
+
+[permissions.global-safe.network.domains]
+"localhost" = "allow"
+"127.0.0.1" = "allow"
+"::1" = "allow"

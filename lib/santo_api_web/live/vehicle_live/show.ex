@@ -152,7 +152,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
       )
 
     ~H"""
-    <section class="mx-auto max-w-3xl px-5 pb-16 sm:px-8" aria-labelledby="logbook-heading">
+    <section
+      id="vehicle-logbook"
+      class="mx-auto max-w-3xl px-5 pb-16 sm:px-8"
+      aria-labelledby="logbook-heading"
+    >
       <h2 id="logbook-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
         Logbook
       </h2>
@@ -163,7 +167,12 @@ defmodule SantoApiWeb.VehicleLive.Show do
       </p>
 
       <ol :if={@entries != []} class="vs-spine space-y-9 pl-6">
-        <li :for={entry <- @entries} class="vs-tick relative" data-owner={owner_entry?(entry)}>
+        <li
+          :for={entry <- @entries}
+          id={entry_dom_id(entry)}
+          class="vs-tick relative"
+          data-owner={owner_entry?(entry)}
+        >
           <p class="vs-code text-xs" style="color: var(--vs-dim)">
             {Presenter.on_date(entry.date) || "Undated"}
           </p>
@@ -188,6 +197,20 @@ defmodule SantoApiWeb.VehicleLive.Show do
               Not on the public page
             </span>
           </p>
+
+          <p :if={entry.evidence != []} class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <a
+              :for={{evidence, index} <- Enum.with_index(entry.evidence)}
+              id={"#{entry_dom_id(entry)}-evidence-#{index}"}
+              href={evidence.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              class="underline underline-offset-4 transition-opacity hover:opacity-65"
+              aria-label={"Source evidence from #{evidence.source}"}
+            >
+              Source evidence
+            </a>
+          </p>
         </li>
       </ol>
     </section>
@@ -201,6 +224,12 @@ defmodule SantoApiWeb.VehicleLive.Show do
   # before it shows anything else.
   defp owner_entry?(%{party_kind: :owner}), do: "true"
   defp owner_entry?(_entry), do: "false"
+
+  defp entry_dom_id(%{entry_ref: entry_ref}) when is_binary(entry_ref),
+    do: "entry-#{entry_ref}"
+
+  defp entry_dom_id(%{claims: [%{claim_id: claim_id} | _claims]}),
+    do: "entry-#{claim_id}"
 
   # --- current spec ---------------------------------------------------------
 

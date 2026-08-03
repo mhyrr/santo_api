@@ -275,14 +275,23 @@ defmodule SantoApi.Registry do
 
   @doc """
   Propose a human claim against a vehicle — the bench path. Enters
-  `:proposed`; `ratify_claim/2` is the gate.
+  `:proposed`; `ratify_claim/2` is the gate. `distinct_by_artifact: true`
+  narrows deduplication to one evidencing artifact when separate documents are
+  separate sources for the same assertion. The default remains party-scoped.
   """
   def propose_claim(%Vehicle{} = vehicle, attrs) do
     propose_claim(vehicle, vin_santo_party(), attrs)
   end
 
   def propose_claim(%Vehicle{} = vehicle, %Party{} = party, attrs) do
-    changeset = Claim.propose_changeset(vehicle, party, attrs)
+    propose_claim(vehicle, party, attrs, [])
+  end
+
+  def propose_claim(%Vehicle{} = vehicle, %Party{} = party, attrs, opts) when is_list(opts) do
+    changeset =
+      vehicle
+      |> Claim.propose_changeset(party, attrs, opts)
+      |> require_distinct_artifact(opts)
 
     # A caller may intentionally recover a duplicate claim inside a larger
     # transaction. The savepoint keeps PostgreSQL's constraint error from
@@ -295,6 +304,12 @@ defmodule SantoApi.Registry do
       refresh_projections(vehicle)
       {:ok, claim}
     end
+  end
+
+  defp require_distinct_artifact(changeset, opts) do
+    if opts[:distinct_by_artifact] and is_nil(Ecto.Changeset.get_field(changeset, :artifact_id)),
+      do: Ecto.Changeset.add_error(changeset, :artifact_id, "is required for artifact identity"),
+      else: changeset
   end
 
   @doc """
@@ -632,6 +647,8 @@ defmodule SantoApi.Registry do
       from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
+        left_join: a in Artifact,
+        on: a.id == c.artifact_id,
         where:
           c.vehicle_id == ^vehicle_id and c.state == :admitted and
             (c.visibility == :public or ^include_private) and
@@ -648,16 +665,18 @@ defmodule SantoApi.Registry do
           visibility: c.visibility,
           party: p.name,
           party_kind: p.kind,
+          artifact_source_url: a.source_url,
+          artifact_visibility: a.visibility,
           inserted_at: c.inserted_at
         }
       )
     )
     |> Enum.group_by(&(&1.entry_ref || &1.claim_id))
-    |> Enum.map(fn {_key, claims} -> entry(claims) end)
+    |> Enum.map(fn {_key, claims} -> entry(claims, include_private) end)
     |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
   end
 
-  defp entry([first | _rest] = claims) do
+  defp entry([first | _rest] = claims, include_private) do
     %{
       entry_ref: first.entry_ref,
       date: first.scope_date,
@@ -666,8 +685,19 @@ defmodule SantoApi.Registry do
       method: first.method,
       visibility: entry_visibility(claims),
       recorded_at: Enum.max_by(claims, & &1.inserted_at, DateTime).inserted_at,
-      claims: claims
+      evidence: entry_evidence(claims, include_private),
+      claims: Enum.map(claims, &Map.drop(&1, [:artifact_source_url, :artifact_visibility]))
     }
+  end
+
+  defp entry_evidence(claims, include_private) do
+    claims
+    |> Enum.filter(fn claim ->
+      is_binary(claim.artifact_source_url) and
+        (claim.artifact_visibility == :public or include_private)
+    end)
+    |> Enum.uniq_by(& &1.artifact_source_url)
+    |> Enum.map(&%{url: &1.artifact_source_url, source: &1.party})
   end
 
   # One hidden part hides the entry. Showing the rest of it would present a

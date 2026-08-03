@@ -53,12 +53,12 @@ defmodule SantoApi.Registry.Claim do
   validation sets the scope kind; basis fields are stamped from the
   vehicle and asserting party, never cast.
   """
-  def propose_changeset(%Vehicle{} = vehicle, %Party{} = party, attrs) do
+  def propose_changeset(%Vehicle{} = vehicle, %Party{} = party, attrs, opts \\ []) do
     %__MODULE__{}
     |> cast(attrs, [:predicate, :value, :scope_date, :artifact_id, :entry_ref])
     |> validate_required([:predicate, :value])
     |> validate_vocabulary()
-    |> put_basis(vehicle, party)
+    |> put_basis(vehicle, party, opts)
     |> unique_constraint(:content_hash, name: :claims_vehicle_id_content_hash_index)
     |> foreign_key_constraint(:artifact_id)
   end
@@ -77,14 +77,16 @@ defmodule SantoApi.Registry.Claim do
     end
   end
 
-  defp put_basis(%{valid?: false} = changeset, _vehicle, _party), do: changeset
+  defp put_basis(%{valid?: false} = changeset, _vehicle, _party, _opts), do: changeset
 
-  defp put_basis(changeset, vehicle, party) do
+  defp put_basis(changeset, vehicle, party, opts) do
     predicate = get_field(changeset, :predicate)
     value = get_field(changeset, :value)
     scope_kind = get_field(changeset, :scope_kind)
     scope_date = get_field(changeset, :scope_date)
     entry_ref = get_field(changeset, :entry_ref)
+    artifact_id = get_field(changeset, :artifact_id)
+    evidence_ref = if opts[:distinct_by_artifact], do: artifact_id
 
     changeset
     |> put_change(:vehicle_id, vehicle.id)
@@ -101,7 +103,8 @@ defmodule SantoApi.Registry.Claim do
         scope_date,
         :human,
         party.name,
-        entry_ref
+        entry_ref,
+        evidence_ref
       )
     )
   end
@@ -118,6 +121,9 @@ defmodule SantoApi.Registry.Claim do
 
   Factory- and observed-scope hashing never sees `entry_ref`, and neither does
   an event claim that carries none — so every hash already in the corpus stands.
+  Callers may supply an evidence reference when the assertion itself is scoped
+  to one artifact. The free-acquisition corpus uses that narrow form for the
+  identity claims every transaction page asserts; the default stays unchanged.
   """
   def hash(
         identity_key,
@@ -127,10 +133,12 @@ defmodule SantoApi.Registry.Claim do
         scope_date,
         method,
         party_name,
-        entry_ref \\ nil
+        entry_ref \\ nil,
+        evidence_ref \\ nil
       ) do
     base = [identity_key, predicate, value, scope_kind, scope_date, method, party_name]
     payload = if scope_kind == :event and entry_ref, do: base ++ [entry_ref], else: base
+    payload = if evidence_ref, do: payload ++ [evidence_ref], else: payload
 
     :crypto.hash(:sha256, Jason.encode!(payload)) |> Base.encode16(case: :lower)
   end

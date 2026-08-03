@@ -7,7 +7,11 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias SantoApi.FreeAcquisition
+  alias SantoApi.FreeAcquisition.Cohort
   alias SantoApi.Registry
+  alias SantoApi.Registry.Vehicle
+  alias SantoApi.Repo
 
   @cayman "WP0AB29827U782968"
 
@@ -205,5 +209,83 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, _live, html} = live(conn, ~p"/v/#{bare.public_id}")
 
     refute html =~ "facts on this car are backed"
+  end
+
+  test "the ratified 04268 corpus record shows identity, sales, attribution, and evidence", %{
+    conn: conn
+  } do
+    entry =
+      Cohort.load!()["entries"]
+      |> Enum.find(&(&1["id"] == "ferrari-1972-dino-04268"))
+
+    assert %{sales_ratified: 2, failures: []} =
+             FreeAcquisition.run([entry], acquire: false, ratify: true)
+
+    vehicle = Repo.get_by!(Vehicle, identity_key: "chassis:ferrari:pre_vin:04268")
+
+    {:ok, _proposed} =
+      Registry.propose_claim(vehicle, %{
+        predicate: "event.note",
+        value: %{"text" => "Proposed events remain private to the ledger"},
+        scope_date: ~D[2025-01-01]
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+
+    assert has_element?(view, "h1", "1972 Ferrari Dino 246 GTS")
+
+    assert has_element?(
+             view,
+             "#vehicle-logbook li.vs-tick",
+             "Sold at RM Auctions for $352,000"
+           )
+
+    assert has_element?(
+             view,
+             "#vehicle-logbook li.vs-tick",
+             "Sold at Bring a Trailer for $630,000"
+           )
+
+    assert has_element?(view, "#vehicle-logbook li.vs-tick", "17 January 2014")
+    assert has_element?(view, "#vehicle-logbook li.vs-tick", "27 July 2023")
+    assert has_element?(view, "#vehicle-logbook li.vs-tick", "Recorded by RM Auctions")
+    assert has_element?(view, "#vehicle-logbook li.vs-tick", "Recorded by Bring a Trailer")
+
+    assert has_element?(
+             view,
+             ~s(#vehicle-logbook a[href="https://rmsothebys.com/auctions/az14/lots/r187-1972-ferrari-dino-246-gts/"])
+           )
+
+    assert has_element?(
+             view,
+             ~s(#vehicle-logbook a[href="https://bringatrailer.com/listing/1972-ferrari-dino-246-gts-3/"])
+           )
+
+    refute has_element?(view, "#vehicle-logbook li.vs-tick", "Proposed events remain private")
+  end
+
+  test "an admitted unsuccessful auction event renders as a high bid, not a sale", %{conn: conn} do
+    vehicle = car()
+
+    admit(vehicle, %{
+      predicate: "event.sale",
+      value: %{
+        "venue" => "Mecum Auctions",
+        "price" => 55_000,
+        "currency" => "USD",
+        "outcome" => "not_sold"
+      },
+      scope_date: ~D[2015-08-14]
+    })
+
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+
+    assert has_element?(
+             view,
+             "#vehicle-logbook li.vs-tick",
+             "High bid of $55,000 at Mecum Auctions; not sold"
+           )
+
+    refute has_element?(view, "#vehicle-logbook li.vs-tick", "Sold at Mecum Auctions")
   end
 end

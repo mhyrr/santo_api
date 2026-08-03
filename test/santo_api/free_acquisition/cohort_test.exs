@@ -33,7 +33,12 @@ defmodule SantoApi.FreeAcquisition.CohortTest do
     assert length(Enum.uniq_by(entries, & &1["id"])) == 30
 
     assert Enum.all?(entries, fn entry ->
-             Enum.all?(entry["transactions"], &(&1["url"] =~ "https://"))
+             is_binary(entry["marque"]) and
+               match?(
+                 %{"code" => code, "label" => label} when is_binary(code) and is_binary(label),
+                 entry["model"]
+               ) and
+               Enum.all?(entry["transactions"], &(&1["url"] =~ "https://"))
            end)
 
     assert length(Cohort.price_paths(entries)) == 10
@@ -46,5 +51,33 @@ defmodule SantoApi.FreeAcquisition.CohortTest do
 
     assert length(selected) == 3
     assert Enum.all?(selected, &(&1["cohort"] == "vintage_ferrari"))
+  end
+
+  test "requires explicit marque plus model code and label" do
+    manifest = Cohort.load!()
+
+    invalid_entries = [
+      Map.delete(hd(manifest["entries"]), "marque"),
+      put_in(hd(manifest["entries"]), ["model", "label"], nil)
+    ]
+
+    for invalid_entry <- invalid_entries do
+      invalid_manifest = put_in(manifest, ["entries", Access.at(0)], invalid_entry)
+      path = temporary_manifest(invalid_manifest)
+
+      assert {:error, {:entry, 1, :invalid_shape}} = Cohort.load(path)
+    end
+  end
+
+  defp temporary_manifest(manifest) do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "santo-free-acquisition-#{System.unique_integer([:positive])}.json"
+      )
+
+    File.write!(path, Jason.encode!(manifest))
+    on_exit(fn -> File.rm(path) end)
+    path
   end
 end

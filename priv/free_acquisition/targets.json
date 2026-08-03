@@ -7,6 +7,8 @@
       "id": "air-1985-930-wp0zzz93zfs000352",
       "cohort": "air_cooled_911",
       "display_name": "1985 Porsche 911 Turbo",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Turbo"},
       "model_year": 1985,
       "identity": {"kind": "vin", "value": "WP0ZZZ93ZFS000352"},
       "transactions": [
@@ -17,6 +19,8 @@
       "id": "air-1987-930-wp0jb093xhs051078",
       "cohort": "air_cooled_911",
       "display_name": "1987 Porsche 911 Turbo",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Turbo"},
       "model_year": 1987,
       "identity": {"kind": "vin", "value": "WP0JB093XHS051078"},
       "transactions": [
@@ -28,6 +32,8 @@
       "id": "air-1989-930-wp0jb0938ks050521",
       "cohort": "air_cooled_911",
       "display_name": "1989 Porsche 911 Turbo M505 Slant Nose",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Turbo M505 Slant Nose"},
       "model_year": 1989,
       "identity": {"kind": "vin", "value": "WP0JB0938KS050521"},
       "transactions": [
@@ -38,6 +44,8 @@
       "id": "air-1986-930-wp0jb0936gs050718",
       "cohort": "air_cooled_911",
       "display_name": "1986 Porsche 911 Turbo",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Turbo"},
       "model_year": 1986,
       "identity": {"kind": "vin", "value": "WP0JB0936GS050718"},
       "transactions": [
@@ -48,6 +56,8 @@
       "id": "air-1988-930-wp0eb0932js070215",
       "cohort": "air_cooled_911",
       "display_name": "1988 Porsche 911 Turbo Cabriolet",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Turbo Cabriolet"},
       "model_year": 1988,
       "identity": {"kind": "vin", "value": "WP0EB0932JS070215"},
       "transactions": [
@@ -59,6 +69,8 @@
       "id": "air-1996-993-wp0aa2998ts322912",
       "cohort": "air_cooled_911",
       "display_name": "1996 Porsche 911 Carrera 4S",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Carrera 4S"},
       "model_year": 1996,
       "identity": {"kind": "vin", "value": "WP0AA2998TS322912"},
       "transactions": [
@@ -70,6 +82,8 @@
       "id": "air-1996-993-wp0aa2990ts321110",
       "cohort": "air_cooled_911",
       "display_name": "1996 Porsche 911 Carrera 4S",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Carrera 4S"},
       "model_year": 1996,
       "identity": {"kind": "vin", "value": "WP0AA2990TS321110"},
       "transactions": [
@@ -80,6 +94,8 @@
       "id": "air-1996-993-wp0aa2992ts322677",
       "cohort": "air_cooled_911",
       "display_name": "1996 Porsche 911 Carrera 4S",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Carrera 4S"},
       "model_year": 1996,
       "identity": {"kind": "vin", "value": "WP0AA2992TS322677"},
       "transactions": [
@@ -91,6 +107,8 @@
       "id": "air-1996-993-wp0aa2991ts320306",
       "cohort": "air_cooled_911",
       "display_name": "1996 Porsche 911 Carrera 4S",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Carrera 4S"},
       "model_year": 1996,
       "identity": {"kind": "vin", "value": "WP0AA2991TS320306"},
       "transactions": [
@@ -101,6 +119,8 @@
       "id": "air-1996-993-wp0aa2994ts321353",
       "cohort": "air_cooled_911",
       "display_name": "1996 Porsche 911 Carrera 4S",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 Carrera 4S"},
       "model_year": 1996,
       "identity": {"kind": "vin", "value": "WP0AA2994TS321353"},
       "transactions": [
@@ -113,6 +133,8 @@
       "id": "ferrari-1972-dino-05316",
       "cohort": "vintage_ferrari",
       "display_name": "1972 Ferrari Dino 246 GTS",
+      "marque": "ferrari",
+      "model": {"code": "dino_246_gts", "label": "Dino 246 GTS"},
       "model_year": 1972,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "05316"},
       "transactions": [
@@ -123,6 +145,8 @@
       "id": "ferrari-1979-512bb-28543",
       "cohort": "vintage_ferrari",
       "display_name": "1979 Ferrari 512 BB",
+      "marque": "ferrari",
+      "model": {"code": "512_bb", "label": "512 BB"},
       "model_year": 1979,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "28543"},
       "transactions": [
@@ -134,6 +158,8 @@
       "id": "ferrari-1977-308gtb-21083",
       "cohort": "vintage_ferrari",
       "display_name": "1977 Ferrari 308 GTB",
+      "marque": "ferrari",
+      "model": {"code": "308_gtb", "label": "308 GTB"},
       "model_year": 1977,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "21083"},
       "transactions": [
@@ -144,6 +170,8 @@
       "id": "ferrari-1979-512bb-f102bb27117",
       "cohort": "vintage_ferrari",
       "display_name": "1979 Ferrari 512 BB",
+      "marque": "ferrari",
+      "model": {"code": "512_bb", "label": "512 BB"},
       "model_year": 1979,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "F102BB27117"},
       "transactions": [
@@ -154,6 +182,8 @@
       "id": "ferrari-1969-dino-00548",
       "cohort": "vintage_ferrari",
       "display_name": "1969 Ferrari Dino 246 GT",
+      "marque": "ferrari",
+      "model": {"code": "dino_246_gt", "label": "Dino 246 GT"},
       "model_year": 1969,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "00548"},
       "transactions": [
@@ -164,6 +194,8 @@
       "id": "ferrari-1976-308gtb-19425",
       "cohort": "vintage_ferrari",
       "display_name": "1976 Ferrari 308 GTB Vetroresina",
+      "marque": "ferrari",
+      "model": {"code": "308_gtb", "label": "308 GTB Vetroresina"},
       "model_year": 1976,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "19425"},
       "transactions": [
@@ -174,6 +206,8 @@
       "id": "ferrari-1977-308gtb-22953",
       "cohort": "vintage_ferrari",
       "display_name": "1977 Ferrari 308 GTB Project",
+      "marque": "ferrari",
+      "model": {"code": "308_gtb", "label": "308 GTB"},
       "model_year": 1977,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "22953"},
       "transactions": [
@@ -184,6 +218,8 @@
       "id": "ferrari-1973-daytona-16613",
       "cohort": "vintage_ferrari",
       "display_name": "1973 Ferrari 365 GTB/4 Daytona",
+      "marque": "ferrari",
+      "model": {"code": "365_gtb_4", "label": "365 GTB/4 Daytona"},
       "model_year": 1973,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "16613"},
       "transactions": [
@@ -194,6 +230,8 @@
       "id": "ferrari-1972-dino-04268",
       "cohort": "vintage_ferrari",
       "display_name": "1972 Ferrari Dino 246 GTS",
+      "marque": "ferrari",
+      "model": {"code": "dino_246_gts", "label": "Dino 246 GTS"},
       "model_year": 1972,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "04268"},
       "transactions": [
@@ -205,6 +243,8 @@
       "id": "ferrari-1971-dino-01438",
       "cohort": "vintage_ferrari",
       "display_name": "1971 Ferrari Dino 246 GT",
+      "marque": "ferrari",
+      "model": {"code": "dino_246_gt", "label": "Dino 246 GT"},
       "model_year": 1971,
       "identity": {"kind": "chassis", "marque": "ferrari", "era": "pre_vin", "value": "01438"},
       "transactions": [
@@ -216,6 +256,8 @@
       "id": "gt-2005-carrera-gt-wp0ca298x5l001256",
       "cohort": "limited_gt",
       "display_name": "2005 Porsche Carrera GT",
+      "marque": "porsche",
+      "model": {"code": "carrera_gt", "label": "Carrera GT"},
       "model_year": 2005,
       "identity": {"kind": "vin", "value": "WP0CA298X5L001256"},
       "transactions": [
@@ -226,6 +268,8 @@
       "id": "gt-2018-gt3-touring-wp0ac2a97js176473",
       "cohort": "limited_gt",
       "display_name": "2018 Porsche 911 GT3 Touring",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 GT3 Touring"},
       "model_year": 2018,
       "identity": {"kind": "vin", "value": "WP0AC2A97JS176473"},
       "transactions": [
@@ -236,6 +280,8 @@
       "id": "gt-2015-918-wp0ca2a13fs800821",
       "cohort": "limited_gt",
       "display_name": "2015 Porsche 918 Spyder Weissach",
+      "marque": "porsche",
+      "model": {"code": "918", "label": "918 Spyder"},
       "model_year": 2015,
       "identity": {"kind": "vin", "value": "WP0CA2A13FS800821"},
       "transactions": [
@@ -247,6 +293,8 @@
       "id": "gt-2016-gt3rs-wp0af2a99gs187118",
       "cohort": "limited_gt",
       "display_name": "2016 Porsche 911 GT3 RS",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 GT3 RS"},
       "model_year": 2016,
       "identity": {"kind": "vin", "value": "WP0AF2A99GS187118"},
       "transactions": [
@@ -257,6 +305,8 @@
       "id": "gt-2019-gt3rs-wp0af2a90ks164903",
       "cohort": "limited_gt",
       "display_name": "2019 Porsche 911 GT3 RS",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 GT3 RS"},
       "model_year": 2019,
       "identity": {"kind": "vin", "value": "WP0AF2A90KS164903"},
       "transactions": [
@@ -267,6 +317,8 @@
       "id": "gt-2024-gt3rs-wp0af2a96rs272209",
       "cohort": "limited_gt",
       "display_name": "2024 Porsche 911 GT3 RS Weissach",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 GT3 RS"},
       "model_year": 2024,
       "identity": {"kind": "vin", "value": "WP0AF2A96RS272209"},
       "transactions": [
@@ -278,6 +330,8 @@
       "id": "gt-2015-458-speciale-zff75vfa8f0205055",
       "cohort": "limited_gt",
       "display_name": "2015 Ferrari 458 Speciale",
+      "marque": "ferrari",
+      "model": {"code": "458_speciale", "label": "458 Speciale"},
       "model_year": 2015,
       "identity": {"kind": "vin", "value": "ZFF75VFA8F0205055"},
       "transactions": [
@@ -288,6 +342,8 @@
       "id": "gt-2019-488-pista-zff90hla2k0247423",
       "cohort": "limited_gt",
       "display_name": "2019 Ferrari 488 Pista",
+      "marque": "ferrari",
+      "model": {"code": "488_pista", "label": "488 Pista"},
       "model_year": 2019,
       "identity": {"kind": "vin", "value": "ZFF90HLA2K0247423"},
       "transactions": [
@@ -299,6 +355,8 @@
       "id": "gt-2020-488-pista-zff90hla5l0249975",
       "cohort": "limited_gt",
       "display_name": "2020 Ferrari 488 Pista",
+      "marque": "ferrari",
+      "model": {"code": "488_pista", "label": "488 Pista"},
       "model_year": 2020,
       "identity": {"kind": "vin", "value": "ZFF90HLA5L0249975"},
       "transactions": [
@@ -309,6 +367,8 @@
       "id": "gt-2016-gt3rs-wp0af2a98gs192441",
       "cohort": "limited_gt",
       "display_name": "2016 Porsche 911 GT3 RS",
+      "marque": "porsche",
+      "model": {"code": "911", "label": "911 GT3 RS"},
       "model_year": 2016,
       "identity": {"kind": "vin", "value": "WP0AF2A98GS192441"},
       "transactions": [

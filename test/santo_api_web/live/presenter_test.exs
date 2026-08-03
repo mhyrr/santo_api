@@ -145,5 +145,41 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert parts.headline == "Wrapped it Signal Green"
       assert parts.details == []
     end
+
+    test "a completed auction event reads as a sale" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.sale",
+              value: %{"venue" => "RM Auctions", "price" => 352_000, "currency" => "USD"}
+            }
+          ]
+        })
+
+      assert parts.headline == "Sold at RM Auctions for $352,000"
+      assert parts.details == []
+    end
+
+    test "an unsuccessful auction event reads as a high bid, never a sale" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.sale",
+              value: %{
+                "venue" => "Mecum Auctions",
+                "price" => 55_000,
+                "currency" => "USD",
+                "outcome" => "not_sold"
+              }
+            }
+          ]
+        })
+
+      assert parts.headline == "High bid of $55,000 at Mecum Auctions; not sold"
+      refute parts.headline =~ "Sold at"
+      assert parts.details == []
+    end
   end
 end

@@ -23,9 +23,13 @@ on cars whose records buyers will plausibly revisit.
 ## Storage and rights boundary
 
 `priv/free_acquisition/targets.json` contains only minimum transaction facts,
-vehicle identity, and outbound source URLs. Marketplace prose and media are not
-copied. Each source page becomes a pointer-only `reference` artifact; its date,
-result, currency, and venue become a proposed `event.sale` claim.
+vehicle identity, and outbound source URLs. Every target states `marque`,
+`model.code`, `model.label`, and `model_year` explicitly; `display_name` is for
+the operator report and is never parsed into claims. Marketplace prose and
+media are not copied. Each source page becomes a pointer-only `reference`
+artifact. That artifact backs proposed `identity.marque`, `identity.model`, and
+`identity.model_year` claims from the page's asserting source, plus the dated
+`event.sale` claim.
 
 Direct auction pages assert their own results. When an index page supplies a
 result from another auction house, the index is the asserting party and the
@@ -44,7 +48,10 @@ skip vPIC.
 
 Ferrari is not currently a Santo decode adapter. Reviewed `ZFF` VINs and Ferrari
 pre-VIN chassis numbers may therefore create identity-only vehicle rows; they do
-not emit Vin Santo factory claims. vPIC or later artifacts supply proposed facts.
+not emit Vin Santo factory claims. The manifest's transaction sources supply
+proposed facts instead. They can name a public page while remaining unconfirmed
+in the factory record; acquisition never silently admits auction-derived
+identity.
 
 ## Operation
 
@@ -69,11 +76,24 @@ of immutable vPIC retrievals:
 mix santo.acquire.free --skip-providers
 ```
 
+Sale events remain proposed by default and therefore stay off the public
+timeline. Once an operator has reviewed the checked-in transaction set, admit
+only those manifest sale claims through the normal Registry ratification gate:
+
+```sh
+mix santo.acquire.free --skip-providers --ratify-sales
+```
+
+Vin Santo is recorded as the deciding party. Identity and provider claims stay
+proposed. Re-running the command treats already-admitted manifest sales as a
+successful no-op and reports them separately from newly admitted sales.
+
 The command is safe to resume. A target may carry any non-empty number of
-transactions. Vehicle identities, source references, and sale claims deduplicate;
-a fresh provider request remains a new retrieval event. The operator report
-separates materialized targets, provider attempts, skips, and failures so partial
-runs are visible rather than laundered into success.
+transactions. Vehicle identities, source references, identity claims, and sale
+claims deduplicate; a fresh provider request remains a new retrieval event. The
+operator report separates materialized targets, identity and transaction claims,
+ratifications, provider attempts, skips, and failures so partial runs remain
+visible.
 
 Both dry and live runs print the longitudinal result and each repeat price path.
 The 2 August manifest contains:
