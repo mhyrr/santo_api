@@ -779,10 +779,13 @@ defmodule SantoApi.Owners do
 
       result =
         Repo.transaction(fn ->
-          keep = Enum.map(claim_attrs, &{&1.predicate, &1.value})
+          # The date is part of the assertion, not a label on it: an entry moved
+          # to another day restates every one of its claims, because "the car
+          # read 41,660 on 2 August" is not the claim "it read 41,660 in April."
+          keep = Enum.map(claim_attrs, &{&1.predicate, &1.value, date})
 
           existing
-          |> Enum.reject(&({&1.predicate, &1.value} in keep))
+          |> Enum.reject(&({&1.predicate, &1.value, &1.scope_date} in keep))
           |> Enum.each(&retract!(&1, party))
 
           claims =
@@ -797,6 +800,23 @@ defmodule SantoApi.Owners do
         {:ok, entry} -> {:ok, entry}
         {:error, reason} -> {:error, reason}
       end
+    end
+  end
+
+  @doc """
+  One entry as the caller may correct it — their own live claims under that ref.
+
+  Read through the same door `amend_entry/4` writes through, so the composer
+  cannot open an entry it would then be refused on. Deliberately not
+  `Registry.timeline/2`: that reads admitted claims only, and an owner-typed
+  factory claim waiting at the operator gate is still theirs to fix.
+  """
+  def entry(scope, %Vehicle{} = vehicle, entry_ref) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, [%Claim{scope_date: date} | _rest] = claims} <-
+           fetch_own_entry(vehicle, party, entry_ref) do
+      {:ok, %{entry_ref: entry_ref, date: date, claims: claims}}
     end
   end
 

@@ -70,6 +70,9 @@ defmodule SantoApiWeb.Router do
       on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do
       live "/v/:public_id/claim", OwnerLive.Claim
       live "/v/:public_id/log", OwnerLive.Composer
+      # Correcting an entry is the same surface with the entry already in it —
+      # one composer, two entry points (owner_surface §8).
+      live "/v/:public_id/log/:entry_ref", OwnerLive.Composer
       live "/v/:public_id/spec", OwnerLive.Spec
     end
   end

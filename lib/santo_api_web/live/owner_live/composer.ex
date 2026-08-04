@@ -13,6 +13,13 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   which predicates it produces — is the composer's business and lives here; the
   agent surface (§8) takes typed claims directly and never sees this mapping.
 
+  Two entry points, one surface (§8, decided 2026-08-03). With an `entry_ref`
+  this is the correction form: the same four modes, prefilled from an entry
+  already in the ledger, saving through `Owners.amend_entry/4`. The mapping
+  runs backwards to fill the form and forwards to save it, so the two can
+  never drift — and an entry the backwards direction cannot restate exactly is
+  refused rather than silently reshaped.
+
   No LLM in the loop, deliberately. Fuel and mileage are arithmetic and a
   structured form beats a sentence; mods and notes are narrative and the text is
   the value. Voice and free-text structuring arrive through the owner's own
@@ -33,30 +40,68 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   ]
 
   @impl true
-  def mount(%{"public_id" => public_id}, _session, socket) do
+  def mount(%{"public_id" => public_id} = params, _session, socket) do
     # Signing in is the router's job; stewarding *this* car is ours. A signed-in
     # stranger is sent back to the public record rather than shown an error page —
     # they are allowed to read this car, just not to write to it.
     case Registry.fetch_by_public_id(public_id) do
       {:ok, vehicle} ->
         if Owners.stewarding?(socket.assigns.current_scope, vehicle),
-          do: {:ok, mount_composer(socket, vehicle)},
-          else: {:ok, turn_away(socket, vehicle)}
+          do: {:ok, open(socket, vehicle, params["entry_ref"])},
+          else: {:ok, turn_away(socket, vehicle, "You do not maintain this car's log.")}
 
       {:error, :not_found} ->
         raise SantoApiWeb.VehicleNotFound
     end
   end
 
+  defp open(socket, vehicle, nil), do: mount_composer(socket, vehicle)
+
+  # Stewarding the car is not enough to correct a line of it: `Owners.entry/3`
+  # hands back the caller's *own* claims, so a previous steward's entry and the
+  # registry's own are absent rather than editable.
+  defp open(socket, vehicle, entry_ref) do
+    case Owners.entry(socket.assigns.current_scope, vehicle, entry_ref) do
+      {:ok, entry} -> mount_correction(socket, vehicle, entry)
+      {:error, _reason} -> turn_away(socket, vehicle, "That entry is not yours to correct.")
+    end
+  end
+
   defp mount_composer(socket, vehicle) do
     socket
+    |> mount_shared(vehicle)
     |> assign(:page_title, "Log — #{Presenter.title(vehicle)}")
-    |> assign(:vehicle, vehicle)
-    |> assign(:modes, @modes)
+    |> assign(:entry_ref, nil)
     |> assign(:mode, :fuel)
-    |> assign(:error, nil)
+    |> assign(:date_default, Date.utc_today())
     |> assign(:defaults, Owners.last_entry_defaults(socket.assigns.current_scope, vehicle))
     |> assign_form(%{})
+  end
+
+  defp mount_correction(socket, vehicle, entry) do
+    case prefill(entry.claims) do
+      {:ok, mode, params} ->
+        socket
+        |> mount_shared(vehicle)
+        |> assign(:page_title, "Correct — #{Presenter.title(vehicle)}")
+        |> assign(:entry_ref, entry.entry_ref)
+        |> assign(:mode, mode)
+        |> assign(:date_default, entry.date)
+        # No carrying the last fill-up's odometer into a correction: the fields
+        # start as the entry states them and nowhere else.
+        |> assign(:defaults, %{})
+        |> assign_form(params)
+
+      :error ->
+        turn_away(socket, vehicle, "That entry was not written here, so it is not correctable here.")
+    end
+  end
+
+  defp mount_shared(socket, vehicle) do
+    socket
+    |> assign(:vehicle, vehicle)
+    |> assign(:modes, @modes)
+    |> assign(:error, nil)
     |> allow_upload(:photos,
       accept: ~w(.jpg .jpeg .png .heic .webp),
       max_entries: 4,
@@ -66,9 +111,9 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   # A full redirect, not a live one: the public record lives in another
   # live_session and cannot be reached by live navigation.
-  defp turn_away(socket, vehicle) do
+  defp turn_away(socket, vehicle, message) do
     socket
-    |> put_flash(:error, "You do not maintain this car's log.")
+    |> put_flash(:error, message)
     |> redirect(to: ~p"/v/#{vehicle.public_id}")
   end
 
@@ -94,19 +139,13 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   defp save_entry(socket, params, claims) do
     vehicle = socket.assigns.vehicle
+    date = params["date"] || Date.to_iso8601(socket.assigns.date_default)
 
-    attrs = %{
-      date: params["date"] || Date.to_iso8601(Date.utc_today()),
-      claims: claims,
-      photos: consume_photos(socket),
-      visibility: visibility(params["visibility"])
-    }
-
-    case Owners.compose_entry(socket.assigns.current_scope, vehicle, attrs) do
+    case commit(socket, %{date: date, claims: claims}, params) do
       {:ok, _entry} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Logged. It is on the car's page.")
+         |> put_flash(:info, saved(socket.assigns.entry_ref))
          |> push_navigate(to: ~p"/v/#{vehicle.public_id}")}
 
       {:error, reason} ->
@@ -116,6 +155,25 @@ defmodule SantoApiWeb.OwnerLive.Composer do
          |> assign_form(params)}
     end
   end
+
+  defp commit(%{assigns: %{entry_ref: nil}} = socket, attrs, params) do
+    attrs =
+      attrs
+      |> Map.put(:photos, consume_photos(socket))
+      |> Map.put(:visibility, visibility(params["visibility"]))
+
+    Owners.compose_entry(socket.assigns.current_scope, socket.assigns.vehicle, attrs)
+  end
+
+  # A correction carries neither photos nor a visibility flip: `amend_entry/4`
+  # writes claims and nothing else, and the entry's own visibility is preserved
+  # underneath. Both are absent from the form rather than present and ignored.
+  defp commit(%{assigns: %{entry_ref: entry_ref}} = socket, attrs, _params) do
+    Owners.amend_entry(socket.assigns.current_scope, socket.assigns.vehicle, entry_ref, attrs)
+  end
+
+  defp saved(nil), do: "Logged. It is on the car's page."
+  defp saved(_entry_ref), do: "Corrected. The value it replaced is withdrawn, not gone."
 
   # Copied out of the upload's temp path, which is removed the moment this
   # callback returns — the registry hashes and stores the bytes itself.
@@ -190,6 +248,107 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   defp mileage(nil), do: []
   defp mileage(odometer), do: [%{predicate: "observation.mileage", value: odometer}]
+
+  ## Claims to form — the same mapping, backwards (§8 correction)
+
+  @doc """
+  Whether this entry is one the composer can restate exactly.
+
+  The gate on the Edit control, and it is a round trip rather than a list of
+  allowed predicates: the entry is read into form fields, and those fields are
+  run back through the same mapping that writes an entry. If what comes out is
+  not what went in — an `event.outing` no mode produces, a fill-up carrying a
+  field this form has no box for — the entry is not correctable here, because
+  saving it would quietly drop whatever did not survive the trip.
+
+  Written this way so it maintains itself: add a field to a mode and the gate
+  follows, because both directions are the same two functions.
+  """
+  def editable?(claims), do: match?({:ok, _mode, _params}, prefill(claims))
+
+  defp prefill(claims) do
+    stated = Map.new(claims, &{&1.predicate, &1.value})
+
+    with {:ok, mode} <- entry_mode(stated),
+         params = mode_params(mode, stated),
+         {:ok, restated} <- claims(mode, params),
+         true <- assertions(restated) == assertions(claims) do
+      {:ok, mode, params}
+    else
+      _mismatch -> :error
+    end
+  end
+
+  defp assertions(claims), do: claims |> Enum.map(&{&1.predicate, &1.value}) |> Enum.sort()
+
+  # What happened decides the mode; the odometer rides along with all of them.
+  defp entry_mode(stated) do
+    Enum.find_value(@modes, :error, fn {mode, _label} ->
+      Map.has_key?(stated, event_predicate(mode)) && {:ok, mode}
+    end)
+  end
+
+  defp event_predicate(:fuel), do: "event.fuel"
+  defp event_predicate(:service), do: "event.service"
+  defp event_predicate(:modification), do: "event.modification"
+  defp event_predicate(:note), do: "event.note"
+
+  defp mode_params(:fuel, stated) do
+    fuel = stated["event.fuel"]
+
+    %{
+      "volume" => fuel["volume"],
+      "price" => dollars(fuel["total_cents"]),
+      "odometer" => odometer(stated)
+    }
+  end
+
+  defp mode_params(:service, stated) do
+    service = stated["event.service"]
+
+    %{
+      "summary" => service["summary"],
+      "performer" => service["performer"],
+      "odometer" => odometer(stated)
+    }
+  end
+
+  defp mode_params(:modification, stated) do
+    modification = stated["event.modification"]
+    {trait, trait_summary} = trait_fields(modification["sets"])
+
+    %{
+      "summary" => modification["summary"],
+      "area" => modification["area"],
+      "trait" => trait,
+      "trait_summary" => trait_summary
+    }
+  end
+
+  defp mode_params(:note, stated), do: %{"text" => stated["event.note"]["text"]}
+
+  # One delta is what the form can state. A mod that sets two traits at once
+  # came from somewhere else and fails the round trip, which is the honest
+  # outcome — this form would save it back with one.
+  defp trait_fields([%{"predicate" => predicate, "value" => %{"summary" => summary}}]),
+    do: {predicate, summary}
+
+  defp trait_fields(_absent), do: {nil, nil}
+
+  defp odometer(stated) do
+    case stated["observation.mileage"] do
+      miles when is_integer(miles) -> Integer.to_string(miles)
+      _absent -> ""
+    end
+  end
+
+  # Back to the dollars that were typed — `optional_cents/1` run in reverse,
+  # in decimal the whole way so the number that comes back is the number that
+  # went in.
+  defp dollars(cents) when is_integer(cents),
+    do: cents |> Decimal.new() |> Decimal.div(100) |> Decimal.to_string(:normal)
+
+  defp dollars(_absent), do: ""
 
   defp required_text(value, message) do
     case trimmed(value) do
@@ -287,7 +446,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
     params =
       params
-      |> Map.put_new("date", Date.to_iso8601(Date.utc_today()))
+      |> Map.put_new("date", Date.to_iso8601(socket.assigns.date_default))
       |> Map.put_new("odometer", odometer_default(defaults))
       |> Map.put_new("volume", Map.get(defaults, :volume, ""))
 
@@ -313,7 +472,9 @@ defmodule SantoApiWeb.OwnerLive.Composer do
         <span aria-hidden="true">&larr;</span> {Presenter.title(@vehicle)}
       </.link>
 
-      <h1 class="vs-spec mt-4 text-3xl sm:text-4xl">Log an entry</h1>
+      <h1 class="vs-spec mt-4 text-3xl sm:text-4xl">
+        {if @entry_ref, do: "Correct this entry", else: "Log an entry"}
+      </h1>
 
       <nav class="mt-7 grid grid-cols-4 gap-1.5" aria-label="Entry type">
         <button
@@ -355,7 +516,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
             />
           </div>
 
-          <div>
+          <div :if={is_nil(@entry_ref)}>
             <span class="vs-eyebrow" style="color: var(--vs-dim)">Photos</span>
             <div class="mt-2">
               <.live_file_input upload={@uploads.photos} class="vs-file" />
@@ -376,7 +537,11 @@ defmodule SantoApiWeb.OwnerLive.Composer do
           </div>
         </div>
 
-        <label class="flex items-start gap-3 text-sm" style="color: var(--vs-dim)">
+        <label
+          :if={is_nil(@entry_ref)}
+          class="flex items-start gap-3 text-sm"
+          style="color: var(--vs-dim)"
+        >
           <input type="hidden" name="entry[visibility]" value="public" />
           <input
             type="checkbox"
@@ -394,12 +559,15 @@ defmodule SantoApiWeb.OwnerLive.Composer do
           </span>
         </label>
 
-        <button type="submit" id="composer-save" class="vs-commit w-full">Log it</button>
+        <button type="submit" id="composer-save" class="vs-commit w-full">
+          {if @entry_ref, do: "Save the correction", else: "Log it"}
+        </button>
       </.form>
 
       <p class="mt-8 text-xs leading-relaxed" style="color: var(--vs-dim)">
-        Entries are added, never edited. A correction is a new entry, and both stay
-        on the record under your handle.
+        Nothing here is overwritten. Correcting an entry writes a new claim and
+        withdraws the one it replaces — the withdrawn value stays in the ledger under
+        your handle, off the page.
       </p>
     </div>
     """

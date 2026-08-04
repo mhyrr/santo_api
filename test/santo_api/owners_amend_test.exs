@@ -164,6 +164,39 @@ defmodule SantoApi.OwnersAmendTest do
       assert Repo.get!(Claim, original.id).state == :admitted
     end
 
+    test "moving the entry's date moves the claims rather than doubling them", ctx do
+      entry = fuel_entry(ctx, "13.1")
+
+      # Same values, new day — the back-fill that was entered against the wrong
+      # date. "The car read 41,660 on 2 August" and "on 12 April 2019" are two
+      # different assertions, so the first has to be withdrawn, not left beside
+      # the second under one entry.
+      {:ok, _} =
+        Owners.amend_entry(ctx.scope, ctx.vehicle, entry.entry_ref, %{
+          date: ~D[2019-04-12],
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "13.1",
+                "unit" => "gal",
+                "cost" => "67.45",
+                "currency" => "USD"
+              }
+            },
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      assert [moved] = Owners.timeline(ctx.scope, ctx.vehicle)
+      assert moved.date == ~D[2019-04-12]
+      assert length(moved.claims) == 2
+
+      for claim <- entry.claims do
+        assert Repo.get!(Claim, claim.id).state == :retracted
+      end
+    end
+
     test "an entry kept off the public page stays off it through a correction", ctx do
       {:ok, entry} =
         Owners.compose_entry(ctx.scope, ctx.vehicle, %{
