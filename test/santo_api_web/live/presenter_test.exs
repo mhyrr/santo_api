@@ -181,6 +181,16 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       refute parts.headline =~ "Sold at"
       assert parts.details == []
     end
+
+    test "a lead whose second fact is missing gets no line rather than an empty one" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [%{predicate: "event.service", value: %{"summary" => "Oil change"}}]
+        })
+
+      assert parts.headline == "Oil change"
+      assert parts.details == []
+    end
   end
 
   describe "record_rows/2" do

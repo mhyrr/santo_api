@@ -284,20 +284,29 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
         claim -> claim_headline(claim)
       end
 
-    details =
-      if lead && second_fact?(lead),
-        do: [%{label: entry_label(lead.predicate), value: claim_detail(lead)} | details],
-        else: details
-
-    %{headline: headline, details: details}
+    %{headline: headline, details: lead_details(lead) ++ details}
   end
 
-  # Whether a claim's detail is a *second* fact or the same one again. A
-  # service's headline is what was done and its detail is who did it — two
-  # facts. An odometer's detail is its reading, which the headline already was.
-  defp second_fact?(%{predicate: "event.service"}), do: true
-  defp second_fact?(%{predicate: "event.outing"}), do: true
-  defp second_fact?(_claim), do: false
+  # The facts a lead claim carries beyond its own headline. A service's
+  # headline is what was done and its detail is who did it — two facts. An
+  # odometer's detail is its reading, which the headline already was, so it
+  # contributes nothing.
+  #
+  # A list rather than a flag, because "this claim has a second fact" and "this
+  # particular claim actually stated it" are different questions. A service with
+  # no performer answers yes to the first and no to the second, and the answer
+  # has to be no line at all — an empty labelled chip reads as a fact we are
+  # withholding rather than one nobody gave us.
+  defp lead_details(%{predicate: "event.service"} = claim), do: own_detail(claim)
+  defp lead_details(%{predicate: "event.outing"} = claim), do: own_detail(claim)
+  defp lead_details(_claim), do: []
+
+  defp own_detail(claim) do
+    case claim_detail(claim) do
+      nil -> []
+      value -> [%{label: entry_label(claim.predicate), value: value}]
+    end
+  end
 
   @doc "The one extra fact an entry's claim carries beyond its headline."
   def claim_detail(%{predicate: "observation.mileage", value: miles}) when is_integer(miles),
