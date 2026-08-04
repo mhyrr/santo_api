@@ -21,7 +21,21 @@ Round 3 (2026-08-01): build starts with infra (§9: tickets J, A, B first);
 `current_state` added as a second projection that replays the logbook into
 "the car now" (§2b), with a seed trait vocabulary sized for swapped/raced
 cars, not just originality; page hierarchy inverted — the living car leads,
-provenance is the foundation layer, not the headline (§6).*
+provenance is the foundation layer, not the headline (§6).
+Round 4 (2026-08-04): origination added as §7b — the front door for an owner
+whose car is in no registry at all, which every section above had assumed away.
+Brings a fourth identity kind (`:asserted`), the project's first hosted LLM
+call, and a handle prompt at registration. §1 amended (the parser deferral is
+now cheaper to reverse), §7 amended (two creation paths, one box), §6b opened
+(comments and likes).
+Round 5 (2026-08-04): reviewed against the build-thread use case. A build
+thread is story + plan + photos + replies, and the ledger had formalized only
+the events — §6c opens the narrative layer (story block, `event.plan`,
+photos-after-setup). §6b's doctrine calls taken (owners don't moderate, no
+promote-to-claim in v1, likes cosmetic, comments after distribution). Handle
+timing unified at registration (§9.1). §10 brought current with the decisions
+that had superseded its text, shipped statuses recorded, tickets N and O cut
+(TK-024, TK-025).*
 
 ## The product shape
 
@@ -147,9 +161,11 @@ by an LLM, or both?
    is Fuelly's SMS grammar reborn with the parser on the owner's side of the
    wire — zero entry UI of ours in the loop.
 2. **A phone-first web composer — the floor.** For owners without an
-   assistant wired up, and as the home of the confirm queue (§8). One tap
+   assistant wired up. (It was also to be the home of §8's confirm queue,
+   until the confirm step was struck — ticket H decisions.) One tap
    from the vehicle page: a segmented composer with
-   **Fill-up | Service | Mod | Note** modes.
+   **Fill-up | Service | Mod | Plan | Note** modes (Plan added round 5 — §6c;
+   lands with ticket O).
 
 - *Fill-up*: odometer, volume, total price (optional: grade, station, partial
   flag). Three fields, numeric keyboards, last-entry defaults. Produces an
@@ -163,6 +179,9 @@ by an LLM, or both?
   asked to re-type what the receipt already says.
 - *Mod*: summary text, optional area/system, photos. Produces
   `event.modification`.
+- *Plan*: text + photos. Produces `event.plan` (§6c) — dated intent, rendered
+  as *planned* on the timeline. "These are the wheels I'm looking at" is an
+  entry, recorded the day it was thought.
 - *Note*: text + photos + a link. Produces `event.note`. The escape hatch —
   nothing the owner types is ever rejected for not fitting a form.
 
@@ -194,6 +213,25 @@ claim-flow handoff (§4) has to land a new steward in a back-fill moment ("add
 your car's story — start with the last service"), or day-one retention dies
 regardless of how good the forms are.
 
+**Amendment, 2026-08-04 (§7b changes the arithmetic here).** This section
+deferred a hosted free-text parser on the reasoning that the high-intent users
+get structuring through their own assistant and we'd be building a parser from
+nothing. §7b builds one anyway — origination needs extraction to turn "2024
+Lexus GX 550 in green, 35,000 miles" into claims. So the marginal cost of a
+text-or-voice box inside the composer drops from *a new subsystem* to *a second
+caller of an endpoint that already exists*, and the deferral should be re-argued
+on its merits rather than inherited.
+
+Greg's framing of the open question (2026-08-04): "If they do a fill-up they go
+to the app and do what exactly? I assume it's click a button and start talking."
+That is a different entry model from the segmented composer above — mic-first
+rather than form-first — and §1's own analysis cuts against it for exactly the
+fill-up case: fuel is three numbers, and a structured form is *faster* than
+speaking a sentence. The interesting version is not "voice instead of the
+composer" but voice as the **Note and Service** path, where the text is the
+value and there is no form to be faster than. Undesigned, and it needs its own
+pass. `GREG'S CALL` before any of it gets built.
+
 ---
 
 ## 2. Vocabulary growth
@@ -205,7 +243,8 @@ one code-reviewed change each, per fork B discipline. The logbook demands:
 |---|---|---|---|
 | `event.fuel` | event | `volume` (req, decimal-as-string), `unit` (req, `"gal"\|"l"`), `total_cents` (opt int), `currency` (opt), `grade` (opt), `station` (opt), `partial` (opt bool) | Money in integer cents, never floats. Cost/mile is computed, never stored. |
 | `event.modification` | event | `summary` (req), `area` (opt string — suspension, engine, wheels…), `detail` (opt string), `sets` (opt — trait deltas, §2b) | `area` stays a free string in v1; an enum invites vocabulary bikeshed before we've seen real data. `sets` entries validate against the trait vocabulary. |
-| `event.note` | event | `text` (req) | The escape hatch. Never conflicts, never comparison-relevant, tier-1 forever. |
+| `event.note` | event | `text` (opt as of round 5 — was req) | The escape hatch. Never conflicts, never comparison-relevant, tier-1 forever. Text went optional for the photo-first entry (§6c); composition, not the vocabulary validator, enforces that an entry carries text or a photo. |
+| `event.plan` | event | `text` (req), `area` (opt string) | Aspirational — dated intent, not occurrence (§6c). Renders as *planned* on the timeline; never conflicts, never enters `facts` or `current_state`, tier-1 forever. The completion link (a later entry pointing at the plan it fulfilled) is a named seam, not v1. |
 | `event.outing` | event | `kind` (req — `autocross\|track\|show\|drive\|other`), `venue` (opt), `result` (opt), `summary` (opt), `sets` (opt — trait deltas, §2b) | Serious owners' logs are full of these; the autocross voice memo is the canonical compound utterance (outing + modification + note in one breath). "Tried 3 degrees camber" is a `sets` delta. |
 | `state.engine`, `state.transmission`, `state.wheels_tires`, `state.suspension`, `state.brakes`, `state.exterior` | observed | `summary` (req), `code` (opt), `detail` (opt) | The current-state seed traits (§2b). Free-text-first values; exact-equality equivalence, no cross-source comparison in v1. Grow the set from real entries, per fork B discipline. |
 | `observation.mileage` | observed | *(exists)* integer | Reused; fill-ups and service entries emit it alongside. |
@@ -263,7 +302,10 @@ provider machinery, with rights handled then.
 
 **Not built.** Ticket F shipped the composer without links — the table does not
 exist and Note mode takes text and photos only. Nothing in the ledger wants it,
-so it moved to ticket G rather than riding along.
+so it moved to ticket G rather than riding along — and then moved again in
+round 5: §7b makes links the last step of onboarding (screen 5), so the table
+lands with the origination ticket (N, TK-024) rather than trailing on
+privacy and export.
 
 ---
 
@@ -465,7 +507,10 @@ blocked on a rights call.
   `create_upload_artifact/1` stamps a source party, and stamping Vin Santo on an
   owner's photograph would say the registry supplied it. Validating the handle
   at issue also keeps an operator from finding out at approval that the name is
-  taken.
+  taken. *Superseded, round 5: the handle is chosen at registration for every
+  account (§9.1); the claim flow reads the user's reserved handle rather than
+  asking. Minting stays where ticket E put it — at the proof photo, the first
+  thing there is to attribute.*
 - **Expiry governs the window between the code and the photograph only.** Once
   proof is in, a slow operator cannot cost the claimant their claim. A code that
   lapses before a photo is retired and replaced.
@@ -540,6 +585,9 @@ the resale foundation underneath, quiet until needed. Render order:
 - **Hero**: photos and the current-build headline composed from
   `current_state` (§2b) — "1985 Datsun 280Z · LS1 swap · 18x11" — not from
   the decode. Marque/model/year and claimed-by badge; VIN present but small.
+- **Story** (§6c, round 5): the owner's own words about the car, when they've
+  written any — a paragraph, not a form. Curation, not a claim; absent
+  silently otherwise.
 - **The timeline — the page's center of gravity**: event/observed claims
   grouped by `entry_ref` into entries, newest first — the logbook. Registry-
   sourced events (BaT sale, dealer service invoices) and owner entries
@@ -620,6 +668,131 @@ with disclosure the seller commits to, not the public page.
 
 ---
 
+## 6b. Response — comments and likes
+
+*Opened 2026-08-04 (Greg): "Things we'll need to think about in the future are
+comments and likes on the log or on the public page." Stated, not designed —
+the point of writing it down now is that the doctrinal edge is easy to get
+wrong later. Round 5, same day: the doctrine calls below were taken; the
+surface itself stays undesigned and sequenced behind the distribution kit.*
+
+**The reason this matters more here than on a normal social product.** §0's
+finding is that build threads are the highest-credibility self-reported logs in
+existence, and part of why is that they are *publicly witnessed* — replies are
+contemporaneous, attributed, and impossible to backdate. The Rennlist GT2 thread
+is half owner narration and half community correction: *"is it safe to assume
+the buckets are original to the car?"*, answered by *"no Pentosin/chf11s in a
+GT2 except for the steering."* The comments are where the owner's gaps get
+filled by people who know the marque. That is not decoration around the record;
+for a thin car it may be the densest evidence on the page.
+
+**The line to hold: a comment is not a claim.** Claims are assertions about the
+car, they carry scope and predicate and party, and they join a `content_hash`.
+A comment is discourse *about the record* — its own table, outside the ledger,
+never folded into `facts` or `current_state`, never a timeline tick.
+
+**The seam that makes it interesting.** A comment that corrects a fact wants to
+become a proposed claim. "That's not the original gearbox, the casting number is
+wrong" is exactly the material §3 exists for, arriving in the one form the
+vocabulary can't take. Whether there is a promote-to-claim path — owner-invoked,
+operator-invoked, or neither — is the real question in this section, and it
+should be decided before comments ship rather than retrofitted.
+
+**Decided 2026-08-04, round 5 — the doctrine calls, taken ahead of the design
+pass:**
+
+- **Owners do not moderate their own comments.** The §0 credibility argument
+  rests on build threads being *publicly witnessed* — on a forum the OP cannot
+  delete skeptical replies, and that is precisely what makes the thread
+  evidence. If the owner can purge criticism, the witness value dies.
+  Report-to-operator (§9.2's queue, extended to speech) is the only removal
+  path. This is the kind of power that is painful to take away later, which is
+  why it's decided before a single comment exists.
+- **No promote-to-claim in v1.** The informal path already exists — an
+  operator can propose a claim citing a comment, the same way the bench
+  proposes claims off invoices. Build the formal path when a real correction
+  arrives in comment form, not before.
+- **Likes are cosmetic.** Retention signal only; never an input to tier or
+  verification. §0's Strava numbers argue the social loop drives logging
+  frequency; nothing argues a like should influence what the record asserts.
+- **Handles, not anonymity.** A witnessed record needs attributed witnesses;
+  §9.1's registration-time handle (round 5 unification) covers every commenter.
+- **Comments land after the distribution kit (ticket I).** Comments pay off
+  only where an audience exists, and the audience arrives by crossposting
+  out. Response mechanics before distribution is a stage before there's
+  anyone in the seats.
+
+**Still open for the design pass:** notification and email volume (where
+§9.4's transactional bill stops being one magic link per session), the report
+queue's remedy for speech (§9.2 was written for claims), and the abuse posture
+for the first user-to-user content in the product.
+
+---
+
+## 6c. The narrative layer — story, plans, photos
+
+*Opened 2026-08-04, round 5. The review's finding: a build thread is story +
+plan + photos + replies, and the ledger had formalized only the events.
+Rennlist 1451795 opens with prose — "Last week I found a slightly neglected
+996 GT2 Clubsport in Germany" — and §7b stores that sentence as an artifact
+without ever rendering it as what it is: the opening post. Replies are §6b;
+this section is the other three. Ticket O (TK-025).*
+
+**The story block — curation, not a claim.** An owner-authored text about the
+car, rendered near the hero (§6 order). Mutable, presentation layer, no ledger
+contact — the same class as `vehicle_links` — because owners rewrite their
+story as the build unfolds, and forcing retract-and-relog on prose turns
+editing a paragraph into a ledger event. The bar is deliberately low: sometimes
+what's special about the car is just *it's mine, it's my baby, I want to
+handle it* (Greg, round 5) — one sentence clears it, and the block is
+optional. The empty-state prompt ("what's the story with this car?") shows
+only on the owner's own view; the public page renders nothing rather than a
+nudge.
+
+**Plans — dated intent, not a checklist.** Greg's framing: *"almost like a
+blog post — I'm thinking about doing this. Let me record this on Monday and I
+can review it. These are the wheels I'm looking at now."* That is a dated
+entry, not a mutable todo list — the recording of intent is itself an event
+that happened on that day, which is exactly what the append-only ledger is
+shaped for and exactly how a forum thread carries a plan: the plan changes by
+posting again, and the old post stays. So plans are `event.plan` claims (§2
+table), entered through the composer's Plan mode or `log_entry`, rendered as
+*planned* on the timeline.
+
+Two boundaries, both answering the forum-nervousness Greg named:
+
+- **Plans are the owner talking to their own record, not a discussion
+  starter.** No threading, no replies-to-plans — every response mechanic
+  lives in §6b, and §6b is sequenced after distribution. Nothing here builds
+  toward hosting a forum.
+- **A plan asserts intent, never history.** It never enters `facts` or
+  `current_state`, never conflicts, tier-1 forever. When the coilovers
+  actually go on, that's an `event.modification` like any other; the
+  completion link back to the plan it fulfilled is a named seam, not v1.
+
+On a page with no history yet — the freshly originated car — the newest plan
+entry doubles as the "what's coming" line under the hero. For a car we know
+nothing about, the plan is the only interesting thing the page *can* show on
+day one, and it's the reason an audience subscribes to a thread: to watch the
+plan get executed.
+
+**Photos — after setup, not during it.** Decided round 5: no photo screen in
+the §7b origination flow. Adding photos is a post-setup act, and the paths
+already exist or ride existing machinery:
+
+- **Composer entries** — every mode accepts photos (ticket F, shipped).
+- **The photo-first entry** — snap now, caption never: `event.note` text goes
+  optional, and composition (`compose_entry`), not the vocabulary validator,
+  enforces that an entry carries text or a photo.
+- **External galleries and platforms** — a Flickr/Google Photos gallery, an
+  Instagram profile, a YouTube channel are all `vehicle_links` rows (§2),
+  rendered per the §9.3 honesty table. Pointers in, media never harvested.
+- **The nudge** — the hero's empty state on the owner's own view says "add a
+  photo" and lands in the composer. A photoless page can't be shared, and the
+  nudge lives on the page, not in the onboarding flow.
+
+---
+
 ## 7. Seeding
 
 **Recommendation: create-on-first-lookup, corpus cars as showcase.**
@@ -647,6 +820,251 @@ with disclosure the seller commits to, not the public page.
   becomes a provider run, gated on the rights profile, targeted where a
   community exists to claim them.
 
+**Amended 2026-08-04:** create-on-first-lookup is now one of *two* creation
+paths, and they share a single input. See §7b — the box accepts a VIN or a
+sentence, and which kind of car gets created is an outcome of what was typed
+rather than a mode the visitor had to choose.
+
+---
+
+## 7b. Origination — the front door
+
+**The gap this closes.** Every section above assumes the car already exists:
+§4 claims a row, §3 writes against it, §6 renders it, §7 creates it from a VIN.
+That is the **claiming** model, and it is the wrong shape for the first-run
+case. An owner arriving with a car nobody has ever recorded is not claiming
+anything from anyone — they are the origin of the record. The 2026-08-04 walk
+used Greg's own daily driver as the probe (2024 Lexus GX 550, green, 35,000
+miles, no VIN typed), deliberately choosing a car with no PTS code, no
+Classiche, no auction history and no collector corpus behind it: if onboarding
+only feels good for a 993 with provenance, it fails for everyone else.
+
+Two hard stops, both found in code rather than reasoned about:
+
+- **There is no such thing as a car without an identity.**
+  `vehicles.identity_kind` is `Ecto.Enum, values: [:vin, :chassis, :disputed]`
+  (`registry/vehicle.ex:26`), and `register_chassis/3` is atom-gated to
+  `:ferrari` and `:porsche` (`registry.ex:57`). A VIN-less Lexus has no door.
+- **The car's own name would sit unratified.** "2024 Lexus GX 550 in green,
+  35,000 miles" maps cleanly onto the closed vocabulary — `identity.marque`,
+  `identity.model`, `identity.model_year`, `state.exterior`,
+  `observation.mileage` — but the first three are **factory** scope, so §3
+  holds them at the operator gate. The page would render its own name as
+  unverified, waiting for an operator to confirm that the owner knows what they
+  drive.
+
+### 7b.1 Decisions
+
+**1. A fourth identity kind: `:asserted`.** Keyed on a minted opaque id
+(`asserted:<id>`), alongside `:vin`, `:chassis`, `:disputed`. The car is a real
+vehicle row from minute one and logs entries like any other. `Registry.ingest/1`
+stays VIN-shaped — `Santo.Identity.key/1` never returns `:asserted`, so
+origination is a separate entry point rather than a branch inside ingest.
+
+Rejected: *VIN required at creation* (doctrine-clean, but the VIN is exactly
+what an owner doesn't have in their pocket) and *a draft object outside the
+registry* (entries logged against a draft are either not claims — a second
+store of truth — or claims pointing at a non-vehicle; the lifecycle cost lands
+on every read path).
+
+**2. Owner identity claims self-ratify on an `:asserted` car.** A deliberate,
+scoped deviation from §3. The scope split was written for *contested* factory
+facts; self-declared identity on an originated car has no counterparty and no
+decode to disagree with, and a vehicle whose own name is `:proposed` has no
+name.
+
+The shortcut costs nothing because **resolution audits it automatically**: when
+the VIN lands, santo's decode arrives `:admitted` and `claim_comparison/1`
+either agrees with what the owner typed or surfaces the disagreement with both
+sources shown. Say "GX 460" when the VIN says GX 550 and the page shows both.
+The existing machinery is the check on the shortcut, which is why the shortcut
+is affordable. §3's gate still governs every other factory claim and every
+claim on a `:vin` car.
+
+**3. One box, and the identity kind is an outcome.** The §7 lookup box and the
+add-your-car box are the same component. A VIN — pasted bare or embedded in a
+sentence — originates a `:vin` car and fires decode. A sentence without one
+originates an `:asserted` car. Nobody has to know which door they walked
+through.
+
+**4. Extraction, not a form.** The box takes free text and an LLM extracts the
+claims, with an inline read-back the owner can edit line by line. This is the
+project's first hosted LLM call: `method: :llm_extract`, **the typed sentence
+stored as the artifact**, so a better extractor can re-run against the same
+bytes later. Doctrine holds — the LLM extracts, the ledger computes. Parse
+failure renders the same screen with empty lines; there is no separate error
+state and no dead end.
+
+Rationale over a plain form: this is the utterance a build thread actually
+opens with (*"Last week I found a slightly neglected 996 GT2 Clubsport in
+Germany with some track history"* — Rennlist 1451795), and the read-back is a
+cheaper confirm than the one ticket H cut from MCP, because here it is already
+the screen.
+
+**5. Persistence splits by path, on principle.** A VIN lookup persists
+immediately, as §7 always said — its decoded facts are real and exist
+independent of who typed them. A sentence persists only once there is an
+account behind it, because its entire content is one unidentified person's
+word. Same box, different rule, and the asymmetry is principled rather than
+arbitrary. It also disposes of the junk-row problem: no account, no row.
+
+**6. The user exists before the email is sent, so there is nothing to hold.**
+`build_email_token/2` takes a `%User{}` (`accounts/user_token.ex:90`) —
+phx.gen.auth writes the account before it sends anything. So submit creates the
+user, the party, the car, the claims and the stewardship in one transaction, and
+the owner lands on a real page immediately. **The magic-link click publishes
+rather than unlocks.** Public rendering gates on `user.confirmed_at` through the
+stewardship join — one join, zero ledger writes, and no `visibility` flipping on
+claims after the fact.
+
+This turns the worst moment in the flow into its best call to action: *your page
+is live — confirm your email to make it public.*
+
+**7. The handle is chosen at registration, and the screen says it's permanent.**
+§4's refinement (chosen at issue, minted at proof) has no analogue here —
+origination has neither event, and the party name joins every `content_hash`, so
+the party must exist before the first claim, which is the same instant the car
+does. We therefore ask a permanent, public, immutable question of someone who
+has been in the product ninety seconds, and the design response is to say so in
+the field's help text rather than bury it.
+
+Rejected: a provisional handle (claims would need rehashing) and a system party
+re-attributed later (already filed as an unsolved problem for corpus claims —
+doing it deliberately on day one is worse). An abandoned registration burns a
+handle permanently; every username system eats this.
+
+*Round 5 generalized this: the handle is chosen at registration for **every**
+account, not just originators — §9.1 carries the unified rule, and §4's
+chosen-at-issue step goes away. What began as origination's special case turned
+out to be the better universal.*
+
+**8. Links are curation, not evidence — for now.** Held from §2, and made
+visible in the UI: links sit in their own section, not on the timeline spine,
+and carry no date of their own. Per-platform honesty from §9.3 renders
+literally — YouTube gets a real oEmbed card (open, keyless), Instagram gets a
+bare URL card (its oEmbed needs a Meta app and review we haven't done). The UI
+does not pretend to a richness we lack the rights to.
+
+Placement: linking is the **last step of onboarding**, not a feature to
+discover later on the page. §0's landscape is unambiguous that nobody logs into
+a void — Wheelwell died fighting forums for an audience, build threads run a
+decade because replies keep coming — so the audience mechanism belongs in the
+first session, after there is something worth pointing at.
+
+The `vehicle_links` table this screen requires comes forward from ticket G
+into this ticket (round 5) — screen 5 was pointing at a table that a
+downstream ticket owned, which was a dependency inversion waiting to bite.
+
+### 7b.2 Resolution — one-way, one-time, never refused
+
+Adding a VIN to an `:asserted` car is **acquiring** an identity, not changing
+one. That is why it does not violate ticket H's rule that a different VIN is a
+different car: that rule governs *correction*, and there is nothing to correct
+on a car that never had one. Once resolved, the VIN is locked; a bad resolution
+is an operator problem, not a self-serve edit.
+
+- **VIN unoccupied** — flip in place. `identity_kind` `:asserted` → `:vin`,
+  `identity_key` rewritten, decode fires and its facts arrive `:admitted`,
+  `claim_comparison/1` audits what the owner asserted. `public_id` never moves,
+  because it was minted independent of the VIN for exactly this reason
+  (`registry/vehicle.ex:23`). The log is untouched.
+- **VIN occupied** — **the assertion is still recorded.** Greg, 2026-08-04:
+  *"I don't think we should stop anyone from claiming.. even if there's a
+  conflict."* This corrected an earlier recommendation in the walk to refuse the
+  resolution, which would have been the only submission-time gate in an
+  architecture that gates nothing anywhere else — the ledger records assertions
+  and derives conflicts at read time, everywhere, and this is not the place to
+  break that.
+
+  `unique_index(:vehicles, [:identity_key])` (migration `20260730180000:25`)
+  means both rows cannot hold the same key, so what is deferred is **the key
+  flip, not the claim.** The owner becomes a claimant on the occupied row
+  through §4's existing counter-claim path, an operator adjudicates, and the
+  entries stay on the asserted row meanwhile. The copy says what happened —
+  *we've recorded that you say this is your car* — rather than saying no.
+
+**The bill, stated so it isn't a surprise.** When the claimant wins that
+adjudication, the outcome has to move their entries onto the VIN row. That is an
+**absorb write path in the ledger's blast radius**, and it does not exist. It is
+deferred until the collision actually fires — but it is now owed, and it is a
+ticket rather than a rendering change.
+
+### 7b.3 The flow
+
+Seven screens, drawn in the `vs-*` system and walked with Greg on 2026-08-04.
+The visual walkthrough is the canonical reference for layout and copy.
+
+1. **The box** — one field, VIN or sentence. The placeholder *is* the grammar,
+   the way Fuelly's SMS string was. Nothing persisted.
+2. **The read-back** — "we read: 2024 · Lexus · GX 550 · green · 35,000 mi",
+   each line editable in place. The sentence stays on screen because it is about
+   to become the artifact.
+3. **Registration** — email and handle on one screen, permanence stated in the
+   help text. Submit creates everything and sends the link.
+4. **The page, minute one** — a named car, a colour, a dated odometer, and one
+   timeline tick: *grolsen started this record*. The origination is itself an
+   entry, which is the build thread's opening post.
+5. **Links** — YouTube card, Instagram bare link, skippable.
+6. **Day two** — the same page with a fill-up and a mod, price-per-gallon
+   computed rather than typed.
+7. **The collision** — the one screen where a resolution meets an occupied VIN.
+
+Photos are deliberately not a screen in this flow (round 5): adding them is a
+post-setup act — the hero's empty state on the owner's own view carries the
+nudge, and the paths are §6c's. The flow asks for a sentence, an email, and a
+handle; everything else is the page's job to invite.
+
+**A note on the ink, because it is load-bearing here.** The `vs-*` system
+rations two colours: amber (`--vs-illum`) means the ledger verified something,
+oxblood (`--vs-needle`) means something disagrees. An originated car has earned
+neither, so the flow is almost entirely unlit — and this is the system telling
+the truth rather than a gap to style around. Amber appears once on screen 4, on
+the owner's own timeline tick (`.vs-tick[data-owner="true"]`, the established
+rule). Oxblood appears once in the entire flow, on screen 7, where something
+finally diverges.
+
+**The disclosure and the hook are the same sentence.** *"Everything on this page
+is your word. Add the VIN and the factory record fills in underneath it."* That
+is the honest statement of a tier-1 record and the strongest next action in the
+product, in one line — so there is no trade between candour and conversion, and
+copy never has to assert more than the ledger supports. By day fourteen it
+quiets to a standing footnote: it should not shout, and it should still be true.
+
+The §6 paper ground — the factory record — does not render at all on an
+`:asserted` car. It is not an empty shell with dashes in it. The page simply
+ends, and the VIN is what unrolls it.
+
+### 7b.4 What it costs
+
+| Where | What changes |
+|---|---|
+| `registry/identity_key.ex`, `registry/vehicle.ex` | Fourth constructor and the enum value. **Load-bearing** — a wrong key merges two cars or splits one, and there is no merge machinery to undo it. |
+| `registry.ex` | An origination entry point beside `ingest/1`, plus one-way resolution. |
+| Extraction | First hosted LLM call in the project. `:req`, per convention; stubbed with `Req.Test` in tests. |
+| Registration | Handle field on the phx.gen.auth form; the pending origination carried into it. |
+| Adjudication | The absorb outcome. Deferred, owed. |
+
+Reused without change: `ensure_party/2`, `grant_stewardship/2` (both already
+public and independent of the challenge machinery — `owners.ex:54`,
+`owners.ex:106`), `compose_entry/3`, both projections, `timeline/1`, the
+composer, and the whole `vs-*` system. **Claiming turned out to be one caller of
+the owner machinery rather than its owner**, which is why origination is mostly
+new surface over existing plumbing.
+
+### 7b.5 Open
+
+- **Links as evidence.** A dated YouTube video of the car carries the same
+  contemporaneity that makes a build thread credible (§0's third lesson). If
+  links become evidence they gain a date and an artifact and move onto the
+  spine. That is a claim-writing change, not a layout one, so holding §2's
+  curation position costs nothing today. `GREG'S CALL`.
+- **Unconfirmed orphans.** A registration never confirmed leaves a car with a
+  log and a steward that nobody can see. Greg, 2026-08-04: *"who cares? that's
+  fine."* Recorded as accepted, not as unresolved.
+- **Origination throttle.** Asserted origination is a second door that mints
+  vehicle rows, now bounded by email-address rather than by nothing. Needs a
+  ceiling of the same shape as §7's lookup limit.
+
 ---
 
 ## 8. The agent entry surface — MCP, and where the LLM lives
@@ -666,16 +1084,19 @@ tranche 7, the credibility unlock).
 - `my_vehicles` — the caller's stewarded vehicles (id, identity, headline).
 - `log_entry(vehicle, date, claims[], note?, links[]?)` — claims validated
   strictly against the closed vocabulary (`event.fuel`, `event.modification`,
-  `event.outing`, `event.service`, `observation.mileage`); anything that
+  `event.outing`, `event.service`, `event.plan` as of round 5,
+  `observation.mileage`); anything that
   doesn't fit falls into the note residual, never rejected. Creates the
-  claims `:proposed` under one `entry_ref` and returns a human-readable echo
+  claims under one `entry_ref` — proposed and self-ratified in one
+  transaction, per the ticket H decision — and returns a human-readable echo
   for the assistant to read back.
 - `amend_entry(vehicle, entry_ref, claims[])` / `delete_entry(vehicle,
   entry_ref)` — correction, which replaced the confirm step (decided
   2026-08-03). Retract-and-relog under the same `entry_ref`; the withdrawn
   values stay in the ledger.
 - `attach_link(vehicle, url, label?)` — link curation (§2). *Not built in
-  ticket H:* it needs `vehicle_links`, which is TK-016's table.
+  ticket H:* it needs `vehicle_links`, which round 5 moved to the origination
+  ticket (N, TK-024).
 - `get_timeline(vehicle)` — read-back, so the assistant can answer "when did
   I last change the oil?" — retrieval is half the reason to keep a log, and
   it makes the assistant a *reader* of the record, not just a scribe.
@@ -749,19 +1170,29 @@ integration seams.
 account:
 
 - **Handle.** The public identity — "maintained by @handle" on the page,
-  attribution on every entry. Recommendation: **party name = the handle,
-  chosen at the first assertive act, immutable thereafter**; a separate
-  mutable display name is presentation-only. The immutability isn't
-  aesthetics: the party name is baked into every claim's `content_hash`, so a
-  renamed party would orphan its own history's hashes. Pseudonymous handles
-  are also the privacy posture (below). `GREG'S CALL` — immutable handles are
-  a real UX constraint and users will ask.
+  attribution on every entry. **Party name = the handle, immutable** (decided
+  2026-08-02); a separate mutable display name is presentation-only. The
+  immutability isn't aesthetics: the party name is baked into every claim's
+  `content_hash`, so a renamed party would orphan its own history's hashes.
+  Pseudonymous handles are also the privacy posture (below).
+
+  **Timing, unified 2026-08-04 (round 5): chosen at registration, for every
+  account.** The rule had moved twice — chosen at the grant (2026-08-02),
+  then at code issue (ticket E), then §7b put it on the registration screen
+  for originators — and three timings in one product was two too many. The
+  *user* now carries the reserved handle from registration; the party is
+  minted with it at the first assertive act, so the binding principle — no
+  placeholder ever hashed, no party until there is something to attribute —
+  is untouched. Only the reservation moved earlier. The claim flow's handle
+  step goes away (one less screen), commenters (§6b) get an identity for
+  free, and the migration is trivial because existing users are seed and
+  test accounts. Lands with ticket N (TK-024).
 - **MCP tokens.** Mint/revoke in account settings (§8): scoped to the user's
   stewardships, shown once, revocable individually. Token last-used display
   so a leaked token is noticeable.
 - **Notifications: email-only in v1.** Magic links, claiming decision,
-  counter-claim alert (§4 — time-sensitive, the one that must not be missed),
-  pending-entry nudge ("your assistant logged 2 entries — confirm"). Swoosh
+  counter-claim alert (§4 — time-sensitive, the one that must not be missed).
+  (The pending-entry nudge died with the confirm step — ticket H.) Swoosh
   ships with Phoenix; no web push, no digest engine in v1.
 - **Account deletion, stated honestly.** Credentials and profile delete;
   **the party and its claims persist** — the ledger is append-only and
@@ -777,8 +1208,9 @@ Every owner flow in this doc has an operator end, and it lands in /bench —
 one app, behind the §5 operator flag, not a second surface. /bench grows from
 a per-vehicle workbench into workbench + queues:
 
-- **Claiming queue** (§4): proof photo, vision pre-check verdict, vehicle
-  context, approve/deny. High-value flags surface here.
+- **Claiming queue** (§4): proof photo, vehicle context, approve/deny —
+  shipped with ticket E. The vision pre-check's read joins this screen as a
+  proposal when volume forces auto-approve, not before.
 - **Ratification queue**: owner-proposed factory/provenance claims waiting on
   the gate (§3) — the operator half of the scope split.
 - **Dispute queue**: counter-claims on stewarded vehicles (§4); resolution
@@ -789,8 +1221,8 @@ a per-vehicle workbench into workbench + queues:
 - **User admin**: suspend account, revoke stewardship — both status flips
   with reasons, nothing deleted.
 - **Metrics strip**: active stewards, entry mix (MCP vs composer — the §8
-  30-day check), confirm rates, claims/day. Read-only, computed, no new
-  tables.
+  30-day check), correction rates (amend/delete, the confirm step's
+  replacement signal), claims/day. Read-only, computed, no new tables.
 
 Doctrine: admin actions that touch the ledger go through `ratify_claim` /
 `adjudicate_claims` / status flips exclusively. The admin UI is a caller of
@@ -853,13 +1285,18 @@ files from platforms. Owner-uploaded photos are the only media we host.
 >
 > 3. **Owner surface** (docs/design/owner_surface.md): auth (magic link) ·
 >    public vehicle pages with create-on-first-lookup · claiming via
->    possession proof · logbook vocabulary (`event.fuel`,
->    `event.modification`, `event.note`, `event.outing`, `state.*` traits) ·
+>    possession proof · **origination** (§7b: a car asserted into existence
+>    before its VIN — one box for lookup and origination, extraction as the
+>    first hosted LLM call) · logbook vocabulary (`event.fuel`,
+>    `event.modification`, `event.note`, `event.outing`, `event.plan`,
+>    `state.*` traits) ·
 >    **`current_state` projection** (the logbook as a replayable log folding
 >    into "the car now"; page leads with the living car, provenance as
 >    foundation) · phone-first
 >    composer · **MCP agent entry surface** (voice via the owner's own LLM;
->    proposed-until-confirmed) · scope-split self-ratification ·
+>    self-ratifying — the tool call is the owner's assertive act, correction
+>    replaces confirmation) · scope-split self-ratification · **narrative
+>    layer** (§6c: story, plans, photos) ·
 >    distribution kit (share card, forum snippet, badge) · privacy controls
 >    + export · operator queues (claiming, ratification, disputes, reports)
 >    · platform plumbing (email, object storage, rate limits, ToS/privacy).
@@ -884,7 +1321,7 @@ real logbook entries — extraction gets a live corpus and a motivated
 ratifier (the owner upgrading their own tier-1 entries to receipt-backed),
 instead of only operator-fed auction documents.
 
-### Proposed build tickets (drafted for approval — not filed)
+### Build tickets (letters map to TK tickets in the tracker)
 
 | # | Ticket | Depends on | Notes |
 |---|---|---|---|
@@ -893,14 +1330,22 @@ instead of only operator-fed auction documents.
 | C | Logbook vocabulary: `event.fuel`, `event.modification`, `event.note`, `event.outing`, `state.*` seed traits, `sets` deltas + validators + tests | — | Small, test-first. |
 | M | `current_state` fold (§2b): derived map, transaction-hook refresh, admitted-only latest-wins fold, replay test (drop + re-fold = identical) | B, C | Load-bearing (arithmetic, same class as facts) — main-thread work, not delegated. |
 | D | Public vehicle page: `/v/:public_id`, VIN resolver, §6 hierarchy (hero from `current_state`, timeline-centered, record as foundation layer), lookup + create-on-first-lookup, rate limit | B, M | Read-only; ships before claiming exists (unclaimed pages are the bait). |
-| E | Claiming: challenge codes, proof upload, vision pre-check, /bench approval queue, stewardships | A, B | |
-| F | Entry composer: four modes, photos, links table, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. |
-| G | Privacy controls + owner's own-view + full-record export | F | |
-| H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `confirm_entry`, `attach_link`, `get_timeline`), proposed-until-confirmed path, pending queue in composer | A, B, C | §8's contract. v1 core, not fast-follow — the differentiated entry path. |
+| E | Claiming: challenge codes, proof upload, /bench approval queue, stewardships | A, B | Shipped 2026-08-03 (TK-015) — without the vision pre-check, struck below. |
+| F | Entry composer: segmented modes, photos, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. Shipped 2026-08-02 (TK-014) without links — the table moved to N. Plan mode arrives with O. |
+| G | Privacy controls (flipping visibility after the fact) + full-record export | F | TK-016. The own-view slice shipped 2026-08-03; `vehicle_links` moved to N in round 5. |
+| H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below, `attach_link` waits on N's table. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Entries travel to existing audiences; page is the canonical record. Needs J's image pipeline. |
 | J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
 | K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. |
 | L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
+| N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | TK-024. Load-bearing at the identity key — main-thread work, not delegated. |
+| O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first note (`text` optional), hero photo nudge | C, F | TK-025. Needs N's `vehicle_links` only for external-gallery links. |
+
+**Status, 2026-08-04.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
+(TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), H (TK-017), J
+(TK-006), plus G's own-view slice and the composer edit mode ticket H's
+correction rule exposed (TK-021, open). Open: G (TK-016, minus links), I
+(TK-018), K (TK-019), L (TK-020), N (TK-024), O (TK-025).
 
 **Build order (Greg, round 3): infra first.** J, A, B open the build — no
 design dependencies, and they gate everything downstream (email gates A's
@@ -908,9 +1353,12 @@ magic links, storage gates E's proof photos, B is the ledger seam every
 other ticket touches). C and M follow immediately; then D ships value
 (public pages, lookup) before any auth-gated surface exists — layered
 commits, each green. A→E→F/H remains the critical path to the first owner
-entry. F and H land together conceptually — the composer's pending queue is
-where unconfirmed MCP entries surface — but commit separately. K, I, L trail
-the critical path and can land incrementally after first owners exist. The
+entry. F and H land together conceptually — the same self-ratifying write
+path, two doors — but commit separately. K, I, L trail
+the critical path and can land incrementally after first owners exist. Round
+5's addendum to the order: N is the new front of the funnel and I is upstream
+of comments (§6b) — so the remaining sequence is N → O → I → G/K/L, with
+§6b's build unscheduled behind I. The
 §9.1 walk decisions (handles, deletion posture) get taken as they block A/B,
 not deferred to a second walk.
 
@@ -997,6 +1445,74 @@ not deferred to a second walk.
   Bearer token, no OAuth in v1 — authorization is OPTIONAL in the spec and
   §8 already deferred OAuth to "when a real client demands it."
 
+### Decided 2026-08-04, origination design walk
+
+Prompted by Greg walking his own first-run case — a 2024 Lexus GX 550, green,
+35,000 miles, no VIN — and by analysis of two Rennlist threads (classified
+1508628, build thread 1451795). Full rationale in §7b; the calls, compressed:
+
+- **§7b `:asserted` identity kind.** A car may exist before it has a VIN. Chosen
+  over VIN-required and over a draft object outside the registry.
+- **§7b self-ratifying identity claims on asserted cars** — a scoped deviation
+  from §3, affordable precisely because VIN resolution audits it through
+  `claim_comparison/1` rather than on trust.
+- **§7b one box.** Origination and §7 lookup share an input; the identity kind
+  is an outcome of what was typed.
+- **§7b extraction over a form.** Sentence in, claims out, the sentence stored
+  as the artifact. The project's first hosted LLM call. This also reopens §1's
+  parser deferral, which was priced when we had no parser at all.
+- **§7b conflicts are never refused.** Greg: *"I don't think we should stop
+  anyone from claiming.. even if there's a conflict."* This overturned a
+  recommendation made earlier in the same walk to refuse a resolution into an
+  occupied VIN — a submission-time gate in an architecture that gates nothing
+  anywhere else. The unique index defers the key flip, not the claim. Accepted
+  cost: an absorb write path is now owed.
+- **§7b the user exists before the email is sent**, so the magic link publishes
+  rather than unlocks and there is no pending state to carry.
+- **§7b handle at registration, permanence stated on the screen.** §4's
+  chosen-at-issue/minted-at-proof refinement has no analogue in a flow with
+  neither event.
+- **§7b unconfirmed orphans accepted.** Greg: *"who cares? that's fine."*
+- **§6b opened** — comments and likes, stated as a question with its doctrinal
+  edge (a comment is not a claim; the promote-to-claim seam is the real
+  decision) rather than designed.
+- **§1 amended** — the entry-UI question Greg raised (*"click a button and start
+  talking"*) is recorded as undesigned and `GREG'S CALL`, with §1's own analysis
+  noted as cutting against voice for the fill-up case specifically.
+
+### Decided 2026-08-04, round 5 (Greg, reviewing against the build-thread use case)
+
+The review's finding: a build thread is story + plan + photos + replies, and
+the doc had formalized only the events. The calls:
+
+- **§6c opened — the narrative layer** (ticket O, TK-025).
+  *Story*: an optional, mutable curation block, never a claim. The bar is
+  deliberately low — Greg: *"sometimes what's special about it is just that
+  it's mine and it's my baby"* — one sentence clears it, and the public page
+  renders nothing rather than a nudge.
+  *Plans*: dated aspiration entries (`event.plan`), Greg's framing — *"almost
+  like a blog post... let me record this on Monday and I can review it. These
+  are the wheels I'm looking at now"* — not a checklist, not threaded. His
+  forum-nervousness is answered structurally: every response mechanic stays in
+  §6b, and a plan asserts intent, never history.
+  *Photos*: added after setup, never an origination screen — Greg: *"I don't
+  think they're gonna be in the origination flow... once the whole thing is
+  set up."* Composer photos, the photo-first note, gallery/platform links,
+  and the hero's owner-facing nudge.
+- **§6b doctrine calls taken**: owners cannot moderate others' comments
+  (report-to-operator only — witnessed credibility is the product); no
+  promote-to-claim in v1; likes cosmetic, never a tier input; handles
+  required; comments sequenced after the distribution kit (I). The surface
+  itself remains undesigned and unscheduled.
+- **§9.1 handle timing unified**: chosen at registration for every account,
+  reserved on the user, party minted with it at the first assertive act.
+  Supersedes chosen-at-grant (2026-08-02) and chosen-at-issue (ticket E).
+- **`vehicle_links` moves from ticket G to N** — §7b's screen 5 needs it, and
+  a downstream ticket owning an onboarding table was a dependency inversion.
+- **§10 hygiene** (Maya's call, delegated): roadmap text and ticket rows
+  still describing the struck confirm step and vision pre-check corrected;
+  shipped statuses recorded; N and O cut as TK-024/TK-025.
+
 ### Decisions still queued for the walk, in order
 
 5. §9.1 — the deletion posture: credentials delete, party + claims persist.
@@ -1004,3 +1520,13 @@ not deferred to a second walk.
    blocking: nothing deletes an account today.
 6. §1 — mobile-web-only v1 (no native app).
 7. §10 — the §11 rewrite text and ticket cut A–L.
+8. §7b — links as evidence or curation. Holding §2's curation position costs
+   nothing today, because promoting links to evidence is a claim-writing change
+   rather than a layout one. Greg has build-thread links still to supply that
+   may argue the other way.
+9. §1 — the entry surface for a fill-up, in Greg's words: "click a button and
+   start talking." Needs its own pass; §7b's extraction endpoint changes what it
+   costs to build.
+10. §6b — the comments surface itself: schema, rendering, report handling for
+    speech, email volume. The doctrine calls are taken (round 5); what remains
+    is the design pass and its scheduling, behind ticket I.
