@@ -164,17 +164,46 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   ledger computed: verified, unverified, or conflicted. Sorted so identity
   reads before build reads before provenance — the order a document states them.
   """
-  def record_rows(%Vehicle{} = vehicle) do
+  def record_rows(%Vehicle{} = vehicle, provenance \\ %{}) do
     vehicle.facts
     |> Enum.map(fn {predicate, %{"value" => value, "status" => status}} ->
+      receipts = Map.get(provenance, predicate, %{claims: [], sources: []})
+      dom_id = fact_dom_id(predicate)
+
       %{
         predicate: predicate,
         label: fact_label(predicate),
         value: fact_value(predicate, value),
-        status: status
+        status: status,
+        dom_id: dom_id,
+        claims: Enum.map(receipts.claims, &record_claim(predicate, &1)),
+        sources: Enum.map(receipts.sources, &record_source(dom_id, &1))
       }
     end)
     |> Enum.sort_by(&{namespace_rank(&1.predicate), &1.label})
+  end
+
+  defp record_claim(predicate, claim) do
+    claim
+    |> Map.put(:dom_id, "claim-#{claim.claim_id}")
+    |> Map.update!(:value, &fact_value(predicate, &1))
+  end
+
+  defp record_source(fact_dom_id, source) do
+    source
+    |> Map.put(:label, Enum.join(source.parties, ", "))
+    |> Map.put(:dom_id, "#{fact_dom_id}-source-#{source_key(source.url)}")
+  end
+
+  defp fact_dom_id(predicate) do
+    "fact-" <> String.replace(predicate, ~r/[^a-zA-Z0-9_-]/, "-")
+  end
+
+  defp source_key(url) do
+    :sha256
+    |> :crypto.hash(url)
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 12)
   end
 
   defp namespace_rank("identity." <> _rest), do: 0
@@ -358,6 +387,14 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
       {:ok, date} -> on_date(date)
       {:error, _reason} -> iso
     end
+  end
+
+  @doc "A public artifact kind as a compact human label."
+  def artifact_kind(kind) when is_atom(kind) do
+    kind
+    |> Atom.to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
   end
 
   def year_of(nil), do: nil

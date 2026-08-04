@@ -29,10 +29,15 @@ defmodule SantoApiWeb.VehicleLiveTest do
   test "reaches the page by public handle, with no account", %{conn: conn} do
     vehicle = car()
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "2007 Porsche"
-    assert html =~ vehicle.identity_key |> String.replace("vin:", "")
+    assert has_element?(view, "#vehicle-title", "2007 Porsche")
+
+    assert has_element?(
+             view,
+             "#vehicle-identity",
+             String.replace(vehicle.identity_key, "vin:", "")
+           )
   end
 
   test "a VIN redirects to the canonical handle rather than serving a second URL", %{conn: conn} do
@@ -57,50 +62,55 @@ defmodule SantoApiWeb.VehicleLiveTest do
       scope_date: ~D[2025-02-02]
     })
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "2.7 flat-six, rebuilt"
+    assert has_element?(view, "#vehicle-spec", "2.7 flat-six, rebuilt")
   end
 
   test "a car nobody has described says so instead of inventing a description", %{conn: conn} do
     {:ok, vehicle} = Registry.register_chassis(:porsche, :pre_vin, "9113600123")
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "Nobody has described this car yet"
-    assert html =~ "Nothing on file yet"
+    assert has_element?(view, "#vehicle-description-gap", "Nobody has described this car yet")
+    assert has_element?(view, "#record-empty", "Nothing on file yet")
   end
 
   test "an empty logbook invites an entry rather than showing a clean record", %{conn: conn} do
     vehicle = car()
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "No entries yet"
-    refute html =~ "clean"
+    assert has_element?(view, "#logbook-empty", "No entries yet")
+    refute has_element?(view, "#vehicle-logbook", "clean")
   end
 
   test "admitted entries appear on the timeline; proposed ones do not", %{conn: conn} do
     vehicle = car()
 
-    admit(vehicle, %{
-      predicate: "event.service",
-      value: %{"summary" => "Annual service and IMS inspection", "performer" => "Flat 6 Motors"},
-      scope_date: ~D[2025-06-01]
-    })
+    admitted =
+      admit(vehicle, %{
+        predicate: "event.service",
+        value: %{
+          "summary" => "Annual service and IMS inspection",
+          "performer" => "Flat 6 Motors"
+        },
+        scope_date: ~D[2025-06-01]
+      })
 
-    {:ok, _proposed} =
+    {:ok, proposed} =
       Registry.propose_claim(vehicle, %{
         predicate: "event.note",
         value: %{"text" => "this has not been confirmed"},
         scope_date: ~D[2025-07-01]
       })
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "Annual service and IMS inspection"
-    assert html =~ "Flat 6 Motors"
-    refute html =~ "this has not been confirmed"
+    assert has_element?(view, "#entry-#{admitted.id}", "Annual service and IMS inspection")
+    assert has_element?(view, "#entry-#{admitted.id}", "Flat 6 Motors")
+    refute has_element?(view, "#entry-#{proposed.id}")
+    refute has_element?(view, "#vehicle-record", "this has not been confirmed")
   end
 
   test "an entry says its details once — what happened leads, the reading follows", %{conn: conn} do
@@ -157,9 +167,9 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
     {:ok, _hidden} = Registry.set_visibility(claim, :private)
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    refute html =~ "kept in the second garage"
+    refute has_element?(view, "#entry-#{claim.id}")
     assert Enum.any?(Registry.list_claims(vehicle.id), &(&1.id == claim.id))
   end
 
@@ -177,15 +187,16 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
     {:ok, _hidden} = Registry.set_visibility(claim, :private)
 
-    {:ok, _live, html} = live(log_in_user(conn, user), ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(log_in_user(conn, user), ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "kept in the second garage"
-    assert html =~ "Not on the public page"
+    assert has_element?(view, "#entry-#{claim.id}", "kept in the second garage")
+    assert has_element?(view, "#entry-#{claim.id}", "Not on the public page")
   end
 
   test "a conflicted fact says sources disagree instead of picking quietly", %{conn: conn} do
     vehicle = car()
     other_source = Registry.ensure_party("Kardex copy", :registry)
+    santo = Enum.find(Registry.list_claims(vehicle.id), &(&1.predicate == "build.plant"))
 
     # Santo already claims the plant from the VIN. A second party naming it
     # differently is what a conflict actually is — one party disagreeing with
@@ -198,17 +209,131 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
     {:ok, _admitted} = Registry.ratify_claim(claim.id)
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{vehicle.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert html =~ "sources disagree"
+    assert has_element?(view, "#fact-build-plant[data-status='conflicted']", "sources disagree")
+    assert has_element?(view, "#claim-#{santo.id}-party", "Vin Santo")
+    assert has_element?(view, "#claim-#{claim.id}-party", "Kardex copy")
+    assert has_element?(view, "#claim-#{claim.id}-value", "Osnabrück")
+    assert selector_count(view, "#fact-build-plant-claims article[data-claim-state]") == 2
+  end
+
+  test "a proposed factory fact shows its party, state, date, artifact, and public source", %{
+    conn: conn
+  } do
+    {:ok, vehicle} = Registry.register_chassis(:ferrari, :pre_vin, "04269")
+    party = Registry.ensure_party("RM Auctions", :vendor)
+    url = "https://example.com/auction/04269"
+
+    {:ok, artifact} =
+      Registry.create_reference_artifact(vehicle, party, %{
+        source_url: url,
+        acquired_at: ~U[2026-08-04 12:00:00.000000Z],
+        metadata: %{"rights_profile" => "public-pointer-only-v1"}
+      })
+
+    {:ok, claim} =
+      Registry.propose_claim(vehicle, party, %{
+        predicate: "build.production_date",
+        value: "1972-10-18",
+        scope_date: ~D[1972-10-18],
+        artifact_id: artifact.id
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+
+    assert has_element?(view, "#vehicle-record")
+
+    assert has_element?(
+             view,
+             "#fact-build-production_date[data-status='unverified']",
+             "unconfirmed"
+           )
+
+    assert has_element?(view, "#fact-build-production_date-disclosure", "18 October 1972")
+    assert has_element?(view, "#claim-#{claim.id}[data-claim-state='proposed']")
+    assert has_element?(view, "#claim-#{claim.id}-party", "RM Auctions")
+    assert has_element?(view, "#claim-#{claim.id}-applicable", "18 October 1972")
+    assert has_element?(view, "#claim-#{claim.id}-artifact", "Reference")
+    assert has_element?(view, "#claim-#{claim.id}-artifact", "acquired 4 August 2026")
+
+    assert has_element?(
+             view,
+             ~s(#fact-build-production_date-claims a[id^="fact-build-production_date-source-"][href="#{url}"])
+           )
+  end
+
+  test "private artifact evidence leaves the fact visible and its URL undisclosed", %{conn: conn} do
+    {:ok, vehicle} = Registry.register_chassis(:ferrari, :pre_vin, "04270")
+    party = Registry.ensure_party("Private archive", :registry)
+    url = "https://private.example/04270-build-sheet"
+
+    {:ok, artifact} =
+      Registry.create_reference_artifact(vehicle, party, %{
+        source_url: url,
+        metadata: %{"rights_profile" => "owner-private-v1"}
+      })
+
+    {:ok, artifact} = Registry.set_visibility(artifact, :private)
+
+    {:ok, claim} =
+      Registry.propose_claim(vehicle, party, %{
+        predicate: "identity.model_year",
+        value: 1972,
+        artifact_id: artifact.id
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+
+    assert has_element?(view, "#fact-identity-model_year", "1972")
+    assert has_element?(view, "#claim-#{claim.id}-artifact", "No public artifact")
+    refute has_element?(view, ~s(a[href="#{url}"]))
+  end
+
+  test "duplicate evidence URLs render once without collapsing their claims", %{conn: conn} do
+    {:ok, vehicle} = Registry.register_chassis(:ferrari, :pre_vin, "04271")
+    rm = Registry.ensure_party("RM Auctions", :vendor)
+    bat = Registry.ensure_party("Bring a Trailer", :vendor)
+    url = "https://example.com/shared-dino-record"
+
+    {:ok, rm_artifact} =
+      Registry.create_reference_artifact(vehicle, rm, %{
+        source_url: url,
+        metadata: %{"rights_profile" => "public-pointer-only-v1"}
+      })
+
+    {:ok, bat_artifact} =
+      Registry.create_reference_artifact(vehicle, bat, %{
+        source_url: url,
+        metadata: %{"rights_profile" => "public-pointer-only-v1"}
+      })
+
+    value = %{"code" => "dino_246_gts", "label" => "Dino 246 GTS"}
+
+    for {party, artifact} <- [{rm, rm_artifact}, {bat, bat_artifact}] do
+      assert {:ok, _claim} =
+               Registry.propose_claim(
+                 vehicle,
+                 party,
+                 %{predicate: "identity.model", value: value, artifact_id: artifact.id},
+                 distinct_by_artifact: true
+               )
+    end
+
+    {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+
+    assert selector_count(view, "#fact-identity-model-claims article[data-claim-state]") == 2
+    assert selector_count(view, ~s(#fact-identity-model-claims a[href="#{url}"])) == 1
+    assert has_element?(view, "#fact-identity-model-claims", "RM Auctions")
+    assert has_element?(view, "#fact-identity-model-claims", "Bring a Trailer")
   end
 
   test "the record counts facts honestly, without a percentage of nothing", %{conn: conn} do
     {:ok, bare} = Registry.register_chassis(:porsche, :pre_vin, "9113600124")
 
-    {:ok, _live, html} = live(conn, ~p"/v/#{bare.public_id}")
+    {:ok, view, _html} = live(conn, ~p"/v/#{bare.public_id}")
 
-    refute html =~ "facts on this car are backed"
+    refute has_element?(view, "#record-strength")
   end
 
   test "the ratified 04268 corpus record shows identity, sales, attribution, and evidence", %{
@@ -233,6 +358,24 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
     assert has_element?(view, "h1", "1972 Ferrari Dino 246 GTS")
+
+    for fact <- ["identity-marque", "identity-model", "identity-model_year"] do
+      assert has_element?(view, "#fact-#{fact}[data-status='unverified']", "unconfirmed")
+    end
+
+    assert selector_count(view, "#fact-identity-model-claims article[data-claim-state]") == 2
+    assert has_element?(view, "#fact-identity-model-claims", "RM Auctions")
+    assert has_element?(view, "#fact-identity-model-claims", "Bring a Trailer")
+
+    assert has_element?(
+             view,
+             ~s(#fact-identity-model-claims a[href="https://rmsothebys.com/auctions/az14/lots/r187-1972-ferrari-dino-246-gts/"])
+           )
+
+    assert has_element?(
+             view,
+             ~s(#fact-identity-model-claims a[href="https://bringatrailer.com/listing/1972-ferrari-dino-246-gts-3/"])
+           )
 
     assert has_element?(
              view,
@@ -262,6 +405,37 @@ defmodule SantoApiWeb.VehicleLiveTest do
            )
 
     refute has_element?(view, "#vehicle-logbook li.vs-tick", "Proposed events remain private")
+    refute has_element?(view, "#vehicle-record", "Proposed events remain private")
+  end
+
+  test "page query count stays flat as fact claims grow", %{conn: conn} do
+    {:ok, small} = Registry.register_chassis(:ferrari, :pre_vin, "query-small")
+    {:ok, large} = Registry.register_chassis(:ferrari, :pre_vin, "query-large")
+    value = %{"code" => "dino_246_gts", "label" => "Dino 246 GTS"}
+
+    for {vehicle, count} <- [{small, 1}, {large, 30}], index <- 1..count do
+      party = Registry.ensure_party("Query source #{vehicle.public_id} #{index}", :vendor)
+
+      {:ok, artifact} =
+        Registry.create_reference_artifact(vehicle, party, %{
+          source_url: "https://example.com/#{vehicle.public_id}/#{index}",
+          metadata: %{"rights_profile" => "public-pointer-only-v1"}
+        })
+
+      assert {:ok, _claim} =
+               Registry.propose_claim(
+                 vehicle,
+                 party,
+                 %{predicate: "identity.model", value: value, artifact_id: artifact.id},
+                 distinct_by_artifact: true
+               )
+    end
+
+    small_queries = page_query_count(conn, small)
+    large_queries = page_query_count(build_conn(), large)
+
+    assert large_queries == small_queries
+    assert large_queries <= 16
   end
 
   test "an admitted unsuccessful auction event renders as a high bid, not a sale", %{conn: conn} do
@@ -287,5 +461,42 @@ defmodule SantoApiWeb.VehicleLiveTest do
            )
 
     refute has_element?(view, "#vehicle-logbook li.vs-tick", "Sold at Mecum Auctions")
+  end
+
+  defp selector_count(view, selector) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(selector)
+    |> Enum.count()
+  end
+
+  defp page_query_count(conn, vehicle) do
+    ref = make_ref()
+    test_pid = self()
+    handler_id = {__MODULE__, ref}
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:santo_api, :repo, :query],
+        fn _event, _measurements, _metadata, _config -> send(test_pid, {ref, :query}) end,
+        nil
+      )
+
+    try do
+      assert {:ok, _view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
+      drain_queries(ref, 0)
+    after
+      :telemetry.detach(handler_id)
+    end
+  end
+
+  defp drain_queries(ref, count) do
+    receive do
+      {^ref, :query} -> drain_queries(ref, count + 1)
+    after
+      0 -> count
+    end
   end
 end

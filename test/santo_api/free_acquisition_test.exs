@@ -186,6 +186,7 @@ defmodule SantoApi.FreeAcquisitionTest do
 
     broad_arrow_claim =
       Claim
+      |> where([c], c.predicate == "event.sale")
       |> Repo.all()
       |> Enum.find(&(&1.value["venue"] == "Broad Arrow Auctions"))
       |> Repo.preload(:asserted_by_party)

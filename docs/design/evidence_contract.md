@@ -176,6 +176,15 @@ across the registry: predicate → `{value, status}`.
 - Recomputed inside every transaction that writes claims. Reading facts costs
   one row; the receipts underneath are for sale moments, disputes, appraisals.
 
+The public receipt view beneath `facts` includes every live factory/provenance
+claim, proposed as well as admitted, because an unverified projected fact must
+show the proposals that produced it. It is a separate read from the admitted-only
+event timeline. The read joins asserting parties and artifacts once for the whole
+vehicle; it never fetches evidence per claim. Only public, non-snapshot,
+non-possession-proof artifacts may contribute their kind, acquisition date, and
+HTTP(S) source URL. URLs deduplicate within a fact, while the claims remain
+separate so equivalent assertions keep their attribution.
+
 **The second projection** (added 2026-08-02, owner_surface §2b). `facts` answers
 what the factory built. `current_state` answers what the car *is* — latest
 admitted observed-scope claim per predicate, plus the `sets` deltas carried by

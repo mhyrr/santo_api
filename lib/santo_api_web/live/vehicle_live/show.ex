@@ -25,6 +25,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:page_title, Presenter.title(vehicle))
          |> assign(:vehicle, vehicle)
          |> assign(:timeline, Owners.timeline(socket.assigns.current_scope, vehicle))
+         |> assign(:record_provenance, Registry.public_fact_provenance(vehicle.id))
          |> assign(:steward, Owners.steward(vehicle))
          |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))
          |> assign(:my_handle, my_handle(socket.assigns.current_scope))
@@ -59,7 +60,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
       <.claim_bar :if={not @stewarding?} vehicle={@vehicle} signed_in?={@signed_in?} />
       <.logbook entries={@timeline} my_handle={@my_handle} public_id={@vehicle.public_id} />
       <.current_spec vehicle={@vehicle} />
-      <.record vehicle={@vehicle} />
+      <.record vehicle={@vehicle} provenance={@record_provenance} />
       <.colophon vehicle={@vehicle} />
     </article>
     """
@@ -111,23 +112,33 @@ defmodule SantoApiWeb.VehicleLive.Show do
       |> assign(:odometer, Presenter.odometer(assigns.vehicle))
 
     ~H"""
-    <header class="mx-auto max-w-3xl px-5 pt-16 pb-14 sm:px-8 sm:pt-24">
-      <p class="vs-eyebrow vs-rise" style="color: var(--vs-dim)">
+    <header id="vehicle-hero" class="mx-auto max-w-3xl px-5 pt-16 pb-14 sm:px-8 sm:pt-24">
+      <p id="vehicle-identity" class="vs-eyebrow vs-rise" style="color: var(--vs-dim)">
         {Presenter.identity_label(@vehicle)}
         <span class="vs-code ml-2" style="color: var(--vs-dial)">{Presenter.chassis(@vehicle)}</span>
       </p>
 
-      <h1 class="vs-spec vs-rise mt-5 text-[2.75rem] sm:text-6xl">
+      <h1 id="vehicle-title" class="vs-spec vs-rise mt-5 text-[2.75rem] sm:text-6xl">
         {Presenter.title(@vehicle)}
       </h1>
 
-      <p :if={@spec != []} class="vs-rise mt-4 text-lg sm:text-xl" style="color: var(--vs-dim)">
+      <p
+        :if={@spec != []}
+        id="vehicle-spec"
+        class="vs-rise mt-4 text-lg sm:text-xl"
+        style="color: var(--vs-dim)"
+      >
         <span :for={{part, index} <- Enum.with_index(@spec)}>
           <span :if={index > 0} aria-hidden="true" class="mx-2">·</span><span style="color: var(--vs-dial)">{part}</span>
         </span>
       </p>
 
-      <p :if={@spec == []} class="vs-rise mt-4 text-lg" style="color: var(--vs-dim)">
+      <p
+        :if={@spec == []}
+        id="vehicle-description-gap"
+        class="vs-rise mt-4 text-lg"
+        style="color: var(--vs-dim)"
+      >
         Nobody has described this car yet.
       </p>
 
@@ -173,7 +184,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
         Logbook
       </h2>
 
-      <p :if={@entries == []} class="text-base" style="color: var(--vs-dim)">
+      <p :if={@entries == []} id="logbook-empty" class="text-base" style="color: var(--vs-dim)">
         No entries yet. Everything that happens to this car from here — a service, a
         fill-up, a set of wheels — goes in the log and stays there.
       </p>
@@ -338,44 +349,135 @@ defmodule SantoApiWeb.VehicleLive.Show do
   # --- the record -----------------------------------------------------------
 
   attr :vehicle, :map, required: true
+  attr :provenance, :map, required: true
 
   defp record(assigns) do
     assigns =
       assigns
-      |> assign(:rows, Presenter.record_rows(assigns.vehicle))
+      |> assign(:rows, Presenter.record_rows(assigns.vehicle, assigns.provenance))
       |> assign(:strength, Presenter.record_strength(assigns.vehicle))
 
     ~H"""
-    <section class="vs-paper" aria-labelledby="record-heading">
+    <section id="vehicle-record" class="vs-paper" aria-labelledby="record-heading">
       <div class="mx-auto max-w-3xl px-5 py-16 sm:px-8">
         <h2 id="record-heading" class="vs-eyebrow" style="color: var(--vs-ink-dim)">
           The record
         </h2>
 
         <p class="mt-3 max-w-xl text-sm leading-relaxed" style="color: var(--vs-ink-dim)">
-          What this car left the factory as, and what backs each line. Facts a document
-          supports read verified. The rest are on the record as claims, and say so.
+          What this car left the factory as, and what backs each line. Verified facts have
+          been admitted to the record. Unconfirmed evidence stays proposed; disagreement
+          keeps every side visible.
         </p>
 
-        <p :if={@rows == []} class="mt-8 text-sm" style="color: var(--vs-ink-dim)">
+        <p
+          :if={@rows == []}
+          id="record-empty"
+          class="mt-8 text-sm"
+          style="color: var(--vs-ink-dim)"
+        >
           Nothing on file yet. A build sheet, a window sticker, or a Kardex would start it.
         </p>
 
-        <dl :if={@rows != []} class="mt-8 divide-y" style="border-color: var(--vs-rule)">
-          <div :for={row <- @rows} class="grid gap-1 py-3.5 sm:grid-cols-[11rem_1fr] sm:gap-6">
-            <dt class="vs-eyebrow pt-1" style="color: var(--vs-ink-dim)">{row.label}</dt>
-            <dd class="flex flex-wrap items-baseline gap-x-3">
-              <span>{row.value}</span>
-              <span class={["vs-eyebrow", status_class(row.status)]}>{status_word(row.status)}</span>
-            </dd>
-          </div>
-        </dl>
+        <div :if={@rows != []} class="mt-8 divide-y" style="border-color: var(--vs-rule)">
+          <details
+            :for={row <- @rows}
+            id={row.dom_id}
+            class="group py-1"
+            data-status={row.status}
+          >
+            <summary
+              id={"#{row.dom_id}-disclosure"}
+              class="grid cursor-pointer list-none gap-2 py-3.5 transition-opacity hover:opacity-70 sm:grid-cols-[11rem_1fr_auto] sm:gap-6"
+            >
+              <span class="vs-eyebrow pt-1" style="color: var(--vs-ink-dim)">{row.label}</span>
+              <span class="flex flex-wrap items-baseline gap-x-3">
+                <span>{row.value}</span>
+                <span class={["vs-eyebrow", status_class(row.status)]}>
+                  {status_word(row.status)}
+                </span>
+              </span>
+              <.icon
+                name="hero-chevron-down"
+                class="mt-1 size-4 transition-transform duration-200 group-open:rotate-180"
+              />
+            </summary>
 
-        <p :if={@strength} class="mt-10 text-sm" style="color: var(--vs-ink-dim)">
+            <div
+              id={"#{row.dom_id}-claims"}
+              class="mb-5 ml-0 border-l pl-4 sm:ml-[11rem] sm:pl-6"
+              style="border-color: var(--vs-rule)"
+            >
+              <article
+                :for={claim <- row.claims}
+                id={claim.dom_id}
+                class="py-4 first:pt-2"
+                data-claim-state={claim.state}
+              >
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p id={"#{claim.dom_id}-value"} class="text-sm font-medium">{claim.value}</p>
+                  <span class="vs-code text-[0.7rem] uppercase" style="color: var(--vs-ink-dim)">
+                    {claim_state_word(claim.state)}
+                  </span>
+                </div>
+
+                <dl class="mt-3 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
+                  <div>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Asserted by</dt>
+                    <dd id={"#{claim.dom_id}-party"} class="mt-1">{claim.party}</dd>
+                  </div>
+                  <div>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Applicable</dt>
+                    <dd id={"#{claim.dom_id}-applicable"} class="mt-1">
+                      {applicable_label(claim.scope_date)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Evidence</dt>
+                    <dd id={"#{claim.dom_id}-artifact"} class="mt-1">
+                      <%= if claim.artifact do %>
+                        {Presenter.artifact_kind(claim.artifact.kind)}
+                        <span :if={claim.artifact.acquired_at}>
+                          · acquired {artifact_date(claim.artifact.acquired_at)}
+                        </span>
+                      <% else %>
+                        No public artifact
+                      <% end %>
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+
+              <div :if={row.sources != []} class="border-t pt-4" style="border-color: var(--vs-rule)">
+                <p class="vs-eyebrow" style="color: var(--vs-ink-dim)">Public sources</p>
+                <p class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                  <a
+                    :for={source <- row.sources}
+                    id={source.dom_id}
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                    aria-label={"Public source for #{row.label} from #{source.label}"}
+                  >
+                    {source.label} source
+                  </a>
+                </p>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <p
+          :if={@strength}
+          id="record-strength"
+          class="mt-10 text-sm"
+          style="color: var(--vs-ink-dim)"
+        >
           <span class="vs-figure font-semibold" style="color: var(--vs-ink)">
             {@strength.verified} of {@strength.total}
           </span>
-          facts on this car are backed by a document or a second source.
+          facts on this car are admitted without a live disagreement.
         </p>
       </div>
     </section>
@@ -391,6 +493,16 @@ defmodule SantoApiWeb.VehicleLive.Show do
   defp status_class("verified"), do: "vs-verified"
   defp status_class("conflicted"), do: "vs-conflicted"
   defp status_class(_status), do: ""
+
+  defp claim_state_word(:admitted), do: "admitted"
+  defp claim_state_word(:proposed), do: "proposed"
+
+  defp applicable_label(nil), do: "Timeless factory claim"
+  defp applicable_label(date), do: Presenter.on_date(date)
+
+  defp artifact_date(%DateTime{} = acquired_at) do
+    acquired_at |> DateTime.to_date() |> Presenter.on_date()
+  end
 
   # --- colophon -------------------------------------------------------------
 

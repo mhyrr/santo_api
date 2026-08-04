@@ -777,6 +777,109 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  The public receipts beneath the materialized factory record.
+
+  One joined query returns every live factory/provenance claim with its
+  asserting party and the publishable portion of its evidence. Proposed claims
+  belong here because `vehicle.facts` projects them as unverified; event and
+  observed claims do not, because their public read model is `timeline/2`.
+
+  Artifact privacy is enforced at the join. Private artifacts, possession
+  proofs, and provider payload snapshots contribute no artifact fields or URLs
+  to the returned structure. Payloads, storage refs, and metadata are never
+  selected. Source links are HTTP(S)-only and deduplicated per fact without
+  collapsing the separately attributable claims that cite them.
+  """
+  def public_fact_provenance(vehicle_id) do
+    Repo.all(
+      from(c in Claim,
+        join: p in Party,
+        on: p.id == c.asserted_by_party_id,
+        left_join: a in Artifact,
+        on:
+          a.id == c.artifact_id and a.visibility == :public and a.kind != :api_snapshot and
+            fragment("coalesce(?->>'purpose', '') <> 'possession_proof'", a.metadata),
+        left_join: source in Party,
+        on: source.id == a.source_party_id,
+        where:
+          c.vehicle_id == ^vehicle_id and c.scope_kind == :factory and
+            c.state in [:admitted, :proposed],
+        # Attribution reads neutrally by party name. Acquisition time is useful
+        # evidence metadata, never a reason to make one source look prevailing.
+        order_by: [asc: c.predicate, asc: p.name, asc: c.id],
+        select: %{
+          claim_id: c.id,
+          predicate: c.predicate,
+          value: c.value,
+          state: c.state,
+          scope_date: c.scope_date,
+          party: p.name,
+          artifact_id: a.id,
+          artifact_kind: a.kind,
+          artifact_acquired_at: a.acquired_at,
+          artifact_source_url: a.source_url,
+          artifact_source_party: source.name
+        }
+      )
+    )
+    |> Enum.group_by(& &1.predicate)
+    |> Map.new(fn {predicate, rows} ->
+      {predicate,
+       %{
+         claims: Enum.map(rows, &public_fact_claim/1),
+         sources: public_fact_sources(rows)
+       }}
+    end)
+  end
+
+  defp public_fact_claim(row) do
+    %{
+      claim_id: row.claim_id,
+      value: row.value,
+      state: row.state,
+      scope_date: row.scope_date,
+      party: row.party,
+      artifact: public_fact_artifact(row)
+    }
+  end
+
+  defp public_fact_artifact(%{artifact_id: nil}), do: nil
+
+  defp public_fact_artifact(row) do
+    %{kind: row.artifact_kind, acquired_at: row.artifact_acquired_at}
+  end
+
+  defp public_fact_sources(rows) do
+    rows
+    |> Enum.map(fn row ->
+      case public_source_url(row.artifact_source_url) do
+        nil -> nil
+        url -> %{url: url, party: row.artifact_source_party || row.party}
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.group_by(& &1.url)
+    |> Enum.map(fn {url, refs} ->
+      parties = refs |> Enum.map(& &1.party) |> Enum.uniq() |> Enum.sort()
+      %{url: url, parties: parties}
+    end)
+    |> Enum.sort_by(& &1.url)
+  end
+
+  defp public_source_url(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host}}
+      when scheme in ["http", "https"] and is_binary(host) ->
+        url
+
+      _not_public_http ->
+        nil
+    end
+  end
+
+  defp public_source_url(_url), do: nil
+
+  @doc """
   The oracle pattern as a query: group live claims by predicate and
   label each `:agreement`, `:conflict`, or `:single_source`. Derived,
   never stored — nothing overwrites anything.

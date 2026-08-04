@@ -182,4 +182,53 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert parts.details == []
     end
   end
+
+  describe "record_rows/2" do
+    test "keeps the projected value while formatting every contributing claim" do
+      vehicle =
+        vehicle(%{
+          "identity.model" => %{
+            "value" => %{"code" => "dino_246_gts", "label" => "Dino 246 GTS"},
+            "status" => "conflicted"
+          }
+        })
+
+      provenance = %{
+        "identity.model" => %{
+          claims: [
+            %{
+              claim_id: "claim-one",
+              value: %{"code" => "dino_246_gts", "label" => "Dino 246 GTS"},
+              party: "RM Auctions",
+              state: :proposed,
+              scope_date: nil,
+              artifact: %{kind: :reference, acquired_at: ~U[2026-08-04 12:00:00.000000Z]}
+            },
+            %{
+              claim_id: "claim-two",
+              value: %{"code" => "dino_246_gt", "label" => "Dino 246 GT"},
+              party: "Bring a Trailer",
+              state: :proposed,
+              scope_date: nil,
+              artifact: nil
+            }
+          ],
+          sources: [
+            %{url: "https://example.com/dino", parties: ["RM Auctions"]}
+          ]
+        }
+      }
+
+      assert [row] = Presenter.record_rows(vehicle, provenance)
+      assert row.value == "Dino 246 GTS"
+      assert row.status == "conflicted"
+      assert row.dom_id == "fact-identity-model"
+
+      assert Enum.map(row.claims, & &1.value) ==
+               ["Dino 246 GTS", "Dino 246 GT"]
+
+      assert [%{label: "RM Auctions", dom_id: source_id}] = row.sources
+      assert String.starts_with?(source_id, "fact-identity-model-source-")
+    end
+  end
 end

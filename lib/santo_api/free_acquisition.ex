@@ -193,7 +193,7 @@ defmodule SantoApi.FreeAcquisition do
         claim.predicate == attrs.predicate and claim.value == attrs.value and
           claim.scope_date == Map.get(attrs, :scope_date) and
           claim.asserted_by_party_id == source_party.id and
-          (not opts[:distinct_by_artifact] or claim.artifact_id == attrs.artifact_id)
+          (!opts[:distinct_by_artifact] or claim.artifact_id == attrs.artifact_id)
       end)
       |> case do
         %Claim{} = claim -> {:ok, claim}
