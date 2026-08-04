@@ -77,6 +77,83 @@ defmodule SantoApi.Registry.Vocabulary do
     end
   end
 
+  @doc """
+  The canonical value for a predicate, from the shapes a caller may state it in.
+
+  Per-predicate knowledge lives here beside `validate/2` and `equivalent?/3`,
+  so a caller that speaks a dialect of one predicate is understood in exactly
+  one place rather than at every door.
+
+  **Store the measured, derive the ratio.** A fill-up's gallons and the amount
+  paid are both measured and both storable exactly; the price per gallon
+  between them is a quotient, and the good ones do not terminate — $67.45 over
+  13.1 gallons is $5.148854…, which no fixed number of decimal places holds.
+  So the ledger keeps the two measurements and the ratio is computed at read
+  time, where rounding is free because nobody reconciles a price per gallon.
+  A total is reconciled — against a receipt, against a card statement — so it
+  is the number stored, exactly, in integer cents. `event.sale` already holds
+  money this way.
+
+  An owner who states a price per gallon has it multiplied out once, here, and
+  what lands in the ledger is a total they can check. A price nobody can read
+  is dropped rather than guessed at: a fill-up with no money on it is a fact,
+  and an invented total is not.
+  """
+  def normalize("event.fuel", %{"volume" => volume} = value) when is_map(value) do
+    stripped = Map.drop(value, ["cost", "unit_price"])
+
+    case fuel_total_cents(value, volume) do
+      nil -> stripped
+      cents -> Map.put(stripped, "total_cents", cents)
+    end
+  end
+
+  def normalize(_predicate, value), do: value
+
+  defp fuel_total_cents(%{"total_cents" => cents}, _volume) when is_integer(cents), do: cents
+  defp fuel_total_cents(%{"cost" => cost}, _volume), do: money_to_cents(cost)
+  defp fuel_total_cents(%{"unit_price" => price}, volume), do: multiply_out(price, volume)
+  defp fuel_total_cents(_value, _volume), do: nil
+
+  defp money_to_cents(stated) do
+    with %Decimal{} = amount <- to_decimal(stated),
+         false <- Decimal.negative?(amount) do
+      to_cents(amount)
+    else
+      _unreadable -> nil
+    end
+  end
+
+  # The one rounding this shape ever does, and it happens on the way in rather
+  # than on every read: half a cent, once, against a number the owner can check.
+  defp multiply_out(stated_price, stated_volume) do
+    with %Decimal{} = price <- to_decimal(stated_price),
+         %Decimal{} = volume <- to_decimal(stated_volume),
+         false <- Decimal.negative?(price) or Decimal.negative?(volume) do
+      price |> Decimal.mult(volume) |> to_cents()
+    else
+      _unreadable -> nil
+    end
+  end
+
+  defp to_cents(%Decimal{} = dollars) do
+    dollars |> Decimal.mult(100) |> Decimal.round(0) |> Decimal.to_integer()
+  end
+
+  # A JSON number from an assistant is rounded to the cent rather than refused.
+  # The float is gone by the time anything stores it, which is what the money
+  # rule is actually protecting.
+  defp to_decimal(value) when is_binary(value) do
+    case value |> String.trim() |> String.trim_leading("$") |> Decimal.parse() do
+      {decimal, ""} -> decimal
+      _unparseable -> nil
+    end
+  end
+
+  defp to_decimal(value) when is_integer(value), do: Decimal.new(value)
+  defp to_decimal(value) when is_float(value), do: Decimal.from_float(value)
+  defp to_decimal(_value), do: nil
+
   defp validate_value("identity.marque", value) when is_binary(value), do: :ok
 
   defp validate_value("identity.model", %{"code" => code, "label" => label})

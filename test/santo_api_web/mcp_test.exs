@@ -179,6 +179,46 @@ defmodule SantoApiWeb.McpTest do
       assert states == [:admitted, :admitted]
     end
 
+    test "a dictated price lands as integer cents, not as whatever shape it arrived in", ctx do
+      call_tool(ctx.conn, ctx.token, "log_entry", %{
+        "vehicle" => ctx.vehicle.public_id,
+        "date" => "2026-08-02",
+        "claims" => [
+          %{
+            "predicate" => "event.fuel",
+            "value" => %{"volume" => "13.1", "unit" => "gal", "cost" => "67.45"}
+          }
+        ]
+      })
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      assert [fuel] = entry.claims
+
+      # The same fill-up typed into the composer and dictated to an assistant is
+      # one shape in the ledger. Two shapes meant the money the owner dictated
+      # went into a key nothing read, and no read path could compare them.
+      assert fuel.value["total_cents"] == 6745
+      refute Map.has_key?(fuel.value, "cost")
+    end
+
+    test "a price per gallon is multiplied out, because the ratio is never stored", ctx do
+      call_tool(ctx.conn, ctx.token, "log_entry", %{
+        "vehicle" => ctx.vehicle.public_id,
+        "date" => "2026-08-02",
+        "claims" => [
+          %{
+            "predicate" => "event.fuel",
+            "value" => %{"volume" => "13.1", "unit" => "gal", "unit_price" => "5.15"}
+          }
+        ]
+      })
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      assert [fuel] = entry.claims
+      assert fuel.value["total_cents"] == 6747
+      refute Map.has_key?(fuel.value, "unit_price")
+    end
+
     test "returns the entry_ref so a correction has something to name", ctx do
       result =
         call_tool(ctx.conn, ctx.token, "log_entry", %{

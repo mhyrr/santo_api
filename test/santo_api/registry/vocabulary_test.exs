@@ -175,6 +175,79 @@ defmodule SantoApi.Registry.VocabularyTest do
                })
     end
 
+    test "a stated total becomes integer cents, whatever shape it arrived in" do
+      # The measured quantities are what the ledger holds: gallons and the
+      # amount paid. Both can be stored exactly; the price per gallon between
+      # them is a quotient that usually cannot, so it is derived at read time
+      # and never written.
+      assert %{"total_cents" => 6745} =
+               Vocabulary.normalize("event.fuel", %{
+                 "volume" => "13.1",
+                 "unit" => "gal",
+                 "cost" => "67.45",
+                 "currency" => "USD"
+               })
+
+      assert %{"total_cents" => 6745} =
+               Vocabulary.normalize("event.fuel", %{
+                 "volume" => "13.1",
+                 "unit" => "gal",
+                 "cost" => "$67.45"
+               })
+
+      # A JSON number from an assistant is rounded to the cent rather than
+      # refused — the float never survives into the ledger either way.
+      assert %{"total_cents" => 6745} =
+               Vocabulary.normalize("event.fuel", %{
+                 "volume" => "13.1",
+                 "unit" => "gal",
+                 "cost" => 67.45
+               })
+    end
+
+    test "a stated price per gallon is multiplied out once, on the way in" do
+      assert %{"total_cents" => 6747} =
+               Vocabulary.normalize("event.fuel", %{
+                 "volume" => "13.1",
+                 "unit" => "gal",
+                 "unit_price" => "5.15"
+               })
+    end
+
+    test "the ratio never survives normalization, and an explicit total wins" do
+      normalized =
+        Vocabulary.normalize("event.fuel", %{
+          "volume" => "13.1",
+          "unit" => "gal",
+          "total_cents" => 6745,
+          "cost" => "99.99",
+          "unit_price" => "1.00"
+        })
+
+      assert normalized["total_cents"] == 6745
+      refute Map.has_key?(normalized, "cost")
+      refute Map.has_key?(normalized, "unit_price")
+    end
+
+    test "an unreadable price is dropped rather than guessed at" do
+      normalized =
+        Vocabulary.normalize("event.fuel", %{
+          "volume" => "13.1",
+          "unit" => "gal",
+          "cost" => "about sixty bucks"
+        })
+
+      refute Map.has_key?(normalized, "cost")
+      refute Map.has_key?(normalized, "total_cents")
+      assert :ok = Vocabulary.validate("event.fuel", normalized)
+    end
+
+    test "normalizing leaves every other predicate exactly as it was" do
+      value = %{"summary" => "Oil and filter", "performer" => "Bruce Canepa"}
+      assert Vocabulary.normalize("event.service", value) == value
+      assert Vocabulary.normalize("observation.mileage", 41_660) == 41_660
+    end
+
     test "modifications carry a summary; area stays a free string" do
       assert :ok = Vocabulary.validate("event.modification", %{"summary" => "LS1 swap"})
 

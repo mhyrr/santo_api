@@ -49,8 +49,10 @@ defmodule SantoApiWeb.MCP.Tools do
         value: %{
           description:
             "Shape depends on the predicate: observation.mileage is an integer, " <>
-              "event.fuel takes volume/unit/cost/currency, the event.* rest take " <>
-              "an object with a text field."
+              "event.fuel takes volume, unit (gal or l), total_cents (what was " <>
+              "paid, in whole cents) and currency — send unit_price instead if " <>
+              "the owner gave a price per gallon and it is multiplied out for " <>
+              "you. The event.* rest take an object with a text field."
         }
       }
     }
@@ -232,7 +234,9 @@ defmodule SantoApiWeb.MCP.Tools do
 
   defp partition_claims(claims, note) when is_list(claims) do
     {known, unknown} =
-      Enum.split_with(claims, fn claim ->
+      claims
+      |> Enum.map(&normalize/1)
+      |> Enum.split_with(fn claim ->
         predicate = claim["predicate"]
 
         Vocabulary.scope_kind(predicate) != :error and
@@ -244,6 +248,16 @@ defmodule SantoApiWeb.MCP.Tools do
   end
 
   defp partition_claims(_claims, note), do: {[], residual_note([], note)}
+
+  # An assistant states a fact in whatever shape it heard, and the tool
+  # description guides without binding — `value` carries prose, not a schema.
+  # So the dialect is resolved here, before validation, and one shape reaches
+  # the ledger: the same fill-up typed into the composer and dictated aloud is
+  # one set of keys, comparable and readable by the same code.
+  defp normalize(%{"predicate" => predicate} = claim),
+    do: Map.put(claim, "value", Vocabulary.normalize(predicate, claim["value"]))
+
+  defp normalize(claim), do: claim
 
   # Everything that did not fit, kept in one note rather than several: it was
   # one thing the owner said, and splitting it would invent structure the
