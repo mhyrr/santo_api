@@ -226,6 +226,53 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert parts.details == [%{label: "Odometer", value: "41,660 mi"}]
     end
 
+    test "a fill-up shows what it cost" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "13.1",
+                "unit" => "gal",
+                "total_cents" => 6745,
+                "currency" => "USD"
+              }
+            },
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      assert parts.headline == "13.1 gal of fuel"
+      assert %{label: "Total", value: "$67.45"} in parts.details
+      assert %{label: "Odometer", value: "41,660 mi"} in parts.details
+    end
+
+    test "a fill-up nobody priced says nothing about money" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [%{predicate: "event.fuel", value: %{"volume" => "13.1", "unit" => "gal"}}]
+        })
+
+      assert parts.headline == "13.1 gal of fuel"
+      assert parts.details == []
+    end
+
+    test "a total whose currency nobody stated is not silently dollars" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{"volume" => "40.0", "unit" => "l", "total_cents" => 7000}
+            }
+          ]
+        })
+
+      assert %{label: "Total", value: "70.00"} in parts.details
+      refute Enum.any?(parts.details, &String.contains?(&1.value, "$"))
+    end
+
     test "a lead whose second fact is missing gets no line rather than an empty one" do
       parts =
         Presenter.entry_parts(%{

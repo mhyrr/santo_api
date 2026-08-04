@@ -297,9 +297,22 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # no performer answers yes to the first and no to the second, and the answer
   # has to be no line at all — an empty labelled chip reads as a fact we are
   # withholding rather than one nobody gave us.
+  defp lead_details(%{predicate: "event.fuel", value: value}), do: fuel_details(value)
   defp lead_details(%{predicate: "event.service"} = claim), do: own_detail(claim)
   defp lead_details(%{predicate: "event.outing"} = claim), do: own_detail(claim)
   defp lead_details(_claim), do: []
+
+  # What a fill-up cost. Its own label rather than the entry's, because "Total"
+  # is what the number is and "Fill-up" is what the entry is — the headline
+  # already said the latter.
+  #
+  # Silent when nobody priced it. A fill-up with no money on it is a fact; a
+  # zero would be an invention.
+  defp fuel_details(%{"total_cents" => cents} = value) when is_integer(cents) do
+    [%{label: "Total", value: money_cents(cents, value["currency"])}]
+  end
+
+  defp fuel_details(_value), do: []
 
   defp own_detail(claim) do
     case claim_detail(claim) do
@@ -387,11 +400,28 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp sale_headline(_value), do: "Sale"
 
   @doc """
-  Money from integer minor units. Never floats — the arithmetic stays exact
-  all the way to the screen.
+  Money in whole units — the scale `event.sale` holds a hammer price at. Never
+  floats: the arithmetic stays exact all the way to the screen.
   """
-  def money(amount, "USD"), do: "$" <> delimit(amount)
-  def money(amount, currency), do: "#{delimit(amount)} #{currency}"
+  def money(amount, currency), do: with_currency(delimit(amount), currency)
+
+  # Money in integer minor units, the scale `event.fuel` holds a total at. The
+  # two predicates differ on purpose: a hammer price is never quoted to the
+  # cent and a pump total always is. Nothing is rounded here — the cents
+  # arrived exact and leave exact.
+  defp money_cents(cents, currency) when is_integer(cents) do
+    major = cents |> div(100) |> delimit()
+    minor = cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")
+
+    with_currency("#{major}.#{minor}", currency)
+  end
+
+  # A currency nobody stated is a gap like any other. The number is real and
+  # says nothing about which money it is, so it goes out unqualified rather
+  # than wearing a dollar sign we were never handed.
+  defp with_currency(amount, "USD"), do: "$" <> amount
+  defp with_currency(amount, nil), do: amount
+  defp with_currency(amount, currency), do: "#{amount} #{currency}"
 
   @doc "Thousands separators, the way an odometer or a hammer price reads."
   def delimit(number) when is_integer(number) do

@@ -430,6 +430,9 @@ defmodule SantoApiWeb.McpTest do
         |> call_tool(ctx.token, "get_timeline", %{"vehicle" => ctx.vehicle.public_id})
         |> tool_text()
 
+      # Asserted, not merely un-mangled: the negative on its own passed happily
+      # through the whole period when a fill-up showed no money at all.
+      assert text =~ "$67.45"
       refute text =~ "USD67.45"
       refute text =~ "entry_ref: )"
     end
