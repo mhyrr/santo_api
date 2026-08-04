@@ -18,6 +18,8 @@ defmodule SantoApi.DataCase do
 
   using do
     quote do
+      use Oban.Testing, repo: SantoApi.Repo
+
       alias SantoApi.Repo
 
       import Ecto

@@ -37,10 +37,13 @@ defmodule SantoApiWeb.Router do
 
   # The public record. No auth: an unclaimed page is the thing an owner finds
   # before they have any reason to sign up. `/vin/:vin` resolves to the
-  # canonical `/v/:public_id` — identity is correctable, the URL is not.
+  # canonical `/v/:public_id` — identity is correctable, the URL is not. The
+  # POST is the only public creation boundary; keeping it here makes anonymous
+  # builds possible while ensuring every one crosses the lookup rate limiter.
   scope "/", SantoApiWeb do
     pipe_through [:browser, :public_chrome, :public_lookup]
 
+    post "/builds", VehicleBuildController, :create
     get "/vin/:vin", VehiclePageController, :resolve
 
     # Anonymous is the normal case here, so the scope is mounted but never

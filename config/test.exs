@@ -45,6 +45,10 @@ config :phoenix,
 
 config :santo_api, :vpic_req_options, plug: {Req.Test, SantoApi.Vpic}
 
+# Jobs stay database-backed in tests, but never run behind the test process's
+# back. Individual worker attempts are driven with Oban.Testing.
+config :santo_api, Oban, testing: :manual, queues: false, plugins: false
+
 config :santo_api, :uploads_dir, Path.join(System.tmp_dir!(), "santo_api_test_uploads")
 
 # The whole suite shares one loopback address, so production limits would have
@@ -56,4 +60,5 @@ config :santo_api, :rate_limits,
   # Kept small and real: it is keyed per address, and every test uses a fresh
   # one, so exercising it here cannot throttle anything else.
   login_email: [limit: 3, window: :timer.hours(1)],
+  public_lookup: [limit: 1_000_000, window: :timer.minutes(1)],
   mcp: [limit: 1_000_000, window: :timer.minutes(1)]

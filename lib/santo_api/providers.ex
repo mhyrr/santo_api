@@ -13,6 +13,8 @@ defmodule SantoApi.Providers do
 
   def all, do: @providers
 
+  def ids, do: Enum.map(@providers, & &1.descriptor().id)
+
   def descriptors, do: Enum.map(@providers, & &1.descriptor())
 
   def provider(id) when is_atom(id) do

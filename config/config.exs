@@ -24,6 +24,13 @@ config :santo_api,
   ecto_repos: [SantoApi.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Acquisition runs keep their product state in Santo's own tables; Oban owns
+# only delivery, retries, and crash recovery for the provider steps.
+config :santo_api, Oban,
+  repo: SantoApi.Repo,
+  queues: [acquisitions: 4],
+  plugins: [{Oban.Plugins.Pruner, max_age: {7, :days}}]
+
 # Rate limit buckets (owner_surface.md §9.4). Fixed windows — see
 # `SantoApi.RateLimit` on what that costs. A bucket named in a router
 # pipeline but missing here raises at request time rather than quietly

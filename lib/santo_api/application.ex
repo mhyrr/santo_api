@@ -10,6 +10,7 @@ defmodule SantoApi.Application do
     children = [
       SantoApiWeb.Telemetry,
       SantoApi.Repo,
+      {Oban, Application.fetch_env!(:santo_api, Oban)},
       {DNSCluster, query: Application.get_env(:santo_api, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: SantoApi.PubSub},
       SantoApi.RateLimit,
