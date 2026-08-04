@@ -15,6 +15,21 @@ defmodule SantoApi.Registry.Vocabulary do
   # Only the exceptional result is encoded, avoiding two hashes for one fact.
   @sale_outcomes [nil, "not_sold"]
 
+  # What each predicate has room for, written down once so `normalize/2` can
+  # tell a key it holds from a key it would swallow. Listed only for the
+  # predicates a caller states in their own words — the factory namespaces
+  # arrive from providers and the bench in shapes the registry already built.
+  # Keep in step with the matching `validate_value/2` clause: a key here that
+  # the validator rejects makes an invalid claim, and a key missing here is
+  # lifted into a note it did not belong in.
+  @known_keys %{
+    "event.fuel" => ~w(volume unit total_cents currency grade station partial),
+    "event.service" => ~w(summary performer),
+    "event.modification" => ~w(summary area detail sets),
+    "event.note" => ~w(text),
+    "event.outing" => ~w(kind venue result summary sets)
+  }
+
   # The current-state seed traits (owner_surface.md §2b). These are the only
   # predicates an event's `sets` deltas may target — the fold's input surface.
   @trait_predicates ~w(
@@ -78,11 +93,17 @@ defmodule SantoApi.Registry.Vocabulary do
   end
 
   @doc """
-  The canonical value for a predicate, from the shapes a caller may state it in.
+  Split a stated value into what this predicate can hold and what it cannot.
 
-  Per-predicate knowledge lives here beside `validate/2` and `equivalent?/3`,
-  so a caller that speaks a dialect of one predicate is understood in exactly
-  one place rather than at every door.
+  Returns `{value, leftover}`. Per-predicate knowledge lives here beside
+  `validate/2` and `equivalent?/3`, so a caller that speaks a dialect of one
+  predicate is understood in exactly one place rather than at every door.
+
+  **Nothing is discarded.** A key this predicate has no room for — and a value
+  it cannot read — comes back in `leftover` for the caller to keep as text.
+  The alternative is a claim that silently holds less than the owner said, and
+  the entry is still logged as what it is: a fill-up with an unreadable price
+  is a fill-up, not a note.
 
   **Store the measured, derive the ratio.** A fill-up's gallons and the amount
   paid are both measured and both storable exactly; the price per gallon
@@ -95,25 +116,48 @@ defmodule SantoApi.Registry.Vocabulary do
   money this way.
 
   An owner who states a price per gallon has it multiplied out once, here, and
-  what lands in the ledger is a total they can check. A price nobody can read
-  is dropped rather than guessed at: a fill-up with no money on it is a fact,
-  and an invented total is not.
+  what lands in the ledger is a total they can check.
   """
-  def normalize("event.fuel", %{"volume" => volume} = value) when is_map(value) do
-    stripped = Map.drop(value, ["cost", "unit_price"])
+  def normalize(predicate, value) when is_map(value) do
+    value
+    |> canonical(predicate)
+    |> split_known(predicate)
+  end
 
-    case fuel_total_cents(value, volume) do
-      nil -> stripped
-      cents -> Map.put(stripped, "total_cents", cents)
+  def normalize(_predicate, value), do: {value, %{}}
+
+  # Only the key actually read is removed. A price that lost to an explicit
+  # total, or one nothing could parse, stays in the map — `split_known/2` lifts
+  # it into the leftover a moment later, which is how it survives as words.
+  defp canonical(%{"volume" => _volume} = value, "event.fuel") do
+    case fuel_total_cents(value) do
+      :none -> value
+      {cents, read} -> value |> Map.put("total_cents", cents) |> Map.drop(List.wrap(read))
     end
   end
 
-  def normalize(_predicate, value), do: value
+  defp canonical(value, _predicate), do: value
 
-  defp fuel_total_cents(%{"total_cents" => cents}, _volume) when is_integer(cents), do: cents
-  defp fuel_total_cents(%{"cost" => cost}, _volume), do: money_to_cents(cost)
-  defp fuel_total_cents(%{"unit_price" => price}, volume), do: multiply_out(price, volume)
-  defp fuel_total_cents(_value, _volume), do: nil
+  # Precedence: an explicit total, then a stated one, then a unit price to
+  # multiply out.
+  defp fuel_total_cents(value) do
+    cond do
+      is_integer(value["total_cents"]) -> {value["total_cents"], nil}
+      cents = money_to_cents(value["cost"]) -> {cents, "cost"}
+      cents = multiply_out(value["unit_price"], value["volume"]) -> {cents, "unit_price"}
+      true -> :none
+    end
+  end
+
+  defp split_known(value, predicate) do
+    case known_keys(predicate) do
+      nil -> {value, %{}}
+      keys -> Map.split(value, keys)
+    end
+  end
+
+  defp known_keys("state." <> _rest), do: ~w(summary code detail)
+  defp known_keys(predicate), do: Map.get(@known_keys, predicate)
 
   defp money_to_cents(stated) do
     with %Decimal{} = amount <- to_decimal(stated),

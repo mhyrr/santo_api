@@ -219,6 +219,58 @@ defmodule SantoApiWeb.McpTest do
       refute Map.has_key?(fuel.value, "unit_price")
     end
 
+    test "what the vocabulary has no key for is kept as words, and the event still lands", ctx do
+      call_tool(ctx.conn, ctx.token, "log_entry", %{
+        "vehicle" => ctx.vehicle.public_id,
+        "date" => "2026-08-02",
+        "claims" => [
+          %{
+            "predicate" => "event.fuel",
+            "value" => %{
+              "volume" => "13.1",
+              "unit" => "gal",
+              "cost" => "about sixty bucks",
+              "pump" => 4
+            }
+          }
+        ]
+      })
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      by_predicate = Map.new(entry.claims, &{&1.predicate, &1.value})
+
+      # Still a fill-up. Losing the structure because one field was unreadable
+      # would cost more than the field did.
+      assert by_predicate["event.fuel"]["volume"] == "13.1"
+      refute Map.has_key?(by_predicate["event.fuel"], "total_cents")
+
+      # And the words survive, in the same entry, for a parser that does not
+      # exist yet — notes are claims, so this is upgradeable later.
+      assert by_predicate["event.note"]["text"] == "cost: about sixty bucks; pump: 4"
+    end
+
+    test "a residual rides with the owner's own note rather than replacing it", ctx do
+      call_tool(ctx.conn, ctx.token, "log_entry", %{
+        "vehicle" => ctx.vehicle.public_id,
+        "date" => "2026-08-02",
+        "note" => "Smelled like it was running rich",
+        "claims" => [
+          %{
+            "predicate" => "event.fuel",
+            "value" => %{"volume" => "13.1", "unit" => "gal", "attendant" => "Bob"}
+          }
+        ]
+      })
+
+      assert [entry] = Owners.timeline(ctx.scope, ctx.vehicle)
+      text = Enum.find(entry.claims, &(&1.predicate == "event.note")).value["text"]
+
+      # The owner's own words lead and the salvaged field is parenthetical —
+      # the assistant reads this back, so it has to sound like a sentence
+      # somebody wrote rather than like a parser reporting what it could not do.
+      assert text == "Smelled like it was running rich (attendant: Bob)"
+    end
+
     test "returns the entry_ref so a correction has something to name", ctx do
       result =
         call_tool(ctx.conn, ctx.token, "log_entry", %{

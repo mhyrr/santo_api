@@ -236,28 +236,56 @@ defmodule SantoApiWeb.MCP.Tools do
     {known, unknown} =
       claims
       |> Enum.map(&normalize/1)
-      |> Enum.split_with(fn claim ->
-        predicate = claim["predicate"]
+      |> Enum.split_with(fn {claim, _leftover} -> representable?(claim) end)
 
-        Vocabulary.scope_kind(predicate) != :error and
-          Vocabulary.validate(predicate, claim["value"]) == :ok
-      end)
+    # Two ways a thing an owner said fails to become structure: the whole claim
+    # does not fit a predicate, or one field of an otherwise good claim does not
+    # fit its predicate's shape. Both end up as words in the same note, so a
+    # fill-up with an unreadable price is still logged as a fill-up.
+    fragments =
+      Enum.map(unknown, &describe_claim/1) ++
+        Enum.flat_map(known, fn {_claim, leftover} -> Enum.map(leftover, &fragment/1) end)
 
-    {Enum.map(known, &%{predicate: &1["predicate"], value: &1["value"]}),
-     residual_note(unknown, note)}
+    {Enum.map(known, fn {claim, _leftover} ->
+       %{predicate: claim["predicate"], value: claim["value"]}
+     end), residual_note(fragments, note)}
   end
 
   defp partition_claims(_claims, note), do: {[], residual_note([], note)}
+
+  defp representable?(claim) do
+    predicate = claim["predicate"]
+
+    Vocabulary.scope_kind(predicate) != :error and
+      Vocabulary.validate(predicate, claim["value"]) == :ok
+  end
 
   # An assistant states a fact in whatever shape it heard, and the tool
   # description guides without binding — `value` carries prose, not a schema.
   # So the dialect is resolved here, before validation, and one shape reaches
   # the ledger: the same fill-up typed into the composer and dictated aloud is
   # one set of keys, comparable and readable by the same code.
-  defp normalize(%{"predicate" => predicate} = claim),
-    do: Map.put(claim, "value", Vocabulary.normalize(predicate, claim["value"]))
+  defp normalize(%{"predicate" => predicate} = claim) do
+    {value, leftover} = Vocabulary.normalize(predicate, claim["value"])
+    {Map.put(claim, "value", value), leftover}
+  end
 
-  defp normalize(claim), do: claim
+  defp normalize(claim), do: {claim, %{}}
+
+  # A claim on its way to the note is described whole, leftover folded back in:
+  # it never became structure, so the fields split off it are still part of what
+  # was said.
+  defp describe_claim({claim, leftover}) do
+    label = claim["predicate"] |> to_string() |> String.split(".") |> List.last()
+
+    fragment({label, restore(claim["value"], leftover)})
+  end
+
+  defp restore(value, leftover) when is_map(value), do: Map.merge(value, leftover)
+  defp restore(value, _leftover), do: value
+
+  defp fragment({label, value}),
+    do: "#{label |> to_string() |> String.replace("_", " ")}: #{render_value(value)}"
 
   # Everything that did not fit, kept in one note rather than several: it was
   # one thing the owner said, and splitting it would invent structure the
@@ -265,13 +293,10 @@ defmodule SantoApiWeb.MCP.Tools do
   defp residual_note([], nil), do: []
   defp residual_note([], note) when is_binary(note), do: [note_claim(note)]
 
-  defp residual_note(unknown, note) do
+  defp residual_note(fragments, note) do
     text =
-      unknown
-      |> Enum.map_join("; ", fn claim ->
-        label = claim["predicate"] |> to_string() |> String.split(".") |> List.last()
-        "#{String.replace(label, "_", " ")}: #{render_value(claim["value"])}"
-      end)
+      fragments
+      |> Enum.join("; ")
       |> then(&if(note, do: note <> " (" <> &1 <> ")", else: &1))
 
     [note_claim(text)]

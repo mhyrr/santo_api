@@ -180,7 +180,7 @@ defmodule SantoApi.Registry.VocabularyTest do
       # amount paid. Both can be stored exactly; the price per gallon between
       # them is a quotient that usually cannot, so it is derived at read time
       # and never written.
-      assert %{"total_cents" => 6745} =
+      assert {%{"total_cents" => 6745}, %{}} =
                Vocabulary.normalize("event.fuel", %{
                  "volume" => "13.1",
                  "unit" => "gal",
@@ -188,7 +188,7 @@ defmodule SantoApi.Registry.VocabularyTest do
                  "currency" => "USD"
                })
 
-      assert %{"total_cents" => 6745} =
+      assert {%{"total_cents" => 6745}, %{}} =
                Vocabulary.normalize("event.fuel", %{
                  "volume" => "13.1",
                  "unit" => "gal",
@@ -197,7 +197,7 @@ defmodule SantoApi.Registry.VocabularyTest do
 
       # A JSON number from an assistant is rounded to the cent rather than
       # refused — the float never survives into the ledger either way.
-      assert %{"total_cents" => 6745} =
+      assert {%{"total_cents" => 6745}, %{}} =
                Vocabulary.normalize("event.fuel", %{
                  "volume" => "13.1",
                  "unit" => "gal",
@@ -206,7 +206,7 @@ defmodule SantoApi.Registry.VocabularyTest do
     end
 
     test "a stated price per gallon is multiplied out once, on the way in" do
-      assert %{"total_cents" => 6747} =
+      assert {%{"total_cents" => 6747}, %{}} =
                Vocabulary.normalize("event.fuel", %{
                  "volume" => "13.1",
                  "unit" => "gal",
@@ -214,38 +214,69 @@ defmodule SantoApi.Registry.VocabularyTest do
                })
     end
 
-    test "the ratio never survives normalization, and an explicit total wins" do
-      normalized =
+    test "an explicit total wins, and the values it beat are not thrown away" do
+      {value, leftover} =
         Vocabulary.normalize("event.fuel", %{
           "volume" => "13.1",
           "unit" => "gal",
           "total_cents" => 6745,
-          "cost" => "99.99",
-          "unit_price" => "1.00"
+          "cost" => "99.99"
         })
 
-      assert normalized["total_cents"] == 6745
-      refute Map.has_key?(normalized, "cost")
-      refute Map.has_key?(normalized, "unit_price")
+      assert value["total_cents"] == 6745
+      refute Map.has_key?(value, "cost")
+      # Somebody asserted 99.99. We are not storing it, so it is somebody's
+      # words now — which is a thing to keep, not a thing to drop.
+      assert leftover == %{"cost" => "99.99"}
     end
 
-    test "an unreadable price is dropped rather than guessed at" do
-      normalized =
+    test "a price nobody can read stays as the words it arrived in" do
+      {value, leftover} =
         Vocabulary.normalize("event.fuel", %{
           "volume" => "13.1",
           "unit" => "gal",
           "cost" => "about sixty bucks"
         })
 
-      refute Map.has_key?(normalized, "cost")
-      refute Map.has_key?(normalized, "total_cents")
-      assert :ok = Vocabulary.validate("event.fuel", normalized)
+      # The fill-up is still a fill-up, and still valid without a price.
+      assert :ok = Vocabulary.validate("event.fuel", value)
+      refute Map.has_key?(value, "total_cents")
+      assert leftover == %{"cost" => "about sixty bucks"}
     end
 
-    test "normalizing leaves every other predicate exactly as it was" do
-      value = %{"summary" => "Oil and filter", "performer" => "Bruce Canepa"}
-      assert Vocabulary.normalize("event.service", value) == value
-      assert Vocabulary.normalize("observation.mileage", 41_660) == 41_660
+    test "a key the predicate has no room for is kept rather than swallowed" do
+      {value, leftover} =
+        Vocabulary.normalize("event.fuel", %{
+          "volume" => "13.1",
+          "unit" => "gal",
+          "total_cents" => 6745,
+          "pump" => 4,
+          "paid_with" => "the blue card"
+        })
+
+      assert :ok = Vocabulary.validate("event.fuel", value)
+      assert value["volume"] == "13.1"
+      assert leftover == %{"pump" => 4, "paid_with" => "the blue card"}
+    end
+
+    test "every logbook predicate keeps its own optional keys" do
+      for {predicate, value} <- [
+            {"event.service", %{"summary" => "Oil and filter", "performer" => "Canepa"}},
+            {"event.modification",
+             %{"summary" => "Camber", "area" => "suspension", "detail" => "2.5 front"}},
+            {"event.note", %{"text" => "Sounds different cold"}},
+            {"event.outing",
+             %{"kind" => "autocross", "venue" => "Crows", "result" => "2nd", "summary" => "Good"}},
+            {"state.suspension", %{"summary" => "Bilstein", "code" => "B16", "detail" => "PSS10"}}
+          ] do
+        assert {^value, leftover} = Vocabulary.normalize(predicate, value)
+        assert leftover == %{}, "#{predicate} lost keys it validates: #{inspect(leftover)}"
+      end
+    end
+
+    test "a value that is not a map has nothing to lift out of it" do
+      assert Vocabulary.normalize("observation.mileage", 41_660) == {41_660, %{}}
+      assert Vocabulary.normalize("identity.marque", "porsche") == {"porsche", %{}}
     end
 
     test "modifications carry a summary; area stays a free string" do
