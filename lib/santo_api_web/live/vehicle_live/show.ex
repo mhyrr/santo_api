@@ -13,6 +13,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   alias SantoApi.Owners
   alias SantoApi.Registry
+  alias SantoApiWeb.OwnerLive.Composer
   alias SantoApiWeb.VehicleLive.Presenter
 
   @impl true
@@ -56,7 +57,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
       <.hero vehicle={@vehicle} steward={@steward} />
       <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
       <.claim_bar :if={not @stewarding?} vehicle={@vehicle} signed_in?={@signed_in?} />
-      <.logbook entries={@timeline} my_handle={@my_handle} />
+      <.logbook entries={@timeline} my_handle={@my_handle} public_id={@vehicle.public_id} />
       <.current_spec vehicle={@vehicle} />
       <.record vehicle={@vehicle} />
       <.colophon vehicle={@vehicle} />
@@ -155,16 +156,12 @@ defmodule SantoApiWeb.VehicleLive.Show do
   # --- the logbook ----------------------------------------------------------
 
   attr :entries, :list, required: true
+  attr :public_id, :string, required: true
 
   attr :my_handle, :string, default: nil
 
   defp logbook(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :entries,
-        Enum.map(assigns.entries, &Map.put(&1, :parts, Presenter.entry_parts(&1)))
-      )
+    assigns = assign(assigns, :entries, Enum.map(assigns.entries, &own(&1, assigns.my_handle)))
 
     ~H"""
     <section
@@ -213,7 +210,16 @@ defmodule SantoApiWeb.VehicleLive.Show do
             </span>
           </p>
 
-          <p :if={entry.party == @my_handle} class="mt-2 text-xs">
+          <p :if={entry.mine?} class="mt-2 flex flex-wrap gap-x-4 text-xs">
+            <.link
+              :if={entry.correctable?}
+              navigate={~p"/v/#{@public_id}/log/#{entry.entry_ref}"}
+              class="underline underline-offset-4 transition-opacity hover:opacity-65"
+              style="color: var(--vs-dim)"
+            >
+              Edit
+            </.link>
+
             <button
               type="button"
               class="underline underline-offset-4 transition-opacity hover:opacity-65"
@@ -262,6 +268,21 @@ defmodule SantoApiWeb.VehicleLive.Show do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "That entry is not yours to remove.")}
     end
+  end
+
+  # What this caller may do to one entry, decided once per render rather than
+  # in the markup. Both controls are gated on the asserting handle — stewarding
+  # the car is not the question, having written the line is. Edit asks a second
+  # one: the composer only offers to correct an entry it can restate exactly,
+  # so an outing logged through the agent surface keeps Remove and loses Edit
+  # rather than being quietly reshaped into a note.
+  defp own(entry, my_handle) do
+    mine? = entry.party == my_handle
+
+    entry
+    |> Map.put(:parts, Presenter.entry_parts(entry))
+    |> Map.put(:mine?, mine?)
+    |> Map.put(:correctable?, mine? and Composer.editable?(entry.claims))
   end
 
   # Owner-logged entries get the lit tick; registry-sourced ones stay grey.

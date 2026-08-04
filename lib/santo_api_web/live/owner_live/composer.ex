@@ -93,7 +93,11 @@ defmodule SantoApiWeb.OwnerLive.Composer do
         |> assign_form(params)
 
       :error ->
-        turn_away(socket, vehicle, "That entry was not written here, so it is not correctable here.")
+        turn_away(
+          socket,
+          vehicle,
+          "That entry was not written here, so it is not correctable here."
+        )
     end
   end
 

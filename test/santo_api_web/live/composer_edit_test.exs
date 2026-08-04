@@ -281,6 +281,70 @@ defmodule SantoApiWeb.ComposerEditTest do
     end
   end
 
+  describe "the control on the car's page" do
+    test "sits beside Remove on the steward's own entry", ctx do
+      entry = fill_up(ctx)
+
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
+
+      assert has_element?(view, "a[href='/v/#{ctx.vehicle.public_id}/log/#{entry.entry_ref}']")
+      assert has_element?(view, ~s{button[phx-value-entry_ref="#{entry.entry_ref}"]})
+    end
+
+    test "a visitor is offered no correction anywhere on the page", ctx do
+      fill_up(ctx)
+
+      {:ok, _view, html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+
+      assert html =~ "13.1"
+      refute html =~ "/log/"
+    end
+
+    test "an entry the registry asserted carries none, on the steward's own page", ctx do
+      fill_up(ctx)
+
+      # A service event hand-entered at the bench off an invoice: same shape the
+      # composer writes, same `method: :human`, different asserting party. It is
+      # editable in form and not the owner's to edit in fact.
+      {:ok, claim} =
+        Registry.propose_claim(ctx.vehicle, %{
+          "predicate" => "event.service",
+          "value" => %{"summary" => "Annual service, per the invoice", "performer" => nil},
+          "scope_date" => "2019-04-12",
+          "entry_ref" => Registry.new_entry_ref()
+        })
+
+      {:ok, _ratified} = Registry.ratify_claim(claim.id)
+
+      {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
+
+      assert html =~ "Annual service"
+      # Gated on the asserting handle, exactly as Remove is: a previous
+      # steward's entries and the registry's own are not this owner's to revise.
+      assert length(Regex.scan(~r{/log/[0-9a-f-]+}, html)) == 1
+    end
+
+    test "an entry the composer cannot restate keeps Remove and loses Edit", ctx do
+      {:ok, entry} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, %{
+          date: ~D[2026-08-02],
+          claims: [
+            %{
+              predicate: "event.outing",
+              value: %{"kind" => "autocross", "summary" => "Best run 2nd in class"}
+            }
+          ]
+        })
+
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
+
+      # Removing and re-logging is still open to them; what is refused is the
+      # one path that would silently reshape the entry on the way through.
+      assert has_element?(view, ~s{button[phx-value-entry_ref="#{entry.entry_ref}"]})
+      refute has_element?(view, "a[href='/v/#{ctx.vehicle.public_id}/log/#{entry.entry_ref}']")
+    end
+  end
+
   describe "what the correction form does not offer" do
     test "no photo field, because an amendment does not carry artifacts", ctx do
       entry = fill_up(ctx)
