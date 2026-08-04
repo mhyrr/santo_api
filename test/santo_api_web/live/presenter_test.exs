@@ -182,6 +182,50 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert parts.details == []
     end
 
+    test "words we could not structure are shown, not just kept" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{predicate: "event.fuel", value: %{"volume" => "13.1", "unit" => "gal"}},
+            %{predicate: "event.note", value: %{"text" => "cost: about sixty bucks; pump: 4"}},
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      assert parts.headline == "13.1 gal of fuel"
+
+      assert parts.details == [
+               %{label: "Note", value: "cost: about sixty bucks; pump: 4"},
+               %{label: "Odometer", value: "41,660 mi"}
+             ]
+    end
+
+    test "a residual note never outranks the event it was salvaged from" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{predicate: "event.note", value: %{"text" => "pump: 4"}},
+            %{predicate: "event.fuel", value: %{"volume" => "13.1", "unit" => "gal"}}
+          ]
+        })
+
+      assert parts.headline == "13.1 gal of fuel"
+      assert parts.details == [%{label: "Note", value: "pump: 4"}]
+    end
+
+    test "a note that is the whole entry still leads with the owner's words" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{predicate: "event.note", value: %{"text" => "Sat in the garage all winter"}},
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      assert parts.headline == "Sat in the garage all winter"
+      assert parts.details == [%{label: "Odometer", value: "41,660 mi"}]
+    end
+
     test "a lead whose second fact is missing gets no line rather than an empty one" do
       parts =
         Presenter.entry_parts(%{

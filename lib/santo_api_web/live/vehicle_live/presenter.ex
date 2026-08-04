@@ -312,6 +312,13 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   def claim_detail(%{predicate: "observation.mileage", value: miles}) when is_integer(miles),
     do: "#{delimit(miles)} mi"
 
+  # The words an entry kept because no key fit them. They read as an ordinary
+  # note (Greg, 2026-08-04) — the ledger is honest about how they got here and
+  # the page does not need to be, because a line saying we failed to parse
+  # something is not the owner's news to publish to everyone reading the car.
+  def claim_detail(%{predicate: "event.note", value: %{"text" => text}}) when is_binary(text),
+    do: text
+
   def claim_detail(%{predicate: "event.service", value: %{"performer" => performer}})
       when is_binary(performer),
       do: performer
@@ -330,7 +337,18 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
 
   # What happened leads. The odometer on a fill-up is a detail of the fill-up,
   # so a reading only becomes the headline when it is the whole entry.
-  defp headline_priority(%{predicate: "observation." <> _rest}), do: 1
+  #
+  # A note ranks between the two, and the rank is what makes a residual safe to
+  # show. The salvaged fragment of a fill-up is an `event.note` sharing its
+  # entry with the fill-up, and a note that outranked it would take the
+  # headline and drop the structured claim entirely — the entry would read as
+  # "pump: 4" and the 13.1 gallons would be nowhere. Ordering by what the claim
+  # is rather than by the order it arrived in settles that for every caller:
+  # an assistant may send its claims in any order, and the entry reads the same.
+  # A note still leads when it is the most specific thing in the entry, which is
+  # exactly the case where it is the whole entry.
+  defp headline_priority(%{predicate: "event.note"}), do: 1
+  defp headline_priority(%{predicate: "observation." <> _rest}), do: 2
   defp headline_priority(_claim), do: 0
 
   defp claim_headline(%{predicate: "event.service", value: %{"summary" => summary}}), do: summary

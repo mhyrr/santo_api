@@ -454,6 +454,35 @@ defmodule SantoApiWeb.McpTest do
       refute note.value["text"] =~ "{"
       refute tool_text(result) =~ "{"
     end
+
+    test "a fill-up's salvaged words are read back with the fill-up", ctx do
+      call_tool(ctx.conn, ctx.token, "log_entry", %{
+        "vehicle" => ctx.vehicle.public_id,
+        "date" => "2026-08-02",
+        "claims" => [
+          %{
+            "predicate" => "event.fuel",
+            "value" => %{
+              "volume" => "13.1",
+              "unit" => "gal",
+              "cost" => "about sixty bucks",
+              "pump" => "4"
+            }
+          }
+        ]
+      })
+
+      text =
+        ctx.conn
+        |> call_tool(ctx.token, "get_timeline", %{"vehicle" => ctx.vehicle.public_id})
+        |> tool_text()
+
+      # One renderer, so the page's fix is the assistant's fix. Both halves of
+      # the entry come back: the fill-up we understood and the words we did not.
+      assert text =~ "13.1 gal of fuel"
+      assert text =~ "about sixty bucks"
+      assert text =~ "pump"
+    end
   end
 
   describe "tools/list" do
