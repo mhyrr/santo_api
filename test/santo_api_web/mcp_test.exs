@@ -433,6 +433,7 @@ defmodule SantoApiWeb.McpTest do
       # Asserted, not merely un-mangled: the negative on its own passed happily
       # through the whole period when a fill-up showed no money at all.
       assert text =~ "$67.45"
+      assert text =~ "$5.15/gal"
       refute text =~ "USD67.45"
       refute text =~ "entry_ref: )"
     end

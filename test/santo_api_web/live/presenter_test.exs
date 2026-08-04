@@ -248,6 +248,67 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert %{label: "Odometer", value: "41,660 mi"} in parts.details
     end
 
+    test "the price per gallon is derived from the two measurements" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "13.1",
+                "unit" => "gal",
+                "total_cents" => 6745,
+                "currency" => "USD"
+              }
+            }
+          ]
+        })
+
+      # $67.45 over 13.1 gallons is $5.148854…, which no fixed precision holds.
+      # The ledger keeps the two measurements; this is the quotient, rounded
+      # freely because nobody reconciles a price per gallon.
+      assert %{label: "Price", value: "$5.15/gal"} in parts.details
+    end
+
+    test "litres are priced per litre, not per gallon" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "40.0",
+                "unit" => "l",
+                "total_cents" => 7000,
+                "currency" => "EUR"
+              }
+            }
+          ]
+        })
+
+      assert %{label: "Price", value: "1.75 EUR/L"} in parts.details
+    end
+
+    test "a fill-up with no volume to divide by shows a total and no ratio" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "0",
+                "unit" => "gal",
+                "total_cents" => 500,
+                "currency" => "USD"
+              }
+            }
+          ]
+        })
+
+      assert %{label: "Total", value: "$5.00"} in parts.details
+      refute Enum.any?(parts.details, &(&1.label == "Price"))
+    end
+
     test "a fill-up nobody priced says nothing about money" do
       parts =
         Presenter.entry_parts(%{

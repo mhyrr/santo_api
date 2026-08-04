@@ -309,10 +309,46 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # Silent when nobody priced it. A fill-up with no money on it is a fact; a
   # zero would be an invention.
   defp fuel_details(%{"total_cents" => cents} = value) when is_integer(cents) do
-    [%{label: "Total", value: money_cents(cents, value["currency"])}]
+    currency = value["currency"]
+
+    [%{label: "Total", value: money_cents(cents, currency)}] ++
+      unit_price(cents, value["volume"], value["unit"], currency)
   end
 
   defp fuel_details(_value), do: []
+
+  # Store the measured, derive the ratio (Greg, 2026-08-04). The gallons and
+  # the amount paid are both measured and both held exactly; the price between
+  # them is a quotient, and the good ones do not terminate — $67.45 over 13.1
+  # gallons is $5.148854…, which no fixed precision holds. So the ledger keeps
+  # the two measurements and this computes the ratio at read time, where
+  # rounding to the cent costs nothing: a total is reconciled against a receipt
+  # and a card statement, a price per gallon against nothing.
+  #
+  # Only a positive volume is a divisor. Zero is the one a validator lets
+  # through, and a fill-up that recorded no fuel still has a real total to show.
+  defp unit_price(cents, volume, unit, currency) when is_binary(volume) and is_binary(unit) do
+    with {measured, ""} <- Decimal.parse(volume),
+         true <- Decimal.positive?(measured) do
+      per_unit =
+        cents
+        |> Decimal.new()
+        |> Decimal.div(measured)
+        |> Decimal.round(0)
+        |> Decimal.to_integer()
+
+      [%{label: "Price", value: "#{money_cents(per_unit, currency)}/#{unit_label(unit)}"}]
+    else
+      _no_divisor -> []
+    end
+  end
+
+  defp unit_price(_cents, _volume, _unit, _currency), do: []
+
+  # A lowercase "l" beside a number reads as a one. Gallons are already written
+  # the way a pump writes them.
+  defp unit_label("l"), do: "L"
+  defp unit_label(unit), do: unit
 
   defp own_detail(claim) do
     case claim_detail(claim) do
