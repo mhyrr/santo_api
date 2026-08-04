@@ -164,6 +164,35 @@ defmodule SantoApi.OwnersAmendTest do
       assert Repo.get!(Claim, original.id).state == :admitted
     end
 
+    test "an entry kept off the public page stays off it through a correction", ctx do
+      {:ok, entry} =
+        Owners.compose_entry(ctx.scope, ctx.vehicle, %{
+          date: ~D[2026-08-02],
+          visibility: :private,
+          claims: [
+            %{predicate: "event.fuel", value: %{"volume" => "13.1", "unit" => "gal"}},
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      {:ok, _} =
+        Owners.amend_entry(ctx.scope, ctx.vehicle, entry.entry_ref, %{
+          claims: [
+            %{predicate: "event.fuel", value: %{"volume" => "13.5", "unit" => "gal"}},
+            %{predicate: "observation.mileage", value: 41_660}
+          ]
+        })
+
+      # Visibility is the entry's, not the claim's, and correcting a value is
+      # not consent to publish. A claim written by an amendment takes the
+      # default `:public` unless the amendment carries the entry's own setting
+      # forward — which is how a typo fix could quietly put a private entry on
+      # the public page.
+      for claim <- live_claims(ctx.vehicle, entry.entry_ref) do
+        assert claim.visibility == :private
+      end
+    end
+
     test "a factory claim the owner typed is theirs to correct too", ctx do
       {:ok, entry} =
         Owners.compose_entry(ctx.scope, ctx.vehicle, %{

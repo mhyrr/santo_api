@@ -775,6 +775,7 @@ defmodule SantoApi.Owners do
          {:ok, existing} <- fetch_own_entry(vehicle, party, entry_ref) do
       date = amend_date(attrs, existing)
       opts = basis_opts(attrs)
+      visibility = entry_visibility(existing)
 
       result =
         Repo.transaction(fn ->
@@ -785,7 +786,9 @@ defmodule SantoApi.Owners do
           |> Enum.each(&retract!(&1, party))
 
           claims =
-            Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
+            claim_attrs
+            |> Enum.map(&write_claim!(vehicle, party, date, entry_ref, &1, opts))
+            |> Enum.map(&apply_visibility!(&1, visibility))
 
           %{entry_ref: entry_ref, claims: claims}
         end)
@@ -851,6 +854,13 @@ defmodule SantoApi.Owners do
       :error ->
         {:error, :entry_not_found}
     end
+  end
+
+  # An entry is private if any part of it is (the same rule `Registry.timeline/2`
+  # reads it back by), and a claim written by an amendment inherits it. Fixing a
+  # typo is not consent to publish, and the write path defaults to `:public`.
+  defp entry_visibility(claims) do
+    if Enum.any?(claims, &(&1.visibility == :private)), do: :private, else: :public
   end
 
   # An amendment keeps the entry's date unless the owner supplies a new one.
