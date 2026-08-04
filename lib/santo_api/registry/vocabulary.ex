@@ -15,13 +15,32 @@ defmodule SantoApi.Registry.Vocabulary do
   # Only the exceptional result is encoded, avoiding two hashes for one fact.
   @sale_outcomes [nil, "not_sold"]
 
-  # What each predicate has room for, written down once so `normalize/2` can
-  # tell a key it holds from a key it would swallow. Listed only for the
-  # predicates a caller states in their own words — the factory namespaces
-  # arrive from providers and the bench in shapes the registry already built.
-  # Keep in step with the matching `validate_value/2` clause: a key here that
-  # the validator rejects makes an invalid claim, and a key missing here is
-  # lifted into a note it did not belong in.
+  # What each predicate has room for — the second half of `normalize/2`, which
+  # keeps what a predicate holds and hands back the rest as words rather than
+  # swallowing it (Greg, 2026-08-04: no key for it, keep it as text anyway).
+  #
+  # Written by hand because it cannot be derived. Each `validate_value/2` clause
+  # is a pattern match with guards, not a list a machine can read back, so the
+  # keys exist twice and the two copies have to be kept honest by hand.
+  #
+  # **Both directions of drift are bugs, and they fail differently.** A key here
+  # the validator rejects survives normalization and then fails validation — the
+  # whole claim drops to the note, and a good fill-up arrives as prose. A key
+  # the validator accepts but that is missing here gets lifted out of a claim it
+  # belonged in, so the ledger quietly holds less than the owner said and the
+  # difference reads as a stray fragment in a note. The first is loud, the
+  # second is not, which makes the second the one to watch.
+  #
+  # The guard: `vocabulary_test.exs` walks every predicate below with a value
+  # carrying all of its keys and asserts nothing was lifted. That catches the
+  # quiet direction. The loud one is caught by any test that logs an entry.
+  #
+  # Listed only for predicates a person states in their own words. A predicate
+  # absent from this map keeps its value whole — `known_keys/1` returning nil
+  # means "lift nothing," not "lift everything" — which is why the factory
+  # namespaces can stay out of it: they arrive from providers and the bench
+  # already shaped, and inventing key sets for them would be guesses guarding
+  # a door nobody uses.
   @known_keys %{
     "event.fuel" => ~w(volume unit total_cents currency grade station partial),
     "event.service" => ~w(summary performer),
@@ -149,6 +168,9 @@ defmodule SantoApi.Registry.Vocabulary do
     end
   end
 
+  # Unlisted means keep the value whole. The default has to be the harmless one:
+  # a predicate nobody wrote a key set for should hold everything it was given,
+  # not have every field lifted into a note.
   defp split_known(value, predicate) do
     case known_keys(predicate) do
       nil -> {value, %{}}
@@ -156,8 +178,17 @@ defmodule SantoApi.Registry.Vocabulary do
     end
   end
 
+  # A family rather than a predicate, so it cannot live in the map above: every
+  # `state.*` trait shares one validator and therefore one key set.
   defp known_keys("state." <> _rest), do: ~w(summary code detail)
   defp known_keys(predicate), do: Map.get(@known_keys, predicate)
+
+  @doc """
+  The predicates `normalize/2` splits keys for, so the test that guards the key
+  sets against drift can require a fixture for each rather than trusting a
+  hand-kept list to have stayed complete.
+  """
+  def normalizing_predicates, do: Map.keys(@known_keys)
 
   defp money_to_cents(stated) do
     with %Decimal{} = amount <- to_decimal(stated),

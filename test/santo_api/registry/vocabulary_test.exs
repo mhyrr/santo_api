@@ -259,18 +259,55 @@ defmodule SantoApi.Registry.VocabularyTest do
       assert leftover == %{"pump" => 4, "paid_with" => "the blue card"}
     end
 
-    test "every logbook predicate keeps its own optional keys" do
-      for {predicate, value} <- [
-            {"event.service", %{"summary" => "Oil and filter", "performer" => "Canepa"}},
-            {"event.modification",
-             %{"summary" => "Camber", "area" => "suspension", "detail" => "2.5 front"}},
-            {"event.note", %{"text" => "Sounds different cold"}},
-            {"event.outing",
-             %{"kind" => "autocross", "venue" => "Crows", "result" => "2nd", "summary" => "Good"}},
-            {"state.suspension", %{"summary" => "Bilstein", "code" => "B16", "detail" => "PSS10"}}
-          ] do
+    test "every predicate with a key set keeps every key it validates" do
+      # The quiet half of key-set drift: a key the validator accepts but that
+      # `@known_keys` forgot is lifted out of the claim it belonged in, and the
+      # ledger holds less than the owner said without anything failing. Each
+      # fixture carries every key its predicate takes, so a forgotten one shows
+      # up here as a leftover.
+      fixtures = %{
+        "event.fuel" => %{
+          "volume" => "13.1",
+          "unit" => "gal",
+          "total_cents" => 6745,
+          "currency" => "USD",
+          "grade" => "93",
+          "station" => "Shell",
+          "partial" => false
+        },
+        "event.service" => %{"summary" => "Oil and filter", "performer" => "Canepa"},
+        "event.modification" => %{
+          "summary" => "Camber",
+          "area" => "suspension",
+          "detail" => "2.5 front",
+          "sets" => [
+            %{"predicate" => "state.suspension", "value" => %{"summary" => "2.5 front"}}
+          ]
+        },
+        "event.note" => %{"text" => "Sounds different cold"},
+        "event.outing" => %{
+          "kind" => "autocross",
+          "venue" => "Crows Landing",
+          "result" => "2nd in class",
+          "summary" => "Good day",
+          "sets" => [%{"predicate" => "state.brakes", "value" => %{"summary" => "PF08"}}]
+        },
+        "state.suspension" => %{"summary" => "Bilstein", "code" => "B16", "detail" => "PSS10"}
+      }
+
+      # Adding a predicate to `@known_keys` without a fixture fails here rather
+      # than silently going unguarded.
+      assert Vocabulary.normalizing_predicates() -- Map.keys(fixtures) == [],
+             "a predicate gained a key set with no fixture to guard it"
+
+      for {predicate, value} <- fixtures do
+        assert :ok = Vocabulary.validate(predicate, value),
+               "#{predicate} fixture is not a valid value; the key set cannot be trusted"
+
         assert {^value, leftover} = Vocabulary.normalize(predicate, value)
-        assert leftover == %{}, "#{predicate} lost keys it validates: #{inspect(leftover)}"
+
+        assert leftover == %{},
+               "#{predicate} lifted keys its validator accepts: #{inspect(leftover)}"
       end
     end
 
