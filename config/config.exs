@@ -51,7 +51,11 @@ config :santo_api, :rate_limits,
   # The agent surface, keyed per token rather than per address: the budget
   # belongs to the credential, so a runaway assistant spends only its owner's.
   # Room for a conversation that logs a season of track days in one sitting.
-  mcp: [limit: 120, window: :timer.minutes(1)]
+  mcp: [limit: 120, window: :timer.minutes(1)],
+  # Origination (owner_surface §7b.5): a second door that mints vehicle rows
+  # and spends an LLM call per try. Tight on purpose — a person describes one
+  # car, not a hundred an hour.
+  origination: [limit: 10, window: :timer.hours(1)]
 
 # Artifact storage. Local disk is fine for the operator bench; owner uploads
 # (claiming photos, documents) need object storage before the first real

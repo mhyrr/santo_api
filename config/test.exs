@@ -64,4 +64,5 @@ config :santo_api, :rate_limits,
   # one, so exercising it here cannot throttle anything else.
   login_email: [limit: 3, window: :timer.hours(1)],
   public_lookup: [limit: 1_000_000, window: :timer.minutes(1)],
-  mcp: [limit: 1_000_000, window: :timer.minutes(1)]
+  mcp: [limit: 1_000_000, window: :timer.minutes(1)],
+  origination: [limit: 1_000_000, window: :timer.hours(1)]

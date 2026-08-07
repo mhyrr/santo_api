@@ -567,6 +567,46 @@ defmodule SantoApi.Owners do
   defp user_id(%User{id: id}), do: id
   defp user_id(nil), do: nil
 
+  ## Publishing — the magic-link click publishes (owner_surface §7b.1 d.6)
+
+  @doc """
+  Whether this car's page renders publicly.
+
+  Origination creates the user, the car, and the stewardship before any
+  email is confirmed, and the magic-link click publishes rather than
+  unlocks: public rendering gates on `user.confirmed_at` through the
+  stewardship join — one join, zero ledger writes, no visibility flipping
+  on claims after the fact. A car with no steward at all (seeded by VIN
+  lookup, corpus, bench) was never anyone's unconfirmed word and is public
+  as it always was.
+  """
+  def published?(%Vehicle{} = vehicle) do
+    not Repo.exists?(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        where: s.vehicle_id == ^vehicle.id and s.status == :active and is_nil(u.confirmed_at)
+      )
+    )
+  end
+
+  @doc """
+  The vehicles the registry index must not list: stewarded by an account
+  that never confirmed. One query for the whole index, same join as
+  `published?/1`.
+  """
+  def unpublished_vehicle_ids do
+    Repo.all(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        where: s.status == :active and is_nil(u.confirmed_at),
+        select: s.vehicle_id
+      )
+    )
+    |> MapSet.new()
+  end
+
   ## Resolution — an asserted car acquires its VIN (owner_surface §7b.2)
 
   @doc """

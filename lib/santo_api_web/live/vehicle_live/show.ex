@@ -12,6 +12,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
   use SantoApiWeb, :live_view
 
   alias SantoApi.Owners
+  alias SantoApi.Owners.Links
+  alias SantoApi.Owners.VehicleLink
   alias SantoApi.Registry
   alias SantoApiWeb.OwnerLive.Composer
   alias SantoApiWeb.VehicleLive.Presenter
@@ -20,16 +22,29 @@ defmodule SantoApiWeb.VehicleLive.Show do
   def mount(%{"public_id" => public_id}, _session, socket) do
     case Registry.fetch_by_public_id(public_id) do
       {:ok, vehicle} ->
+        scope = socket.assigns.current_scope
+        stewarding? = Owners.stewarding?(scope, vehicle)
+        published? = Owners.published?(vehicle)
+
+        # An unconfirmed origination is nobody's business but its steward's —
+        # the magic-link click publishes (owner_surface §7b.1 decision 6).
+        # Indistinguishable from a missing car on purpose: a 403 would
+        # confirm the record exists.
+        if not published? and not stewarding?, do: raise(SantoApiWeb.VehicleNotFound)
+
         {:ok,
          socket
          |> assign(:page_title, Presenter.title(vehicle))
          |> assign(:vehicle, vehicle)
-         |> assign(:timeline, Owners.timeline(socket.assigns.current_scope, vehicle))
+         |> assign(:published?, published?)
+         |> assign(:timeline, Owners.timeline(scope, vehicle))
          |> assign(:record_provenance, Registry.public_fact_provenance(vehicle.id))
          |> assign(:steward, Owners.steward(vehicle))
-         |> assign(:stewarding?, Owners.stewarding?(socket.assigns.current_scope, vehicle))
-         |> assign(:my_handle, my_handle(socket.assigns.current_scope))
-         |> assign(:signed_in?, signed_in?(socket.assigns.current_scope))}
+         |> assign(:stewarding?, stewarding?)
+         |> assign(:links, Links.list_links(vehicle))
+         |> assign(:resolve_error, nil)
+         |> assign(:my_handle, my_handle(scope))
+         |> assign(:signed_in?, signed_in?(scope))}
 
       {:error, :not_found} ->
         raise SantoApiWeb.VehicleNotFound
@@ -55,14 +70,163 @@ defmodule SantoApiWeb.VehicleLive.Show do
   def render(assigns) do
     ~H"""
     <article>
+      <.unpublished_banner :if={not @published?} />
       <.hero vehicle={@vehicle} steward={@steward} />
       <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
-      <.claim_bar :if={not @stewarding?} vehicle={@vehicle} signed_in?={@signed_in?} />
+      <.claim_bar
+        :if={not @stewarding? and @vehicle.identity_kind != :asserted}
+        vehicle={@vehicle}
+        signed_in?={@signed_in?}
+      />
       <.logbook entries={@timeline} my_handle={@my_handle} public_id={@vehicle.public_id} />
       <.current_spec vehicle={@vehicle} />
-      <.record vehicle={@vehicle} provenance={@record_provenance} />
-      <.colophon vehicle={@vehicle} />
+      <.links_section links={@links} stewarding?={@stewarding?} />
+      <%= if @vehicle.identity_kind == :asserted do %>
+        <.your_word stewarding?={@stewarding?} resolve_error={@resolve_error} />
+      <% else %>
+        <.record vehicle={@vehicle} provenance={@record_provenance} />
+        <.colophon vehicle={@vehicle} />
+      <% end %>
     </article>
+    """
+  end
+
+  # The steward's own view of a page the world cannot see yet. Only they can
+  # be here — everyone else got a 404 at mount.
+  defp unpublished_banner(assigns) do
+    ~H"""
+    <div
+      id="unpublished-banner"
+      class="mx-auto max-w-3xl px-5 pt-6 text-sm sm:px-8"
+      style="color: var(--vs-dim)"
+    >
+      Your page is live — confirm your email to make it public.
+    </div>
+    """
+  end
+
+  # The honest statement of a tier-1 record and the strongest next action in
+  # the product, in one line (owner_surface §7b.3). The §6 paper ground does
+  # not render at all on an :asserted car — the page simply ends, and the
+  # VIN is what unrolls it.
+  attr :stewarding?, :boolean, required: true
+  attr :resolve_error, :string, default: nil
+
+  defp your_word(assigns) do
+    ~H"""
+    <section id="your-word" class="mx-auto max-w-3xl px-5 pb-20 sm:px-8">
+      <p class="max-w-xl text-sm leading-relaxed" style="color: var(--vs-dim)">
+        Everything on this page is your word. Add the VIN and the factory record
+        fills in underneath it.
+      </p>
+
+      <form :if={@stewarding?} id="resolve-form" phx-submit="resolve_vin" class="mt-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            id="resolve_vin"
+            name="resolve[vin]"
+            placeholder="17-character VIN"
+            autocomplete="off"
+            spellcheck="false"
+            class="vs-code w-64 rounded border bg-transparent px-3 py-2 text-sm"
+            style="border-color: var(--vs-hairline)"
+          />
+          <button type="submit" class="vs-commit">Add the VIN</button>
+        </div>
+        <p
+          :if={@resolve_error}
+          id="resolve-error"
+          class="mt-2 text-sm"
+          style="color: var(--vs-needle)"
+        >
+          {@resolve_error}
+        </p>
+      </form>
+    </section>
+    """
+  end
+
+  # --- links ----------------------------------------------------------------
+
+  # Curation, not evidence (owner_surface §7b.1 decision 8): links sit in
+  # their own section, never on the timeline spine, and carry no date.
+  # Per-platform honesty renders literally — YouTube gets a real embed,
+  # everything else a bare link card that does not pretend to a richness we
+  # lack the rights to.
+  attr :links, :list, required: true
+  attr :stewarding?, :boolean, required: true
+
+  defp links_section(assigns) do
+    ~H"""
+    <section
+      :if={@links != [] or @stewarding?}
+      id="vehicle-links"
+      class="mx-auto max-w-3xl px-5 pb-16 sm:px-8"
+      aria-labelledby="links-heading"
+    >
+      <h2 id="links-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
+        Elsewhere
+      </h2>
+
+      <ul :if={@links != []} class="space-y-6">
+        <li :for={link <- @links} id={"link-#{link.id}"}>
+          <%= case VehicleLink.provider(link.url) do %>
+            <% {:youtube, video_id} -> %>
+              <div class="aspect-video max-w-xl overflow-hidden rounded">
+                <iframe
+                  src={"https://www.youtube.com/embed/#{video_id}"}
+                  title={link.label || "YouTube video"}
+                  class="h-full w-full"
+                  frameborder="0"
+                  allowfullscreen
+                ></iframe>
+              </div>
+              <p :if={link.label} class="mt-2 text-sm" style="color: var(--vs-dim)">{link.label}</p>
+            <% _other -> %>
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                class="underline underline-offset-4 transition-opacity hover:opacity-65"
+              >
+                {link.label || link.url}
+              </a>
+          <% end %>
+
+          <button
+            :if={@stewarding?}
+            type="button"
+            class="mt-1 text-xs underline underline-offset-4"
+            style="color: var(--vs-dim)"
+            phx-click="remove_link"
+            phx-value-link_id={link.id}
+          >
+            Remove
+          </button>
+        </li>
+      </ul>
+
+      <form :if={@stewarding?} id="link-form" phx-submit="add_link" class="mt-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <input
+            type="url"
+            name="link[url]"
+            placeholder="https://…"
+            class="w-72 rounded border bg-transparent px-3 py-2 text-sm"
+            style="border-color: var(--vs-hairline)"
+          />
+          <input
+            type="text"
+            name="link[label]"
+            placeholder="Label (optional)"
+            class="w-48 rounded border bg-transparent px-3 py-2 text-sm"
+            style="border-color: var(--vs-hairline)"
+          />
+          <button type="submit" class="vs-quiet">Add a link</button>
+        </div>
+      </form>
+    </section>
     """
   end
 
@@ -263,6 +427,71 @@ defmodule SantoApiWeb.VehicleLive.Show do
   end
 
   @impl true
+  def handle_event("resolve_vin", %{"resolve" => %{"vin" => vin}}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Owners.resolve_asserted(scope, vehicle, vin) do
+      {:ok, :resolved, resolved} ->
+        {:noreply,
+         socket
+         |> assign(:vehicle, resolved)
+         |> assign(:page_title, Presenter.title(resolved))
+         |> assign(:timeline, Owners.timeline(scope, resolved))
+         |> assign(:record_provenance, Registry.public_fact_provenance(resolved.id))
+         |> assign(:resolve_error, nil)
+         |> put_flash(:info, "The factory record is filling in underneath your word.")}
+
+      # The collision (§7b.3 screen 7): the assertion is recorded — the
+      # counter-claim now exists on the row that holds the VIN — and the copy
+      # says what happened rather than saying no.
+      {:ok, :counter_claim, occupied, _challenge} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "We've recorded that you say this is your car. Another record already " <>
+             "holds this VIN, so an operator will decide — your log stays here meanwhile."
+         )
+         |> push_navigate(to: ~p"/v/#{occupied.public_id}/claim")}
+
+      {:error, %Santo.Invalid{}} ->
+        {:noreply, assign(socket, :resolve_error, "That VIN is not valid.")}
+
+      {:error, :vin_required} ->
+        {:noreply, assign(socket, :resolve_error, "Enter a standard 17-character VIN.")}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :resolve_error, "That could not be done.")}
+    end
+  end
+
+  def handle_event("add_link", %{"link" => params}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Links.add_link(scope, vehicle, params) do
+      {:ok, _link} ->
+        {:noreply, assign(socket, :links, Links.list_links(vehicle))}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, put_flash(socket, :error, "A link needs a full http(s) address.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That could not be added.")}
+    end
+  end
+
+  def handle_event("remove_link", %{"link_id" => link_id}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Links.remove_link(scope, vehicle, link_id) do
+      {:ok, _link} ->
+        {:noreply, assign(socket, :links, Links.list_links(vehicle))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That link is not yours to remove.")}
+    end
+  end
+
   def handle_event("delete_entry", %{"entry_ref" => entry_ref}, socket) do
     %{current_scope: scope, vehicle: vehicle} = socket.assigns
 

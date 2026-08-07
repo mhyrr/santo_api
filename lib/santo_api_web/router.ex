@@ -48,10 +48,15 @@ defmodule SantoApiWeb.Router do
 
     # Anonymous is the normal case here, so the scope is mounted but never
     # required — it only decides whether the page admits you are signed in.
+    # /start is anonymous by design: origination registers the account
+    # (owner_surface §7b), so it lives with the public pages, and its own
+    # throttle (the :origination bucket) is checked inside the LiveView
+    # because the expensive submit never crosses the router.
     live_session :public,
       layout: {SantoApiWeb.Layouts, :public},
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
       live "/", VehicleLive.Index
+      live "/start", OriginationLive
       live "/v/:public_id", VehicleLive.Show
     end
   end

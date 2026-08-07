@@ -15,7 +15,11 @@ defmodule SantoApiWeb.VehicleLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     counts = Registry.entry_counts()
-    vehicles = Registry.list_vehicles()
+    unpublished = SantoApi.Owners.unpublished_vehicle_ids()
+
+    # An unconfirmed origination is not public yet (owner_surface §7b.1
+    # decision 6) — the directory must not list a page that 404s.
+    vehicles = Enum.reject(Registry.list_vehicles(), &MapSet.member?(unpublished, &1.id))
 
     groups =
       vehicles
@@ -60,8 +64,15 @@ defmodule SantoApiWeb.VehicleLive.Index do
         </p>
       </header>
 
+      <p class="mt-6">
+        <.link navigate={~p"/start"} class="vs-quiet">Add your car</.link>
+      </p>
+
       <p :if={@count == 0} class="mt-12 text-base" style="color: var(--vs-dim)">
-        No cars in the registry yet. The first one arrives by VIN.
+        No cars in the registry yet. The first one arrives by VIN — or by <.link
+          navigate={~p"/start"}
+          class="underline underline-offset-4"
+        >your say-so</.link>.
       </p>
 
       <section :for={{marque, rows} <- @groups} class="mt-14">
