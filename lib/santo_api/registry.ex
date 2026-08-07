@@ -49,6 +49,102 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  Originate a car that has no identifier at all — the §7b front door.
+
+  A real registry row from minute one, keyed on a minted opaque id
+  (`asserted:<uuid>`). Deliberately a separate entry point rather than a
+  branch inside `ingest/1`: ingest stays VIN-shaped, and
+  `Santo.Identity.key/1` never returns `:asserted`. No decode, no claims,
+  no evidence requests — everything this car will say about itself arrives
+  as owner claims. Every call is a new car; asserted identities never
+  dedupe, because two people describing cars in sentences are two cars.
+
+  `input` is the sentence the owner typed — required, like every other
+  row's input, because a car nobody described is not a car anyone asked for.
+  """
+  def originate(input) when is_binary(input) and input != "" do
+    identity = {:asserted, Ecto.UUID.generate()}
+    key = IdentityKey.serialize(identity)
+
+    {:ok, vehicle} = Repo.transaction(fn -> create_vehicle(identity, key, input, nil) end)
+    {:ok, vehicle}
+  end
+
+  @doc """
+  Resolve an `:asserted` car to the VIN its owner finally produced —
+  acquiring an identity, not changing one (owner_surface §7b.2). One-way and
+  one-time: anything already resolved (or born with an identity) refuses,
+  and a bad resolution is an operator problem, not a self-serve edit.
+
+    * **Unoccupied VIN** — the row flips in place: `identity_kind` and
+      `identity_key` rewritten, decode fires and its facts arrive
+      `:admitted`, and `claim_comparison/1` audits what the owner asserted
+      at read time. `public_id` never moves and the log is untouched.
+    * **Occupied VIN** — `{:error, {:occupied, vehicle}}` with the row that
+      holds the key. Nothing here refuses the owner's assertion — the
+      caller routes them through §4's counter-claim path on that row; only
+      the key flip is deferred, pending the adjudication.
+  """
+  def resolve_asserted(%Vehicle{identity_kind: :asserted} = vehicle, input) do
+    with {:ok, identity} <- vin_identity(input) do
+      key = IdentityKey.serialize(identity)
+
+      case Repo.get_by(Vehicle, identity_key: key) do
+        %Vehicle{} = occupied -> {:error, {:occupied, occupied}}
+        nil -> flip_identity(vehicle, key, Santo.Normalize.normalize(input))
+      end
+    end
+  end
+
+  def resolve_asserted(%Vehicle{}, _input), do: {:error, :already_resolved}
+
+  defp vin_identity(input) do
+    case Santo.Identity.key(input) do
+      {:ok, {:vin, _vin} = identity} -> {:ok, identity}
+      {:ok, _other_identity} -> {:error, :vin_required}
+      {:error, %Santo.Invalid{} = invalid} -> {:error, invalid}
+    end
+  end
+
+  defp flip_identity(%Vehicle{} = vehicle, key, normalized) do
+    decode = Santo.decode(normalized)
+
+    result =
+      Repo.transaction(fn ->
+        changeset =
+          vehicle
+          |> Ecto.Changeset.change(
+            identity_kind: :vin,
+            identity_key: key,
+            input: normalized,
+            decode_snapshot: snapshot(decode),
+            santo_version: santo_version()
+          )
+          |> Ecto.Changeset.unique_constraint(:identity_key)
+
+        case Repo.update(changeset) do
+          {:ok, updated} ->
+            emit_claims(updated, decode)
+            refresh_projections(updated)
+
+          {:error, _occupied_meanwhile} ->
+            Repo.rollback(:occupied)
+        end
+      end)
+
+    case result do
+      {:ok, resolved} ->
+        {:ok, resolved}
+
+      {:error, :occupied} ->
+        # Lost a race for the key. Vehicles are never deleted, so the row
+        # that beat us is there to hand back.
+        %Vehicle{} = occupied = Repo.get_by(Vehicle, identity_key: key)
+        {:error, {:occupied, occupied}}
+    end
+  end
+
+  @doc """
   Register a trusted pre-standard chassis identity that Santo does not yet
   decode. This is deliberately atom-only: callers must choose a reviewed
   marque and era rather than turning external strings into atoms.

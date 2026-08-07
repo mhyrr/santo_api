@@ -40,6 +40,7 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     "event.note" => "Note",
     "event.outing" => "Outing",
     "event.sale" => "Sale",
+    "event.origination" => "Record started",
     "observation.mileage" => "Odometer"
   }
 
@@ -75,6 +76,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
   end
+
+  # An originated car with nothing extracted yet has no name and no
+  # identifier — "undecoded" would imply a chassis number we never had.
+  defp untitled(%Vehicle{identity_kind: :asserted}), do: "Unnamed car"
 
   defp untitled(%Vehicle{} = vehicle), do: marque(vehicle) || "Undecoded chassis"
 
@@ -396,9 +401,14 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # an assistant may send its claims in any order, and the entry reads the same.
   # A note still leads when it is the most specific thing in the entry, which is
   # exactly the case where it is the whole entry.
+  defp headline_priority(%{predicate: "event.origination"}), do: -1
   defp headline_priority(%{predicate: "event.note"}), do: 1
   defp headline_priority(%{predicate: "observation." <> _rest}), do: 2
   defp headline_priority(_claim), do: 0
+
+  # The sentence itself lives in the claim and its artifact; the tick says
+  # what happened. The party line beneath already names who.
+  defp claim_headline(%{predicate: "event.origination"}), do: "Started this record"
 
   defp claim_headline(%{predicate: "event.service", value: %{"summary" => summary}}), do: summary
   defp claim_headline(%{predicate: "event.modification", value: %{"summary" => s}}), do: s
@@ -500,13 +510,18 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     end
   end
 
-  @doc "The VIN or chassis number, without the internal key prefix."
+  @doc """
+  The VIN or chassis number, without the internal key prefix. `nil` for an
+  asserted car — its minted id is plumbing, not an identifier anyone reads.
+  """
+  def chassis(%Vehicle{identity_key: "asserted:" <> _id}), do: nil
   def chassis(%Vehicle{identity_key: "vin:" <> vin}), do: vin
   def chassis(%Vehicle{identity_key: key}), do: key |> String.split(":") |> List.last()
 
   def identity_label(%Vehicle{identity_kind: :vin}), do: "VIN"
   def identity_label(%Vehicle{identity_kind: :chassis}), do: "Chassis"
   def identity_label(%Vehicle{identity_kind: :disputed}), do: "Disputed identity"
+  def identity_label(%Vehicle{identity_kind: :asserted}), do: "Owner record"
 
   defp paint_name(%Vehicle{} = vehicle) do
     case vehicle.facts["build.paint_code"] do

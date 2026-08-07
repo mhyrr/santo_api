@@ -23,7 +23,10 @@ defmodule SantoApi.Registry.Vehicle do
     # The canonical public handle. The surrogate id is internal and the VIN is
     # correctable, so the shareable URL hangs on neither.
     field :public_id, :string
-    field :identity_kind, Ecto.Enum, values: [:vin, :chassis, :disputed]
+    # `:asserted` is a car originated before it has any identifier
+    # (owner_surface §7b) — a real row from minute one, resolved to `:vin`
+    # exactly once when the owner produces one.
+    field :identity_kind, Ecto.Enum, values: [:vin, :chassis, :disputed, :asserted]
     field :identity_key, :string
     field :candidates, {:array, :string}, default: []
     field :input, :string
