@@ -567,6 +567,44 @@ defmodule SantoApi.Owners do
   defp user_id(%User{id: id}), do: id
   defp user_id(nil), do: nil
 
+  ## Resolution — an asserted car acquires its VIN (owner_surface §7b.2)
+
+  @doc """
+  Resolve the caller's `:asserted` car to a VIN. One-way, one-time, and
+  never refused.
+
+    * The VIN is unoccupied — `{:ok, :resolved, vehicle}`. The row flipped
+      in place, the decode's facts arrived `:admitted`, and the page's
+      comparison audits everything the owner asserted.
+    * The VIN is occupied — `{:ok, :counter_claim, occupied, challenge}`.
+      The assertion is still recorded (Greg, 2026-08-04: the ledger gates
+      nothing at submission time, anywhere): the owner becomes a claimant on
+      the occupied row through §4's counter-claim path, an operator
+      adjudicates, and the entries stay on the asserted row meanwhile. Only
+      the key flip is deferred, never the claim.
+
+  Steward-only: acquiring the identity is the biggest write the owner
+  surface has, and it belongs to the person maintaining the log.
+  """
+  def resolve_asserted(scope, %Vehicle{} = vehicle, vin) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle) do
+      case Registry.resolve_asserted(vehicle, vin) do
+        {:ok, resolved} ->
+          {:ok, :resolved, resolved}
+
+        {:error, {:occupied, occupied}} ->
+          user = Repo.get!(User, stewardship.user_id)
+
+          with {:ok, challenge} <- issue_challenge(user, occupied) do
+            {:ok, :counter_claim, occupied, challenge}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
   @doc """
   The logbook as this caller may read it (owner_surface §6).
 
