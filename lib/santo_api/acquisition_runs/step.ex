@@ -21,6 +21,7 @@ defmodule SantoApi.AcquisitionRuns.Step do
   schema "acquisition_steps" do
     belongs_to :run, Run
     belongs_to :artifact, Artifact
+    belongs_to :depends_on_step, __MODULE__
 
     field :step_key, :string
     field :position, :integer
@@ -33,6 +34,8 @@ defmodule SantoApi.AcquisitionRuns.Step do
 
     field :attempt_count, :integer, default: 0
     field :missing_selectors, {:array, :string}, default: []
+    field :conflicted_selectors, {:array, :string}, default: []
+    field :selectors, :map, default: %{}
     field :diagnostics, :map, default: %{}
     field :last_error, :map
     field :started_at, :utc_datetime_usec

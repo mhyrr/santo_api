@@ -18,6 +18,7 @@ defmodule SantoApi.Providers.Capability do
           | :service_history
           | :inspection
           | :recall_campaigns
+          | :technical_bulletins
           | :open_recall_status
           | :listing_history
           | :auction_history
@@ -34,6 +35,7 @@ defmodule SantoApi.Providers.Capability do
     :service_history,
     :inspection,
     :recall_campaigns,
+    :technical_bulletins,
     :open_recall_status,
     :listing_history,
     :auction_history

@@ -9,7 +9,7 @@ defmodule SantoApi.Providers do
 
   alias SantoApi.Providers.{Capability, Request}
 
-  @providers [SantoApi.Providers.Vpic]
+  @providers [SantoApi.Providers.Vpic, SantoApi.Providers.Nhtsa]
 
   def all, do: @providers
 

@@ -29,7 +29,7 @@ defmodule SantoApi.Registry do
   }
 
   alias SantoApi.Providers
-  alias SantoApi.Providers.{Acquisition, Request}
+  alias SantoApi.Providers.{Acquisition, Request, Selector}
   alias SantoApi.Terms
 
   def ingest(input) do
@@ -162,6 +162,65 @@ defmodule SantoApi.Registry do
     Repo.all(
       from(a in Artifact, where: a.vehicle_id == ^vehicle_id, order_by: [desc: a.inserted_at])
     )
+  end
+
+  @doc """
+  Artifact-backed population references for a set of acquisition snapshots.
+
+  These values are deliberately not claims. A year/make/model match says a
+  campaign or communication applies to that model population; it says nothing
+  about this VIN's inclusion, open status, or repair completion.
+  """
+  def reference_findings(artifact_ids) when is_list(artifact_ids) do
+    ids = Enum.flat_map(artifact_ids, &cast_uuid/1)
+
+    Repo.all(from(a in Artifact, where: a.id in ^ids, order_by: [asc: a.acquired_at]))
+    |> Enum.filter(&(&1.metadata["provider"] == "nhtsa_public_corpus"))
+    |> Enum.map(&reference_finding/1)
+  end
+
+  def reference_findings(_artifact_ids), do: []
+
+  @doc """
+  Resolve model-population selectors from every live identity source.
+
+  Missing predicates and incompatible source values remain explicit. The
+  resolver never reads `vehicle.facts`, whose presentation fold necessarily
+  chooses one value even while marking it conflicted.
+  """
+  def resolve_identity_selectors(vehicle_id) do
+    entries = live_claim_entries(vehicle_id) |> Enum.group_by(& &1.predicate)
+
+    {selector_attrs, missing, conflicted} =
+      [
+        {"identity.marque", :marque},
+        {"identity.model", :model},
+        {"identity.model_year", :model_year}
+      ]
+      |> Enum.reduce({%{}, [], []}, fn {predicate, field}, {attrs, missing, conflicted} ->
+        claims = Map.get(entries, predicate, [])
+
+        case selector_value(predicate, claims) do
+          {:ok, value} -> {Map.put(attrs, field, value), missing, conflicted}
+          :missing -> {attrs, [predicate | missing], conflicted}
+          :conflict -> {attrs, missing, [predicate | conflicted]}
+        end
+      end)
+
+    {:ok, selector} = Selector.new(selector_attrs)
+    missing = Enum.reverse(missing)
+    conflicted = Enum.reverse(conflicted)
+
+    if missing == [] and conflicted == [] do
+      {:ok, selector}
+    else
+      {:needs_input,
+       %{
+         selectors: selector,
+         missing_predicates: missing,
+         conflicted_predicates: conflicted
+       }}
+    end
   end
 
   def list_adjudications(vehicle_id) do
@@ -879,6 +938,46 @@ defmodule SantoApi.Registry do
 
   defp public_source_url(_url), do: nil
 
+  defp cast_uuid(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> [uuid]
+      :error -> []
+    end
+  end
+
+  defp reference_finding(artifact) do
+    payload = artifact.payload || %{}
+
+    %{
+      artifact_id: artifact.id,
+      capability: artifact.metadata["capability"],
+      coverage: artifact.metadata["coverage"],
+      acquired_at: artifact.acquired_at,
+      selectors: payload["selectors"] || %{},
+      releases: payload["corpus_releases"] || [],
+      records: Enum.map(payload["records"] || [], &public_reference_record/1),
+      applicability_label:
+        payload["applicability_label"] ||
+          "model applicability; vehicle completion unknown"
+    }
+  end
+
+  defp public_reference_record(record) do
+    record
+    |> Map.take([
+      "identifier",
+      "nhtsa_id",
+      "title",
+      "summary",
+      "applicability",
+      "source_url",
+      "document_url",
+      "corpus_release"
+    ])
+    |> Map.update("source_url", nil, &public_source_url/1)
+    |> Map.update("document_url", nil, &public_source_url/1)
+  end
+
   @doc """
   The oracle pattern as a query: group live claims by predicate and
   label each `:agreement`, `:conflict`, or `:single_source`. Derived,
@@ -1075,6 +1174,22 @@ defmodule SantoApi.Registry do
 
   defp comparison_source(%{party_id: party_id}), do: {:party, party_id}
 
+  defp selector_value(_predicate, []), do: :missing
+
+  defp selector_value(predicate, [first | rest]) do
+    if Enum.all?(rest, &Vocabulary.equivalent?(predicate, first.value, &1.value)) do
+      {:ok, canonical_selector_value(predicate, first.value)}
+    else
+      :conflict
+    end
+  end
+
+  defp canonical_selector_value("identity.model", %{"code" => code}) do
+    %{"code" => code, "label" => nil}
+  end
+
+  defp canonical_selector_value(_predicate, value), do: value
+
   defp persist_acquisition(vehicle, %Acquisition{} = acquisition) do
     {:ok, provider} = Providers.provider(acquisition.provider)
     party = ensure_party(provider.descriptor().name, :vendor)
@@ -1148,6 +1263,8 @@ defmodule SantoApi.Registry do
   # transport, the registry owns what becomes a claim.
   defp acquisition_facts(%Acquisition{provider: :nhtsa_vpic, payload: payload}),
     do: Providers.Vpic.facts(payload)
+
+  defp acquisition_facts(%Acquisition{provider: :nhtsa_public_corpus}), do: []
 
   defp upsert_vehicle(identity, input, decode) do
     key = IdentityKey.serialize(identity)

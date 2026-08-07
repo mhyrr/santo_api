@@ -2,7 +2,7 @@ defmodule SantoApi.ProvidersTest do
   use ExUnit.Case, async: true
 
   alias SantoApi.Providers
-  alias SantoApi.Providers.{Acquisition, Request, Vpic}
+  alias SantoApi.Providers.{Acquisition, Nhtsa, Request, Selector, Vpic}
   alias SantoApi.VpicFixtures
 
   @vin "WP0CA298X5L001502"
@@ -11,6 +11,12 @@ defmodule SantoApi.ProvidersTest do
     test "routes by capability and normalized identity" do
       assert {:ok, [Vpic]} =
                Providers.for_capability(:generic_specifications, {:vin, @vin})
+
+      assert {:ok, [Nhtsa]} =
+               Providers.for_capability(:recall_campaigns, {:vin, @vin})
+
+      assert {:ok, [Nhtsa]} =
+               Providers.for_capability(:technical_bulletins, {:vin, @vin})
 
       assert {:ok, []} = Providers.for_capability(:factory_build, {:vin, @vin})
 
@@ -21,12 +27,53 @@ defmodule SantoApi.ProvidersTest do
                )
     end
 
+    test "descriptors expose reviewed access and fulfillment semantics" do
+      assert Vpic.descriptor().access_class == :open_data
+      assert Vpic.descriptor().required_selectors == []
+
+      assert %{
+               fulfillment: :bulk_dataset,
+               access_class: :open_data,
+               required_selectors: [:marque, :model, :model_year]
+             } = Nhtsa.descriptor()
+    end
+
     test "rejects unknown capabilities and providers without creating atoms" do
       assert {:error, {:unknown_capability, "factory_build"}} =
                Providers.for_capability("factory_build", {:vin, @vin})
 
       assert {:error, {:unknown_provider, "nhtsa_vpic"}} =
                Providers.provider("nhtsa_vpic")
+    end
+  end
+
+  describe "provider-neutral selectors" do
+    test "validates model-population selectors without using request options" do
+      assert {:ok, %Selector{} = selectors} =
+               Selector.new(%{
+                 marque: "porsche",
+                 model: %{"code" => "cayman", "label" => nil},
+                 model_year: 2007
+               })
+
+      assert {:ok, %Request{selectors: ^selectors, options: %{}}} =
+               Request.new(:recall_campaigns, {:vin, @vin}, selectors)
+
+      assert {:ok, ^selectors} = Selector.new(Selector.to_map(selectors))
+
+      assert {:error, {:unknown_selectors, [:vendor_model_id]}} =
+               Selector.new(%{vendor_model_id: "42"})
+
+      assert {:error, {:invalid_selector, :model_year}} =
+               Selector.new(%{model_year: "2007"})
+    end
+
+    test "a configured provider without selectors requests input instead of becoming unsupported" do
+      assert {:ok, request} = Request.new(:recall_campaigns, {:vin, @vin})
+      assert :ok = Nhtsa.supports?(request)
+
+      assert {:pending, %{missing_selectors: [:marque, :model, :model_year]}} =
+               Nhtsa.acquire(request)
     end
   end
 

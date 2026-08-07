@@ -1,0 +1,4 @@
+11000001		20240115	TI-24-01	20240110	W2401	Service Bulletin/Repair Instructions	PORSCHE	CAYMAN	2007	POWER TRAIN	Transmission	Shift linkage	Instructions for inspecting shift-cable adjustment on affected 2007 Cayman models.
+11000002		20240220	TI-24-02	20240218		Warranty Program/Extension	PORSCHE	CAYMAN	2007	ELECTRICAL SYSTEM	Body electronics	Control unit	Warranty extension and diagnostic guidance for the listed 2007 Cayman model population.
+11000003		20240301	TI-24-03	20240228		Other	PORSCHE	911	2005	ENGINE	Engine	Cooling	Cooling-system diagnostic guidance for listed 2005 911 models.
+malformed	bulletin	row

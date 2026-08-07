@@ -2,15 +2,16 @@ defmodule SantoApi.Providers.Request do
   @moduledoc """
   One capability request against one normalized Santo identity.
 
-  `options` are provider-neutral request constraints. Credentials and
-  billing authorization belong in runtime configuration, not in this
-  value or in persisted artifacts.
+  `selectors` are reusable source locators, validated independently of any
+  vendor. `options` are capability-specific behavior knobs. Credentials and
+  billing authorization belong in runtime configuration, not in this value or
+  in persisted artifacts.
   """
 
-  alias SantoApi.Providers.Capability
+  alias SantoApi.Providers.{Capability, Selector}
 
   @enforce_keys [:capability, :identity]
-  defstruct [:capability, :identity, options: %{}]
+  defstruct [:capability, :identity, selectors: %Selector{}, options: %{}]
 
   @type identity ::
           {:vin, String.t()}
@@ -20,19 +21,38 @@ defmodule SantoApi.Providers.Request do
   @type t :: %__MODULE__{
           capability: Capability.t(),
           identity: identity(),
+          selectors: Selector.t(),
           options: map()
         }
 
-  def new(capability, identity, options \\ %{})
+  def new(capability, identity), do: new(capability, identity, %Selector{}, %{})
 
-  def new(capability, identity, options) when is_map(options) do
-    with :ok <- Capability.validate(capability),
-         :ok <- validate_identity(identity) do
-      {:ok, %__MODULE__{capability: capability, identity: identity, options: options}}
+  def new(capability, identity, %Selector{} = selectors),
+    do: new(capability, identity, selectors, %{})
+
+  def new(capability, identity, selectors) when is_map(selectors) do
+    with {:ok, selector} <- Selector.new(selectors) do
+      new(capability, identity, selector, %{})
     end
   end
 
-  def new(_capability, _identity, _options), do: {:error, :invalid_options}
+  def new(_capability, _identity, _selectors), do: {:error, :invalid_selectors}
+
+  def new(capability, identity, %Selector{} = selectors, options) when is_map(options) do
+    with :ok <- Capability.validate(capability),
+         :ok <- validate_identity(identity),
+         :ok <- Selector.validate(selectors) do
+      {:ok,
+       %__MODULE__{
+         capability: capability,
+         identity: identity,
+         selectors: selectors,
+         options: options
+       }}
+    end
+  end
+
+  def new(_capability, _identity, _selectors, _options), do: {:error, :invalid_options}
 
   def identity_kind(%__MODULE__{identity: identity}), do: identity_kind(identity)
   def identity_kind({:vin, _vin}), do: :vin

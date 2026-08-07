@@ -1,6 +1,6 @@
 # Provider System
 
-*Research and architecture pass, updated 2026-07-31. Providers acquire evidence;
+*Research and architecture pass, updated 2026-08-07. Providers acquire evidence;
 they do not decide vehicle facts.*
 
 ## 1. Decision
@@ -155,6 +155,7 @@ Static, inspectable metadata:
 
 - stable provider id and display name;
 - supported capabilities and identity kinds;
+- required provider-neutral selectors;
 - fulfillment mode: `sync_api | bulk_dataset | operator_lookup | async_order |
   human_upload`;
 - billing mode: `free | metered | quoted`;
@@ -175,10 +176,12 @@ A target request contains:
   registration number, model/year, or proof of owner authorization;
 - capability-specific options.
 
-The current implementation accepts one normalized identity and an options map.
-Before state and international adapters land, promote selectors into a validated
-provider-neutral value. Do not hide plates and title numbers inside vendor options:
-they are reusable locators that one acquisition may discover for another.
+The implementation carries selectors in a validated provider-neutral value,
+currently `marque`, `model`, and `model_year`. Acquisition steps persist the
+resolved selector snapshot before they are enqueued. Future jurisdiction,
+registration, plate, title, and authorization selectors belong in that value,
+not in vendor options: they are reusable locators that one acquisition may
+discover for another.
 
 Paid providers are never selected merely because they advertise a capability.
 The future orchestrator must require an explicit billing authorization for a
@@ -405,17 +408,19 @@ After the public-source gap report, the commercial outreach order is:
 ## 8. Build sequence
 
 The provider behavior, request/acquisition structs, capability registry, vPIC
-adapter, Registry-side interpretation, and acquisition metadata persistence are
-already in place.
+adapter, Registry-side interpretation, acquisition metadata persistence, and the
+first NHTSA bulk corpus are in place. The corpus preserves recalls and
+manufacturer communications as immutable releases and answers year/make/model
+queries locally. Its results remain artifact-backed population references rather
+than vehicle claims.
 
 Next:
 
-1. Expand the contract with the public-source capabilities, access classes,
-   `bulk_dataset`/`operator_lookup` fulfillment, and validated multi-selector
-   requests.
-2. Build one NHTSA bulk-corpus provider covering recalls, manufacturer
-   communications, complaints, and investigations. Preserve each dataset release;
-   query the local snapshot by Porsche model/year/VIN pattern.
+1. Extend the generic NHTSA corpus with complaints and investigations. Their
+   releases can use the existing release storage; each dataset still needs its own
+   source-shaped importer and honest population-level read model.
+2. Add `operator_lookup` fulfillment only when the first reviewed human lookup
+   provider needs it.
 3. Create a jurisdiction catalog recording each public source's capabilities,
    required selectors, access method, coverage semantics, rights, and refresh
    behavior.

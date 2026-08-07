@@ -21,8 +21,10 @@ defmodule SantoApi.Providers.Vpic do
       name: "NHTSA vPIC",
       capabilities: [:generic_specifications],
       identity_kinds: [:vin],
+      required_selectors: [],
       fulfillment: :sync_api,
       billing: :free,
+      access_class: :open_data,
       documentation_url: "https://vpic.nhtsa.dot.gov/api/"
     }
   end

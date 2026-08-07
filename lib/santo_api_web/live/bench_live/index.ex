@@ -1,33 +1,65 @@
 defmodule SantoApiWeb.BenchLive.Index do
   @moduledoc """
-  Operator bench: paste an identifier, get a vehicle. No auth — this is
-  an internal tool, deliberately.
+  Operator bench: register an identifier, run the free acquisition plan for a
+  VIN, or open an existing registry vehicle.
   """
 
   use SantoApiWeb, :live_view
 
+  alias SantoApi.AcquisitionRuns
   alias SantoApi.Owners
   alias SantoApi.Registry
 
   @impl true
   def mount(_params, _session, socket) do
+    vehicles = Registry.list_vehicles()
+
     {:ok,
      socket
-     |> assign(:input, "")
+     |> assign(:lookup_form, to_form(%{"vin" => ""}, as: :lookup))
      |> assign(:error, nil)
      |> assign(:waiting_claims, length(Owners.list_pending_challenges()))
-     |> stream(:vehicles, Registry.list_vehicles())}
+     |> assign(:vehicle_count, length(vehicles))
+     |> stream(:vehicles, vehicles)}
   end
 
   @impl true
-  def handle_event("ingest", %{"input" => input}, socket) do
-    case Registry.ingest(input) do
-      {:ok, vehicle} ->
-        {:noreply, push_navigate(socket, to: ~p"/bench/vehicles/#{vehicle.id}")}
+  def handle_event("build_record", %{"lookup" => %{"vin" => input}}, socket) do
+    scope = socket.assigns.current_scope
+
+    case AcquisitionRuns.start_operator(scope, input) do
+      {:ok, disposition, vehicle, _run} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, disposition_message(disposition))
+         |> push_navigate(to: ~p"/bench/vehicles/#{vehicle.id}")}
 
       {:error, %Santo.Invalid{} = invalid} ->
-        {:noreply, assign(socket, input: input, error: invalid)}
+        {:noreply,
+         socket
+         |> assign(:lookup_form, to_form(%{"vin" => input}, as: :lookup))
+         |> assign(:error, invalid_message(invalid))}
+
+      {:error, :unauthorized} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Operator access is required.")
+         |> push_navigate(to: ~p"/")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, "Build failed: #{inspect(reason)}")}
     end
+  end
+
+  defp disposition_message(:created), do: "Vehicle added. Free provider lookups are running."
+  defp disposition_message(:restarted), do: "Fresh free-provider acquisition started."
+  defp disposition_message(:active), do: "The active acquisition is already running."
+
+  defp disposition_message(:registered),
+    do: "Chassis registered. VIN-only provider lookups were not run."
+
+  defp invalid_message(%Santo.Invalid{reasons: reasons}) do
+    "That identifier could not be resolved: #{inspect(reasons)}"
   end
 
   defp claims_waiting(0), do: "No claims waiting"
@@ -37,40 +69,81 @@ defmodule SantoApiWeb.BenchLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
-      <.header>Vehicle Registry Bench</.header>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <.header>
+        Vehicle Registry Bench
+        <:subtitle>
+          Build and inspect the best record the configured free providers can support.
+        </:subtitle>
+      </.header>
 
       <!-- Somebody has been waiting since they took that photograph, so the
            count is on the way in rather than behind a menu. -->
-      <p class="mb-4">
+      <p class="mb-6">
         <.link navigate={~p"/bench/claims"} class="link">
           {claims_waiting(@waiting_claims)}
         </.link>
       </p>
 
-      <form id="ingest-form" phx-submit="ingest">
-        <.input
-          type="text"
-          name="input"
-          value={@input}
-          label="VIN or chassis number"
-          placeholder="Paste an identifier"
-        />
-        <.button variant="primary">Ingest</.button>
-      </form>
+      <section
+        id="vin-lookup"
+        class="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm"
+      >
+        <.form
+          for={@lookup_form}
+          id="vin-lookup-form"
+          phx-submit="build_record"
+          class="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+        >
+          <.input
+            field={@lookup_form[:vin]}
+            type="text"
+            label="VIN or chassis number"
+            placeholder="WP0CA298X5L001502"
+            autocomplete="off"
+          />
+          <.button id="build-record-button" variant="primary" class="mb-2 min-h-10 px-5">
+            Build record
+          </.button>
+        </.form>
 
-      <div :if={@error} id="ingest-error" class="alert alert-error mt-4">
-        <pre class="whitespace-pre-wrap">{inspect(@error)}</pre>
+        <p class="mt-1 text-sm text-base-content/60">
+          Standard VINs run Santo and every configured free provider. Pre-standard chassis
+          numbers are registered without VIN-only searches.
+        </p>
+
+        <div
+          :if={@error}
+          id="vin-lookup-error"
+          class="mt-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
+        >
+          {@error}
+        </div>
+      </section>
+
+      <div class="mt-10 flex items-end justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-semibold">Registry vehicles</h2>
+          <p class="text-sm text-base-content/60">
+            Open a VIN to inspect facts, sources, and acquisition work.
+          </p>
+        </div>
+        <span id="vehicle-count" class="text-sm tabular-nums text-base-content/60">
+          {@vehicle_count} total
+        </span>
       </div>
 
-      <.table id="vehicles" rows={@streams.vehicles}>
-        <:col :let={{_id, vehicle}} label="identity">
+      <.table id="registry-vehicles" rows={@streams.vehicles}>
+        <:col :let={{_id, vehicle}} label="identifier">
           <.link navigate={~p"/bench/vehicles/#{vehicle.id}"} class="link">
             {vehicle.identity_key}
           </.link>
         </:col>
         <:col :let={{_id, vehicle}} label="kind">{vehicle.identity_kind}</:col>
         <:col :let={{_id, vehicle}} label="ingested">{vehicle.inserted_at}</:col>
+        <:action :let={{_id, vehicle}}>
+          <a href={~p"/v/#{vehicle.public_id}"} class="link">Public record</a>
+        </:action>
       </.table>
     </Layouts.app>
     """

@@ -9,10 +9,11 @@ defmodule SantoApi.AcquisitionRuns do
 
   import Ecto.Query, warn: false
 
+  alias SantoApi.Accounts
   alias SantoApi.Accounts.{Scope, User}
   alias SantoApi.AcquisitionRuns.{Run, Step, StepWorker}
   alias SantoApi.Providers
-  alias SantoApi.Providers.{Acquisition, Capability, Request}
+  alias SantoApi.Providers.{Acquisition, Capability, Request, Selector}
   alias SantoApi.Registry
   alias SantoApi.Registry.Vehicle
   alias SantoApi.Repo
@@ -28,6 +29,25 @@ defmodule SantoApi.AcquisitionRuns do
   """
   def start(%Scope{} = scope, input), do: do_start(scope, input)
   def start(nil, input), do: do_start(nil, input)
+
+  @doc """
+  Start the free acquisition plan from the operator bench.
+
+  Unlike the anonymous public action, an operator may refresh an existing VIN.
+  An already-active run is returned rather than duplicated. Non-VIN identities
+  are still registered for bench work, but receive no VIN-only provider plan.
+  """
+  def start_operator(%Scope{} = scope, input) do
+    with :ok <- authorize_operator(scope) do
+      case normalize_vin(input) do
+        {:ok, vin} -> do_start_operator(scope, vin)
+        {:error, :vin_required} -> register_non_vin(input)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def start_operator(_scope, _input), do: {:error, :unauthorized}
 
   @doc """
   The newest run and its ordered step ledger for a public vehicle.
@@ -88,6 +108,17 @@ defmodule SantoApi.AcquisitionRuns do
     end
   end
 
+  defp do_start_operator(scope, vin) do
+    case Repo.transaction(fn -> start_operator_locked(scope, vin) end) do
+      {:ok, {disposition, vehicle, run}} ->
+        broadcast(run)
+        {:ok, disposition, vehicle, run}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp normalize_vin(input) when is_binary(input) do
     normalized = Santo.Normalize.normalize(input)
 
@@ -100,6 +131,18 @@ defmodule SantoApi.AcquisitionRuns do
 
   defp normalize_vin(_input), do: {:error, :vin_required}
 
+  defp authorize_operator(scope) do
+    if Accounts.operator?(scope), do: :ok, else: {:error, :unauthorized}
+  end
+
+  defp register_non_vin(input) do
+    case Registry.ingest(input) do
+      {:ok, %Vehicle{identity_kind: :vin}} -> {:error, :vin_required}
+      {:ok, %Vehicle{} = vehicle} -> {:ok, :registered, vehicle, nil}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp start_locked(scope, vin) do
     identity_key = "vin:" <> vin
     lock_identity(identity_key)
@@ -110,40 +153,76 @@ defmodule SantoApi.AcquisitionRuns do
 
       {:error, :not_found} ->
         {:ok, vehicle} = Registry.ingest(vin)
-        now = DateTime.utc_now()
-        plan = plan_steps({:vin, vin}, vehicle, now)
-        pending? = Enum.any?(plan, &(&1.status == :pending))
+        {:created, vehicle, create_run(scope, vin, vehicle)}
+    end
+  end
 
-        run =
-          %Run{
-            vehicle_id: vehicle.id,
-            initiated_by_user_id: initiated_by_user_id(scope),
-            policy: :free_public_v1,
-            status: if(pending?, do: :pending, else: :complete),
-            finished_at: if(pending?, do: nil, else: now)
-          }
+  defp start_operator_locked(scope, vin) do
+    lock_identity("vin:" <> vin)
+
+    case Registry.resolve_vin(vin) do
+      {:ok, vehicle} ->
+        case active_run_for_vehicle(vehicle) do
+          %Run{} = run -> {:active, vehicle, run}
+          nil -> {:restarted, vehicle, create_run(scope, vin, vehicle)}
+        end
+
+      {:error, :not_found} ->
+        {:ok, vehicle} = Registry.ingest(vin)
+        {:created, vehicle, create_run(scope, vin, vehicle)}
+    end
+  end
+
+  defp create_run(scope, vin, vehicle) do
+    now = DateTime.utc_now()
+    plan = plan_steps({:vin, vin}, vehicle, now)
+    pending? = Enum.any?(plan, &(&1.status == :pending))
+
+    run =
+      %Run{
+        vehicle_id: vehicle.id,
+        initiated_by_user_id: initiated_by_user_id(scope),
+        policy: :free_public_v1,
+        status: if(pending?, do: :pending, else: :complete),
+        finished_at: if(pending?, do: nil, else: now)
+      }
+      |> Repo.insert!()
+
+    steps_with_dependencies =
+      plan
+      |> Enum.with_index()
+      |> Enum.map(fn {attrs, position} ->
+        {depends_on_step_key, attrs} = Map.pop(attrs, :depends_on_step_key)
+
+        step =
+          attrs
+          |> Map.merge(%{run_id: run.id, position: position})
+          |> then(&struct!(Step, &1))
           |> Repo.insert!()
 
-        steps =
-          plan
-          |> Enum.with_index()
-          |> Enum.map(fn {attrs, position} ->
-            attrs
-            |> Map.merge(%{run_id: run.id, position: position})
-            |> then(&struct!(Step, &1))
-            |> Repo.insert!()
-          end)
+        {step, depends_on_step_key}
+      end)
 
-        steps
-        |> Enum.filter(&(&1.status == :pending))
-        |> Enum.each(fn step ->
-          %{step_id: step.id}
-          |> StepWorker.new()
-          |> Oban.insert!()
-        end)
+    by_key = Map.new(steps_with_dependencies, fn {step, _dependency} -> {step.step_key, step} end)
 
-        {:created, vehicle, %{run | steps: steps}}
-    end
+    steps =
+      Enum.map(steps_with_dependencies, fn
+        {step, nil} ->
+          step
+
+        {step, depends_on_step_key} ->
+          dependency = Map.fetch!(by_key, depends_on_step_key)
+
+          step
+          |> Ecto.Changeset.change(depends_on_step_id: dependency.id)
+          |> Repo.update!()
+      end)
+
+    steps
+    |> Enum.filter(&(&1.status == :pending and is_nil(&1.depends_on_step_id)))
+    |> Enum.each(&enqueue_step!/1)
+
+    %{run | steps: steps}
   end
 
   # The lock closes the get-then-create race in Registry.ingest/1 for this
@@ -174,9 +253,12 @@ defmodule SantoApi.AcquisitionRuns do
           provider: descriptor.id,
           capability: capability,
           status: :pending,
+          depends_on_step_key: selector_dependency(descriptor),
           diagnostics: %{
             "fulfillment" => to_string(descriptor.fulfillment),
-            "billing" => to_string(descriptor.billing)
+            "billing" => to_string(descriptor.billing),
+            "access_class" => to_string(descriptor.access_class),
+            "required_selectors" => Enum.map(descriptor.required_selectors, &to_string/1)
           }
         }
       end
@@ -221,37 +303,52 @@ defmodule SantoApi.AcquisitionRuns do
   defp decode_outcome(%Vehicle{decode_snapshot: snapshot}) when is_map(snapshot), do: "decoded"
   defp decode_outcome(%Vehicle{}), do: "unavailable"
 
-  defp do_latest_for_vehicle(vehicle) do
-    ordered_steps = from(s in Step, order_by: [asc: s.position])
+  defp selector_dependency(%{required_selectors: []}), do: nil
 
+  defp selector_dependency(%{required_selectors: required}) when is_list(required),
+    do: "provider:nhtsa_vpic:generic_specifications"
+
+  defp do_latest_for_vehicle(vehicle) do
     Repo.one(
       from(r in Run,
         where: r.vehicle_id == ^vehicle.id,
         order_by: [desc: r.inserted_at],
         limit: 1,
-        preload: [steps: ^ordered_steps]
+        preload: [steps: ^ordered_steps_query()]
       )
     )
   end
+
+  defp active_run_for_vehicle(vehicle) do
+    Repo.one(
+      from(r in Run,
+        where: r.vehicle_id == ^vehicle.id and r.status in [:pending, :running],
+        limit: 1,
+        preload: [steps: ^ordered_steps_query()]
+      )
+    )
+  end
+
+  defp ordered_steps_query, do: from(s in Step, order_by: [asc: s.position])
 
   defp subscribe_vehicle(vehicle) do
     Phoenix.PubSub.subscribe(@pubsub, topic(vehicle.id))
   end
 
   defp acquire_step(step, vehicle, attempt, max_attempts) do
-    case Request.new(step.capability, {:vin, vehicle.input}) do
-      {:ok, request} ->
-        case Providers.acquire(step.provider, request) do
-          {:ok, %Acquisition{} = acquisition} ->
-            settle_acquisition(step.id, acquisition)
+    with {:ok, selectors} <- Selector.new(step.selectors),
+         {:ok, request} <- Request.new(step.capability, {:vin, vehicle.input}, selectors) do
+      case Providers.acquire(step.provider, request) do
+        {:ok, %Acquisition{} = acquisition} ->
+          settle_acquisition(step.id, acquisition)
 
-          {:pending, metadata} ->
-            settle_pending(step.id, metadata, attempt, max_attempts)
+        {:pending, metadata} ->
+          settle_pending(step.id, metadata, attempt, max_attempts)
 
-          {:error, reason} ->
-            settle_provider_error(step.id, reason, attempt, max_attempts)
-        end
-
+        {:error, reason} ->
+          settle_provider_error(step.id, reason, attempt, max_attempts)
+      end
+    else
       {:error, reason} ->
         settle_provider_error(step.id, reason, attempt, max_attempts)
     end
@@ -290,6 +387,7 @@ defmodule SantoApi.AcquisitionRuns do
             )
             |> Repo.update!()
 
+          run = release_dependents(run, step, now)
           run = maybe_finish_run(run, now)
           {:finished, run, step.status}
         end
@@ -341,6 +439,7 @@ defmodule SantoApi.AcquisitionRuns do
             )
             |> Repo.update!()
 
+          run = release_dependents(run, step, now)
           run = maybe_finish_run(run, now)
           {:finished, run, step.status}
         end
@@ -386,6 +485,7 @@ defmodule SantoApi.AcquisitionRuns do
             )
             |> Repo.update!()
 
+          run = if final_attempt?, do: release_dependents(run, step, now), else: run
           run = if final_attempt?, do: maybe_finish_run(run, now), else: run
           {:settled, run, step.status}
         end
@@ -411,6 +511,12 @@ defmodule SantoApi.AcquisitionRuns do
 
         step.kind != :provider ->
           Repo.rollback(:step_not_executable)
+
+        !dependency_terminal?(step) ->
+          Repo.rollback(:dependency_not_ready)
+
+        !selector_snapshot_ready?(step) ->
+          Repo.rollback(:selectors_unresolved)
 
         true ->
           now = DateTime.utc_now()
@@ -469,6 +575,96 @@ defmodule SantoApi.AcquisitionRuns do
       |> Ecto.Changeset.change(status: :complete, finished_at: now)
       |> Repo.update!()
     end
+  end
+
+  defp release_dependents(run, completed_step, now) do
+    dependents =
+      Repo.all(
+        from(s in Step,
+          where: s.depends_on_step_id == ^completed_step.id and s.status == :pending,
+          order_by: s.position,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    case dependents do
+      [] ->
+        run
+
+      dependents ->
+        case Registry.resolve_identity_selectors(run.vehicle_id) do
+          {:ok, selectors} ->
+            selector_map = Selector.to_map(selectors)
+
+            Enum.each(dependents, fn step ->
+              step =
+                step
+                |> Ecto.Changeset.change(
+                  selectors: selector_map,
+                  missing_selectors: [],
+                  conflicted_selectors: [],
+                  diagnostics:
+                    Map.put(step.diagnostics, "selector_resolution", %{
+                      "resolved_after" => completed_step.step_key,
+                      "selectors" => selector_map
+                    })
+                )
+                |> Repo.update!()
+
+              enqueue_step!(step)
+            end)
+
+            run
+
+          {:needs_input, resolution} ->
+            selector_map = Selector.to_map(resolution.selectors)
+
+            Enum.each(dependents, fn step ->
+              step
+              |> Ecto.Changeset.change(
+                status: :needs_input,
+                selectors: selector_map,
+                missing_selectors: resolution.missing_predicates,
+                conflicted_selectors: resolution.conflicted_predicates,
+                diagnostics:
+                  Map.put(step.diagnostics, "selector_resolution", %{
+                    "resolved_after" => completed_step.step_key,
+                    "selectors" => selector_map,
+                    "missing_predicates" => resolution.missing_predicates,
+                    "conflicted_predicates" => resolution.conflicted_predicates
+                  }),
+                finished_at: now
+              )
+              |> Repo.update!()
+            end)
+
+            run
+        end
+    end
+  end
+
+  defp dependency_terminal?(%Step{depends_on_step_id: nil}), do: true
+
+  defp dependency_terminal?(%Step{depends_on_step_id: dependency_id}) do
+    case Repo.get(Step, dependency_id) do
+      %Step{status: status} -> status in @terminal_step_statuses
+      nil -> false
+    end
+  end
+
+  defp selector_snapshot_ready?(step) do
+    with {:ok, provider} <- Providers.provider(step.provider),
+         {:ok, selectors} <- Selector.new(step.selectors) do
+      Selector.required_missing(selectors, provider.descriptor().required_selectors) == []
+    else
+      _error -> false
+    end
+  end
+
+  defp enqueue_step!(step) do
+    %{step_id: step.id}
+    |> StepWorker.new()
+    |> Oban.insert!()
   end
 
   defp terminal?(%Step{status: status}), do: status in @terminal_step_statuses

@@ -29,7 +29,7 @@ config :santo_api,
 config :santo_api, Oban,
   repo: SantoApi.Repo,
   queues: [acquisitions: 4],
-  plugins: [{Oban.Plugins.Pruner, max_age: {7, :days}}]
+  plugins: [{Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60}]
 
 # Rate limit buckets (owner_surface.md §9.4). Fixed windows — see
 # `SantoApi.RateLimit` on what that costs. A bucket named in a router

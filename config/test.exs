@@ -44,6 +44,7 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 config :santo_api, :vpic_req_options, plug: {Req.Test, SantoApi.Vpic}
+config :santo_api, :nhtsa_corpus_req_options, plug: {Req.Test, SantoApi.NhtsaCorpus}
 
 # Jobs stay database-backed in tests, but never run behind the test process's
 # back. Individual worker attempts are driven with Oban.Testing.
