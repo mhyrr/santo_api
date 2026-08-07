@@ -2,6 +2,7 @@ defmodule SantoApi.SeedsTest do
   use SantoApi.DataCase, async: false
 
   import ExUnit.CaptureIO
+  import SantoApi.AccountsFixtures, only: [unique_user_handle: 0]
 
   alias SantoApi.Accounts
   alias SantoApi.Accounts.User
@@ -40,7 +41,7 @@ defmodule SantoApi.SeedsTest do
   end
 
   test "promotes an account that already exists without the flag", %{email: email} do
-    {:ok, user} = Accounts.register_user(%{email: email})
+    {:ok, user} = Accounts.register_user(%{email: email, handle: unique_user_handle()})
     refute user.operator
 
     run_seeds()

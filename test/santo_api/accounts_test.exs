@@ -49,31 +49,33 @@ defmodule SantoApi.AccountsTest do
   end
 
   describe "register_user/1" do
-    test "requires email to be set" do
+    test "requires email and handle to be set" do
       {:error, changeset} = Accounts.register_user(%{})
 
-      assert %{email: ["can't be blank"]} = errors_on(changeset)
+      assert %{email: ["can't be blank"], handle: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "validates email when given" do
-      {:error, changeset} = Accounts.register_user(%{email: "not valid"})
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(email: "not valid"))
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
     end
 
     test "validates maximum values for email for security" do
       too_long = String.duplicate("db", 100)
-      {:error, changeset} = Accounts.register_user(%{email: too_long})
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(email: too_long))
       assert "should be at most 160 character(s)" in errors_on(changeset).email
     end
 
     test "validates email uniqueness" do
       %{email: email} = user_fixture()
-      {:error, changeset} = Accounts.register_user(%{email: email})
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(email: email))
       assert "has already been taken" in errors_on(changeset).email
 
       # Now try with the uppercased email too, to check that email case is ignored.
-      {:error, changeset} = Accounts.register_user(%{email: String.upcase(email)})
+      {:error, changeset} =
+        Accounts.register_user(valid_user_attributes(email: String.upcase(email)))
+
       assert "has already been taken" in errors_on(changeset).email
     end
 
@@ -84,6 +86,34 @@ defmodule SantoApi.AccountsTest do
       assert is_nil(user.hashed_password)
       assert is_nil(user.confirmed_at)
       assert is_nil(user.password)
+    end
+
+    test "reserves the handle, normalized (owner_surface §9.1)" do
+      {:ok, user} = Accounts.register_user(valid_user_attributes(handle: "  GT3Fan  "))
+      assert user.handle == "gt3fan"
+    end
+
+    test "validates the handle like a party name" do
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(handle: "-bad-"))
+
+      assert "must be lowercase letters, numbers, hyphens or underscores" in errors_on(changeset).handle
+
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(handle: "ab"))
+      assert "should be at least 3 character(s)" in errors_on(changeset).handle
+    end
+
+    test "refuses a handle another user reserved" do
+      %{handle: handle} = user_fixture()
+
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(handle: handle))
+      assert "is already taken" in errors_on(changeset).handle
+    end
+
+    test "refuses a handle a minted party already holds" do
+      SantoApi.Registry.ensure_party("heldbyparty", :owner)
+
+      {:error, changeset} = Accounts.register_user(valid_user_attributes(handle: "heldbyparty"))
+      assert "is already taken" in errors_on(changeset).handle
     end
   end
 

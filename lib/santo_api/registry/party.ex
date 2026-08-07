@@ -36,11 +36,25 @@ defmodule SantoApi.Registry.Party do
     %__MODULE__{kind: :owner}
     |> cast(%{name: normalize_handle(handle)}, [:name])
     |> validate_required([:name])
-    |> validate_length(:name, min: 3, max: 32)
-    |> validate_format(:name, @handle_format,
+    |> validate_handle(:name)
+    |> unique_constraint(:name, name: :parties_name_kind_index)
+  end
+
+  @doc """
+  The handle rules, applicable to any changeset field that holds one.
+
+  One home for the format, because two copies would drift and the handle is
+  validated in two places on purpose: here when a party is minted, and at
+  registration (owner_surface §9.1) when a user reserves the name the party
+  will eventually be minted with.
+  """
+  def validate_handle(changeset, field) do
+    changeset
+    |> update_change(field, &normalize_handle/1)
+    |> validate_length(field, min: 3, max: 32)
+    |> validate_format(field, @handle_format,
       message: "must be lowercase letters, numbers, hyphens or underscores"
     )
-    |> unique_constraint(:name, name: :parties_name_kind_index)
   end
 
   defp normalize_handle(handle), do: handle |> String.trim() |> String.downcase()

@@ -28,7 +28,7 @@ defmodule SantoApi.OwnersNotifierTest do
   end
 
   test "sending the photo confirms it arrived", ctx do
-    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
     {:ok, _submitted} = Owners.submit_proof(challenge, photo())
 
     assert_email_sent(fn email ->
@@ -40,10 +40,10 @@ defmodule SantoApi.OwnersNotifierTest do
 
   test "a claim on a maintained car warns the person maintaining it", ctx do
     incumbent = user_fixture()
-    {:ok, _stewardship} = Owners.grant_stewardship(incumbent, ctx.vehicle, handle: "mhyrr")
+    {:ok, _stewardship} = Owners.grant_stewardship(incumbent, ctx.vehicle)
     drain()
 
-    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "someone-else")
+    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
     {:ok, _submitted} = Owners.submit_proof(challenge, photo())
 
     # The receipt to the claimant goes first; the alert is the one that matters.
@@ -52,13 +52,13 @@ defmodule SantoApi.OwnersNotifierTest do
     assert_email_sent(fn email ->
       assert Enum.any?(email.to, fn {_name, address} -> address == incumbent.email end)
       assert email.subject =~ "Someone else has claimed"
-      assert email.text_body =~ "someone-else"
+      assert email.text_body =~ ctx.user.handle
       assert email.text_body =~ "nothing has changed"
     end)
   end
 
   test "an approval tells the claimant where to go next", ctx do
-    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
     {:ok, submitted} = Owners.submit_proof(challenge, photo())
     drain()
     {:ok, _stewardship} = Owners.approve_challenge(submitted, ctx.operator)
@@ -71,7 +71,7 @@ defmodule SantoApi.OwnersNotifierTest do
   end
 
   test "a denial carries the reason it was denied", ctx do
-    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+    {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
     {:ok, submitted} = Owners.submit_proof(challenge, photo())
     drain()
     {:ok, _denied} = Owners.deny_challenge(submitted, ctx.operator, "the code was not in frame")

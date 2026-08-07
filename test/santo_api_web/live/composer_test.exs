@@ -20,7 +20,7 @@ defmodule SantoApiWeb.ComposerTest do
 
   setup ctx do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
-    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle, handle: "mhyrr")
+    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle)
 
     %{vehicle: vehicle, scope: Scope.for_user(ctx.user)}
   end
@@ -77,7 +77,7 @@ defmodule SantoApiWeb.ComposerTest do
       assert to == "/v/#{ctx.vehicle.public_id}"
 
       assert [entry] = Registry.timeline(ctx.vehicle.id)
-      assert entry.party == "mhyrr"
+      assert entry.party == ctx.user.handle
       assert entry.date == Date.utc_today()
 
       by_predicate = Map.new(entry.claims, &{&1.predicate, &1.value})
@@ -306,7 +306,7 @@ defmodule SantoApiWeb.ComposerTest do
     test "names its steward and offers the composer to them", ctx do
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
 
-      assert html =~ "mhyrr"
+      assert html =~ ctx.user.handle
       assert html =~ "Maintained by"
       assert html =~ "/log"
     end

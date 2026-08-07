@@ -175,8 +175,8 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
   test "the steward sees their own private entry, marked private", %{conn: conn} do
     vehicle = car()
-    user = SantoApi.AccountsFixtures.user_fixture()
-    {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle, handle: "mhyrr")
+    user = SantoApi.AccountsFixtures.user_fixture(%{handle: "mhyrr"})
+    {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle)
 
     claim =
       admit(vehicle, %{

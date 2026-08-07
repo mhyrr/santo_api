@@ -26,8 +26,8 @@ defmodule SantoApiWeb.McpTest do
 
   setup %{conn: conn} do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
-    user = user_fixture()
-    {:ok, _} = Owners.grant_stewardship(user, vehicle, handle: "mhyrr")
+    user = user_fixture(%{handle: "mhyrr"})
+    {:ok, _} = Owners.grant_stewardship(user, vehicle)
     {:ok, token, _record} = Accounts.mint_mcp_token(user, "test client")
 
     conn =

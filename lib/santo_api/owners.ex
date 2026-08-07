@@ -49,7 +49,10 @@ defmodule SantoApi.Owners do
   Idempotent on the handle already held. A *different* handle is refused rather
   than applied: the name is baked into every claim's `content_hash`, so a rename
   is not an edit we can make, and silently ignoring the argument would hide that
-  from the caller.
+  from the caller. The same immutability starts at the reservation (§9.1): a
+  user who reserved a handle at registration mints with that name or not at
+  all — minting another would burn both names, one on the party and one held
+  forever by the reservation.
   """
   def ensure_party(%User{} = user, handle) when is_binary(handle) do
     case party(user) do
@@ -59,7 +62,9 @@ defmodule SantoApi.Owners do
           else: {:error, :handle_immutable}
 
       nil ->
-        create_party(user, handle)
+        if is_binary(user.handle) and normalize_handle(handle) != user.handle,
+          do: {:error, :handle_immutable},
+          else: create_party(user, handle)
     end
   end
 
@@ -95,7 +100,9 @@ defmodule SantoApi.Owners do
 
   ## Options
 
-    * `:handle` — the user's permanent public handle, required the first time
+    * `:handle` — the user's permanent public handle. Defaults to the handle
+      reserved at registration (§9.1); required only for accounts that
+      predate the reservation.
     * `:proof_artifact` — the possession proof that justified the grant (§4)
     * `:decided_by` — the operator who approved it
 
@@ -112,7 +119,8 @@ defmodule SantoApi.Owners do
         {:error, :already_stewarded}
 
       nil ->
-        with {:ok, _party} <- ensure_party(user, Keyword.fetch!(opts, :handle)) do
+        with {:ok, handle} <- stewardship_handle(user, opts),
+             {:ok, _party} <- ensure_party(user, handle) do
           {:ok,
            Repo.insert!(%Stewardship{
              user_id: user.id,
@@ -199,6 +207,17 @@ defmodule SantoApi.Owners do
 
   defp active_stewardship(%Vehicle{} = vehicle) do
     Repo.one(from(s in Stewardship, where: s.vehicle_id == ^vehicle.id and s.status == :active))
+  end
+
+  # The grant's handle: an explicit option wins (the claim flow passes the one
+  # the challenge reserved), then the registration reservation (§9.1). An
+  # account with neither predates both rules and has nothing to attribute
+  # entries to — the caller has to ask.
+  defp stewardship_handle(%User{} = user, opts) do
+    case opts[:handle] || user.handle do
+      nil -> {:error, :handle_required}
+      handle -> {:ok, handle}
+    end
   end
 
   ## Claiming — proof of possession (owner_surface §4)
@@ -296,9 +315,22 @@ defmodule SantoApi.Owners do
           else: {:error, :handle_immutable}
 
       nil ->
-        validate_available(given)
+        settle_reserved(user, given)
     end
   end
+
+  # §9.1 round 5: the user carries the reserved handle from registration, so
+  # the claim flow no longer asks. The reservation is as immutable as the
+  # party name it becomes — a different handle offered here is refused the
+  # same way it would be after minting. The validate path survives only for
+  # accounts that predate the reservation.
+  defp settle_reserved(%User{handle: reserved}, given) when is_binary(reserved) do
+    if is_nil(given) or normalize_handle(given) == reserved,
+      do: {:ok, reserved},
+      else: {:error, :handle_immutable}
+  end
+
+  defp settle_reserved(_legacy_user, given), do: validate_available(given)
 
   defp validate_available(nil), do: {:error, :handle_required}
 
@@ -312,11 +344,17 @@ defmodule SantoApi.Owners do
     end
   end
 
-  # Taken means held by a party or spoken for by a live claim. The second half
-  # matters because two claimants reserving one name would both pass here and
-  # the loser would find out at the operator's desk.
-  defp handle_taken?(name) do
+  @doc """
+  Whether a handle is spoken for anywhere: held by a minted owner party,
+  reserved by a registered user (§9.1), or riding a live possession
+  challenge. The last two matter because two people reserving one name would
+  both pass a party-only check and the loser would find out at the
+  operator's desk. Public because registration asks the same question
+  (`SantoApi.Accounts.User.registration_changeset/3`) — one function owns it.
+  """
+  def handle_taken?(name) when is_binary(name) do
     Repo.exists?(from(p in Party, where: p.name == ^name and p.kind == :owner)) or
+      Repo.exists?(from(u in User, where: u.handle == ^name)) or
       Repo.exists?(
         from(c in Challenge, where: c.handle == ^name and c.status in [:issued, :submitted])
       )

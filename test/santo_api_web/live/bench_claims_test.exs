@@ -87,7 +87,7 @@ defmodule SantoApiWeb.BenchClaimsTest do
     end
 
     test "a contested claim is flagged, and approving it refuses rather than swapping", ctx do
-      {:ok, _incumbent} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      {:ok, _incumbent} = Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
       claim = submitted_claim(ctx.vehicle, "someone-else")
 
       {:ok, view, html} = live(ctx.conn, ~p"/bench/claims")
@@ -146,8 +146,8 @@ defmodule SantoApiWeb.BenchClaimsTest do
   end
 
   defp submitted_claim(vehicle, handle) do
-    user = user_fixture()
-    {:ok, challenge} = Owners.issue_challenge(user, vehicle, handle: handle)
+    user = user_fixture(%{handle: handle})
+    {:ok, challenge} = Owners.issue_challenge(user, vehicle)
 
     path = Path.join(System.tmp_dir!(), "proof-#{System.unique_integer([:positive])}.jpg")
     File.write!(path, "a vin plate and a code")

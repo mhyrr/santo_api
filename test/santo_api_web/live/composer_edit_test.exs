@@ -27,7 +27,7 @@ defmodule SantoApiWeb.ComposerEditTest do
 
   setup ctx do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
-    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle, handle: "mhyrr")
+    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle)
 
     %{vehicle: vehicle, scope: Scope.for_user(ctx.user)}
   end

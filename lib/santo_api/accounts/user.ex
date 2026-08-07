@@ -12,6 +12,14 @@ defmodule SantoApi.Accounts.User do
     field :operator, :boolean, default: false
     field :authenticated_at, :utc_datetime, virtual: true
 
+    # The reserved public handle, chosen at registration for every account
+    # (owner_surface §9.1, round 5). A reservation, not a ledger identity:
+    # the party is minted with it at the first assertive act, so no
+    # placeholder ever enters a claim's content_hash. Immutable — it is the
+    # name the permanent party will carry. Nil only on accounts that predate
+    # the rule.
+    field :handle, :string
+
     # The ledger identity, minted at the first assertive act and permanent after
     # (owner_surface §5). Nil until then. Credentials live here; attribution
     # lives on the party, which is why the two are separate rows.
@@ -35,6 +43,55 @@ defmodule SantoApi.Accounts.User do
     user
     |> cast(attrs, [:email])
     |> validate_email(opts)
+  end
+
+  @doc """
+  A user changeset for registration: email plus the reserved handle
+  (owner_surface §9.1). The handle question is permanent, public, and asked
+  of someone ninety seconds into the product — the registration screen says
+  so in the field's help text rather than burying it.
+
+  ## Options
+
+    * `:validate_unique` - same as `email_changeset/3`; also gates the
+      handle availability checks, which query other tables and belong on
+      submit rather than on every keystroke.
+  """
+  def registration_changeset(user, attrs, opts \\ []) do
+    user
+    |> cast(attrs, [:email, :handle])
+    |> validate_email(opts)
+    |> validate_handle(opts)
+  end
+
+  defp validate_handle(changeset, opts) do
+    changeset =
+      changeset
+      |> validate_required([:handle])
+      |> SantoApi.Registry.Party.validate_handle(:handle)
+
+    if Keyword.get(opts, :validate_unique, true) do
+      changeset
+      |> validate_handle_unspoken_for()
+      |> unique_constraint(:handle)
+    else
+      changeset
+    end
+  end
+
+  # A handle is spoken for by any of three tables: another user's
+  # reservation, a minted owner party, or a live possession challenge.
+  # `SantoApi.Owners.handle_taken?/1` owns that question; asking it here is
+  # the same unsafe-then-constraint shape the email check uses — the users
+  # index still backs the race.
+  defp validate_handle_unspoken_for(changeset) do
+    with true <- changeset.valid?,
+         handle when is_binary(handle) <- get_field(changeset, :handle),
+         true <- SantoApi.Owners.handle_taken?(handle) do
+      add_error(changeset, :handle, "is already taken")
+    else
+      _available -> changeset
+    end
   end
 
   defp validate_email(changeset, opts) do

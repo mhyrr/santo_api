@@ -77,8 +77,18 @@ defmodule SantoApi.Accounts do
   """
   def register_user(attrs) do
     %User{}
-    |> User.email_changeset(attrs)
+    |> User.registration_changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for the registration form: email plus the
+  reserved handle (owner_surface §9.1).
+
+  See `SantoApi.Accounts.User.registration_changeset/3` for options.
+  """
+  def change_user_registration(%User{} = user, attrs \\ %{}, opts \\ []) do
+    User.registration_changeset(user, attrs, opts)
   end
 
   ## Settings

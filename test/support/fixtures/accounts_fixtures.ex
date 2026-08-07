@@ -10,11 +10,13 @@ defmodule SantoApi.AccountsFixtures do
   alias SantoApi.Accounts.Scope
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
+  def unique_user_handle, do: "owner#{System.unique_integer([:positive])}"
   def valid_user_password, do: "hello world!"
 
   def valid_user_attributes(attrs \\ %{}) do
     Enum.into(attrs, %{
-      email: unique_user_email()
+      email: unique_user_email(),
+      handle: unique_user_handle()
     })
   end
 
@@ -23,6 +25,30 @@ defmodule SantoApi.AccountsFixtures do
       attrs
       |> valid_user_attributes()
       |> Accounts.register_user()
+
+    user
+  end
+
+  @doc """
+  An account predating the §9.1 handle reservation: registered email-only,
+  the way every account was before the handle column existed. The legacy
+  claim-flow path — choosing a handle at issue time — survives for these,
+  and its tests need one to exist.
+  """
+  def legacy_user_fixture(attrs \\ %{}) do
+    attrs = attrs |> Enum.into(%{email: unique_user_email()}) |> Map.delete(:handle)
+
+    {:ok, user} =
+      %SantoApi.Accounts.User{}
+      |> SantoApi.Accounts.User.email_changeset(attrs)
+      |> SantoApi.Repo.insert()
+
+    token =
+      extract_user_token(fn url ->
+        Accounts.deliver_login_instructions(user, url)
+      end)
+
+    {:ok, {user, _expired_tokens}} = Accounts.login_user_by_magic_link(token)
 
     user
   end
