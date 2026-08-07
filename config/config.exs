@@ -58,6 +58,11 @@ config :santo_api, :rate_limits,
 # owner — see docs/design/owner_surface.md §9.4.
 config :santo_api, :storage_adapter, SantoApi.Storage.Local
 
+# The one-box extractor (owner_surface §7b) — the project's first hosted LLM
+# call. The api_key arrives via runtime.exs (ANTHROPIC_API_KEY); without one,
+# extraction degrades to the empty read-back rather than crashing anything.
+config :santo_api, :extraction, model: "claude-opus-5"
+
 # Configure the endpoint
 config :santo_api, SantoApiWeb.Endpoint,
   url: [host: "localhost"],

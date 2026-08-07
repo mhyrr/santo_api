@@ -45,6 +45,8 @@ config :phoenix,
 
 config :santo_api, :vpic_req_options, plug: {Req.Test, SantoApi.Vpic}
 config :santo_api, :nhtsa_corpus_req_options, plug: {Req.Test, SantoApi.NhtsaCorpus}
+config :santo_api, :extraction_req_options, plug: {Req.Test, SantoApi.Extraction}
+config :santo_api, :extraction, model: "claude-opus-5", api_key: "test-key"
 
 # Jobs stay database-backed in tests, but never run behind the test process's
 # back. Individual worker attempts are driven with Oban.Testing.
