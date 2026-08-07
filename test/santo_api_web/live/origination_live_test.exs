@@ -104,10 +104,100 @@ defmodule SantoApiWeb.OriginationLiveTest do
       assert to =~ ~r{^/v/}
     end
 
-    test "a signed-in user is sent away — origination registers an account", %{conn: conn} do
+    test "the same door serves a signed-in owner", %{conn: conn} do
       conn = log_in_user(conn, user_fixture())
 
-      assert {:error, {:redirect, %{to: "/"}}} = live(conn, ~p"/start")
+      {:ok, _view, html} = live(conn, ~p"/start")
+      assert html =~ "Add your car"
+    end
+  end
+
+  describe "a signed-in owner adding a car" do
+    test "skips registration and lands on the published page", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+      stub_extraction(gx550())
+
+      {:ok, view, _html} = live(conn, ~p"/start")
+
+      html =
+        view
+        |> form("#origination-form", %{origination: %{q: @sentence}})
+        |> render_submit()
+
+      # The read-back, then straight to the page — no registration screen.
+      assert html =~ "GX 550"
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view |> form("#read-back-form", %{reading: %{}}) |> render_submit()
+
+      assert to =~ ~r{^/v/}
+
+      [vehicle] = Owners.list_stewarded_vehicles(SantoApi.Accounts.Scope.for_user(user))
+      assert vehicle.identity_kind == :asserted
+      assert Owners.steward(vehicle).name == user.handle
+
+      # Public immediately — the owner confirmed their email long ago.
+      {:ok, _view, page} = live(build_conn(), to)
+      assert page =~ "2024 Lexus GX 550"
+    end
+
+    test "collectors have lots of cars — a second origination is a second record", %{conn: conn} do
+      user = user_fixture()
+      scope = SantoApi.Accounts.Scope.for_user(user)
+
+      {:ok, _first} =
+        Origination.originate_for(user, %{sentence: "the first car", claims: []})
+
+      conn = log_in_user(conn, user)
+      stub_extraction(gx550())
+
+      {:ok, view, _html} = live(conn, ~p"/start")
+      view |> form("#origination-form", %{origination: %{q: @sentence}}) |> render_submit()
+
+      assert {:error, {:live_redirect, %{to: _to}}} =
+               view |> form("#read-back-form", %{reading: %{}}) |> render_submit()
+
+      assert length(Owners.list_stewarded_vehicles(scope)) == 2
+    end
+
+    test "a legacy account is asked for its handle, once", %{conn: conn} do
+      legacy = legacy_user_fixture()
+      conn = log_in_user(conn, legacy)
+      stub_extraction(gx550())
+
+      {:ok, view, _html} = live(conn, ~p"/start")
+      view |> form("#origination-form", %{origination: %{q: @sentence}}) |> render_submit()
+
+      html = view |> form("#read-back-form", %{reading: %{}}) |> render_submit()
+      assert html =~ "Choose your handle"
+      assert html =~ "permanent"
+
+      assert {:error, {:live_redirect, %{to: _to}}} =
+               view
+               |> form("#handle-form", %{handle: %{handle: "legacy-collector"}})
+               |> render_submit()
+
+      assert Owners.party(legacy).name == "legacy-collector"
+    end
+
+    test "a legacy account cannot take a handle someone else reserved", %{conn: conn} do
+      %{handle: reserved} = user_fixture()
+      legacy = legacy_user_fixture()
+      conn = log_in_user(conn, legacy)
+      stub_extraction(gx550())
+
+      {:ok, view, _html} = live(conn, ~p"/start")
+      view |> form("#origination-form", %{origination: %{q: @sentence}}) |> render_submit()
+      view |> form("#read-back-form", %{reading: %{}}) |> render_submit()
+
+      html =
+        view
+        |> form("#handle-form", %{handle: %{handle: reserved}})
+        |> render_submit()
+
+      assert html =~ "already taken"
+      assert Owners.party(legacy) == nil
     end
   end
 

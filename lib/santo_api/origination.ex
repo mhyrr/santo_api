@@ -58,21 +58,10 @@ defmodule SantoApi.Origination do
   a failed registration rolls the whole thing back: no account, no row.
   """
   def originate(attrs, magic_link_url_fun) when is_function(magic_link_url_fun, 1) do
-    sentence = String.trim(attrs[:sentence] || "")
-    method = Map.get(attrs, :method, :llm_extract)
-
     result =
       Repo.transaction(fn ->
-        with {:ok, user} <- register(attrs),
-             {:ok, vehicle} <- Registry.originate(sentence),
-             {:ok, _stewardship} <- Owners.grant_stewardship(user, vehicle),
-             party = Owners.party(user),
-             {:ok, artifact} <- store_sentence(vehicle, party, sentence) do
-          entry_ref = write_claims!(vehicle, party, artifact, Map.get(attrs, :claims, []), method)
-          write_origination_entry!(vehicle, party, artifact, sentence, entry_ref)
-
-          {:ok, refreshed} = Registry.fetch_vehicle(vehicle.id)
-          %{user: user, party: party, vehicle: refreshed}
+        with {:ok, user} <- register(attrs) do
+          build_record(user, attrs, [])
         else
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -88,8 +77,56 @@ defmodule SantoApi.Origination do
     end
   end
 
+  @doc """
+  Originate another car for an account that already exists.
+
+  Collectors have lots of cars: stewardship is per `(user, vehicle)`, so
+  this is the same front door minus the registration screen — the car, the
+  claims, and the stewardship land in one transaction, attributed to the
+  party the user already has (or minted from their §9.1 reservation at this
+  first assertive act). No email is sent and nothing waits: a signed-in
+  user already confirmed theirs, so the page is public the moment this
+  returns.
+
+  `attrs[:handle]` exists only for legacy accounts that predate the
+  reservation — the flow asks them once, the same permanent question
+  registration now asks everyone else.
+  """
+  def originate_for(%SantoApi.Accounts.User{} = user, attrs) do
+    grant_opts =
+      case attrs[:handle] do
+        nil -> []
+        handle -> [handle: handle]
+      end
+
+    case Repo.transaction(fn -> build_record(user, attrs, grant_opts) end) do
+      {:ok, created} -> {:ok, created}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp register(attrs) do
     Accounts.register_user(%{email: attrs[:email], handle: attrs[:handle]})
+  end
+
+  # The shared core, always inside a transaction: the car, the stewardship,
+  # the sentence artifact, the claims, and the opening tick — or nothing.
+  defp build_record(user, attrs, grant_opts) do
+    sentence = String.trim(attrs[:sentence] || "")
+    method = Map.get(attrs, :method, :llm_extract)
+
+    with {:ok, vehicle} <- Registry.originate(sentence),
+         {:ok, _stewardship} <- Owners.grant_stewardship(user, vehicle, grant_opts),
+         party = Owners.party(user),
+         {:ok, artifact} <- store_sentence(vehicle, party, sentence) do
+      entry_ref = write_claims!(vehicle, party, artifact, Map.get(attrs, :claims, []), method)
+      write_origination_entry!(vehicle, party, artifact, sentence, entry_ref)
+
+      {:ok, refreshed} = Registry.fetch_vehicle(vehicle.id)
+      %{user: user, party: party, vehicle: refreshed}
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
   end
 
   # The claimant's own words, held as bytes so a better extractor can re-run

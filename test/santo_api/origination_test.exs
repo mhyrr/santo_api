@@ -38,6 +38,14 @@ defmodule SantoApi.OriginationTest do
 
   defp link_url(token), do: "http://localhost/users/log-in/#{token}"
 
+  defp drain_mailbox do
+    receive do
+      {:email, _email} -> drain_mailbox()
+    after
+      0 -> :ok
+    end
+  end
+
   describe "originate/2" do
     test "one submit creates user, party, car, claims, and stewardship" do
       input = attrs()
@@ -155,6 +163,78 @@ defmodule SantoApi.OriginationTest do
                Origination.originate(attrs(%{handle: taken}), &link_url/1)
 
       assert length(Registry.list_vehicles()) == before_vehicles
+    end
+  end
+
+  describe "originate_for/2 — the signed-in door" do
+    test "another car lands on the party the user already has" do
+      {:ok, first} = Origination.originate(attrs(), &link_url/1)
+
+      assert {:ok, second} =
+               Origination.originate_for(first.user, %{
+                 sentence: "1987 Porsche 911, grand prix white",
+                 claims: [%{predicate: "identity.model_year", value: 1987}]
+               })
+
+      # Same party, second car — collectors have lots of cars.
+      assert second.party.id == first.party.id
+      assert second.vehicle.id != first.vehicle.id
+
+      scope = Scope.for_user(first.user)
+      assert length(Owners.list_stewarded_vehicles(scope)) == 2
+    end
+
+    test "sends no email — there is nothing to confirm" do
+      user = user_fixture()
+
+      # The fixture's own registration mail is not the question here.
+      drain_mailbox()
+
+      assert {:ok, %{vehicle: vehicle}} =
+               Origination.originate_for(user, %{sentence: "a car", claims: []})
+
+      refute_email_sent()
+
+      # Public immediately: the account confirmed long ago.
+      assert Owners.published?(vehicle)
+    end
+
+    test "a fresh reserved account mints its party here, at the first assertive act" do
+      user = user_fixture()
+      assert Owners.party(user) == nil
+
+      assert {:ok, %{party: party}} =
+               Origination.originate_for(user, %{sentence: "a car", claims: []})
+
+      assert party.name == user.handle
+    end
+
+    test "a legacy account supplies a handle, and cannot take a reserved one" do
+      %{handle: reserved} = user_fixture()
+      legacy = legacy_user_fixture()
+
+      assert {:error, :handle_required} =
+               Origination.originate_for(legacy, %{sentence: "a car", claims: []})
+
+      assert {:error, :handle_taken} =
+               Origination.originate_for(legacy, %{
+                 sentence: "a car",
+                 claims: [],
+                 handle: reserved
+               })
+
+      assert {:ok, %{party: party}} =
+               Origination.originate_for(legacy, %{
+                 sentence: "a car",
+                 claims: [],
+                 handle: "legacy-owner"
+               })
+
+      assert party.name == "legacy-owner"
+
+      # Nothing survives a refused attempt — the rollbacks held.
+      scope = Scope.for_user(legacy)
+      assert length(Owners.list_stewarded_vehicles(scope)) == 1
     end
   end
 

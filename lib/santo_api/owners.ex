@@ -68,15 +68,28 @@ defmodule SantoApi.Owners do
     end
   end
 
+  # A name reserved by another user is spoken for even before their party
+  # exists (§9.1) — the parties unique index alone cannot see reservations,
+  # so the mint checks them here, for every caller.
   defp create_party(user, handle) do
-    Repo.transaction(fn ->
-      with {:ok, party} <- Repo.insert(Party.handle_changeset(handle)),
-           {:ok, _user} <- link_party(user, party) do
-        party
-      else
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
-    end)
+    normalized = normalize_handle(handle)
+
+    if reserved_by_someone_else?(user, normalized) do
+      {:error, :handle_taken}
+    else
+      Repo.transaction(fn ->
+        with {:ok, party} <- Repo.insert(Party.handle_changeset(handle)),
+             {:ok, _user} <- link_party(user, party) do
+          party
+        else
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+    end
+  end
+
+  defp reserved_by_someone_else?(user, normalized) do
+    Repo.exists?(from(u in User, where: u.handle == ^normalized and u.id != ^user.id))
   end
 
   defp link_party(user, party) do

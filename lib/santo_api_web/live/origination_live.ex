@@ -9,11 +9,18 @@ defmodule SantoApiWeb.OriginationLive do
   creates everything (`SantoApi.Origination.originate/2`). Nothing persists
   on the sentence path until there is an account behind it.
 
-  The flow's later screens render here rather than on `/v/:public_id`
-  because the owner has no session yet — the magic-link click is their
-  first login, and it publishes the page (§7b.1 decision 6). The minute-one
-  panel is the same data the page will show, read from the rows the submit
-  just created.
+  The same door serves a signed-in owner adding another car — collectors
+  have lots of cars. They walk the identical flow and simply never see the
+  registration screen: the submit lands on their existing party
+  (`originate_for/2`) and navigates straight to the page, which is public
+  immediately because their email is already confirmed. Only a legacy
+  account with no §9.1 reservation is asked for a handle on the way.
+
+  For an anonymous owner the flow's later screens render here rather than
+  on `/v/:public_id` because they have no session yet — the magic-link
+  click is their first login, and it publishes the page (§7b.1 decision 6).
+  The minute-one panel is the same data the page will show, read from the
+  rows the submit just created.
 
   Extraction failure is not an error state: the read-back renders with
   empty lines the owner fills by hand, and their lines carry `method:
@@ -32,24 +39,29 @@ defmodule SantoApiWeb.OriginationLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if match?(%Scope{user: %Accounts.User{}}, socket.assigns.current_scope) do
-      # Origination registers an account, so a signed-in owner has no
-      # business here — their add-a-car door is a later ticket.
-      {:ok, socket |> put_flash(:error, "You already have an account.") |> redirect(to: ~p"/")}
-    else
-      {:ok,
-       socket
-       |> assign(:page_title, "Add your car")
-       |> assign(:throttle_key, throttle_key(socket))
-       |> assign(:step, :box)
-       |> assign(:sentence, nil)
-       |> assign(:reading, empty_reading())
-       |> assign(:extracted?, false)
-       |> assign(:error, nil)
-       |> assign(:form, registration_form(%{}))
-       |> assign(:created, nil)
-       |> assign(:links, [])}
-    end
+    # The same door for everyone (collectors have lots of cars): a signed-in
+    # owner walks the same flow and simply never sees the registration
+    # screen — their car lands on their existing party and the page is
+    # public immediately, because they already confirmed their email.
+    user =
+      case socket.assigns.current_scope do
+        %Scope{user: %Accounts.User{} = user} -> user
+        _anonymous -> nil
+      end
+
+    {:ok,
+     socket
+     |> assign(:page_title, "Add your car")
+     |> assign(:user, user)
+     |> assign(:throttle_key, throttle_key(socket))
+     |> assign(:step, :box)
+     |> assign(:sentence, nil)
+     |> assign(:reading, empty_reading())
+     |> assign(:extracted?, false)
+     |> assign(:error, nil)
+     |> assign(:form, registration_form(%{}))
+     |> assign(:created, nil)
+     |> assign(:links, [])}
   end
 
   ## The box (screen 1)
@@ -76,11 +88,28 @@ defmodule SantoApiWeb.OriginationLive do
   ## The read-back (screen 2)
 
   def handle_event("confirm_reading", %{"reading" => fields}, socket) do
-    {:noreply,
-     socket
-     |> assign(:reading, Map.take(fields, ~w(year marque model color mileage)))
-     |> assign(:step, :register)
-     |> assign(:error, nil)}
+    socket =
+      socket
+      |> assign(:reading, Map.take(fields, ~w(year marque model color mileage)))
+      |> assign(:error, nil)
+
+    case socket.assigns.user do
+      # Anonymous: registration is the next screen.
+      nil ->
+        {:noreply, assign(socket, :step, :register)}
+
+      user ->
+        if needs_handle?(user),
+          do: {:noreply, assign(socket, :step, :handle)},
+          else: create_for(socket, user, nil)
+    end
+  end
+
+  ## The legacy handle screen — only for a signed-in account that predates
+  ## the §9.1 reservation: no party, no reserved handle, asked once.
+
+  def handle_event("choose_handle", %{"handle" => %{"handle" => handle}}, socket) do
+    create_for(socket, socket.assigns.user, handle)
   end
 
   ## Registration (screen 3)
@@ -131,6 +160,51 @@ defmodule SantoApiWeb.OriginationLive do
 
       {:error, _reason} ->
         {:noreply, assign(socket, :error, "A link needs a full http(s) address.")}
+    end
+  end
+
+  defp needs_handle?(user) do
+    is_nil(user.handle) and is_nil(SantoApi.Owners.party(user))
+  end
+
+  # The signed-in ending: no registration, no email, no minute-one panel —
+  # the owner has a session and a confirmed address, so the real page is
+  # already public and is where they land.
+  defp create_for(socket, user, handle) do
+    reading = typed_reading(socket.assigns.reading)
+
+    attrs = %{
+      sentence: socket.assigns.sentence,
+      claims: Extraction.claims(reading),
+      method: if(socket.assigns.extracted?, do: :llm_extract, else: :human),
+      handle: handle
+    }
+
+    case Origination.originate_for(user, attrs) do
+      {:ok, %{vehicle: vehicle}} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Your record is live.")
+         |> push_navigate(to: ~p"/v/#{vehicle.public_id}")}
+
+      {:error, :handle_taken} ->
+        {:noreply,
+         socket |> assign(:step, :handle) |> assign(:error, "That handle is already taken.")}
+
+      {:error, :handle_required} ->
+        {:noreply, assign(socket, :step, :handle)}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply,
+         socket
+         |> assign(:step, :handle)
+         |> assign(
+           :error,
+           "A handle is 3 to 32 characters: lowercase letters, numbers, hyphens or underscores."
+         )}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :error, "That could not be done. Try again.")}
     end
   end
 
@@ -262,6 +336,7 @@ defmodule SantoApiWeb.OriginationLive do
         error={@error}
       />
       <.register_screen :if={@step == :register} sentence={@sentence} form={@form} error={@error} />
+      <.handle_screen :if={@step == :handle} error={@error} />
       <.minute_one :if={@step == :minute_one} created={@created} links={@links} error={@error} />
     </div>
     """
@@ -397,6 +472,43 @@ defmodule SantoApiWeb.OriginationLive do
         </button>
       </div>
     </.form>
+    """
+  end
+
+  attr :error, :string, default: nil
+
+  # Only a signed-in account that predates the §9.1 reservation ever sees
+  # this — the one permanent question registration now asks everyone else.
+  defp handle_screen(assigns) do
+    ~H"""
+    <header>
+      <p class="vs-eyebrow" style="color: var(--vs-dim)">One thing first</p>
+      <h1 class="vs-spec mt-4 text-3xl sm:text-4xl">Choose your handle</h1>
+      <p class="mt-4 max-w-xl text-sm leading-relaxed" style="color: var(--vs-dim)">
+        Your account predates handles, so this record needs one. Public and
+        permanent — entries you record are signed with it, and it cannot be
+        changed later.
+      </p>
+    </header>
+
+    <form id="handle-form" phx-submit="choose_handle" class="mt-8 max-w-sm">
+      <input
+        type="text"
+        id="handle_handle"
+        name="handle[handle]"
+        autocomplete="off"
+        spellcheck="false"
+        required
+        class="w-full rounded border bg-transparent px-3 py-2 text-base"
+        style="border-color: var(--vs-hairline)"
+      />
+      <p :if={@error} id="handle-error" class="mt-2 text-sm" style="color: var(--vs-needle)">
+        {@error}
+      </p>
+      <button type="submit" class="vs-commit mt-4" phx-disable-with="Starting the record…">
+        Start the record
+      </button>
+    </form>
     """
   end
 
