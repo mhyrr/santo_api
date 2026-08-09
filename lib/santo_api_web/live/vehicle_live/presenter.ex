@@ -130,6 +130,27 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     end
   end
 
+  @doc "The complete read model used by selectable car cards."
+  def car_card(%Vehicle{} = vehicle, opts \\ []) do
+    latest = opts[:latest]
+    steward = opts[:steward]
+
+    %{
+      id: vehicle.id,
+      public_id: vehicle.public_id,
+      title: title(vehicle),
+      identity: identity_label(vehicle),
+      chassis: chassis(vehicle),
+      marque: marque(vehicle) || "Car",
+      spec: Enum.join(spec_line(vehicle), " · "),
+      odometer: odometer(vehicle),
+      entries: opts[:entries] || 0,
+      latest: latest && entry_headline(latest),
+      latest_date: latest && latest.date,
+      steward: steward && steward.name
+    }
+  end
+
   defp as_of(%Vehicle{} = vehicle) do
     get_in(vehicle.current_state, ["observation.mileage", "as_of"])
   end

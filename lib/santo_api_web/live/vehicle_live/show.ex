@@ -129,8 +129,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
             placeholder="17-character VIN"
             autocomplete="off"
             spellcheck="false"
-            class="vs-code w-64 rounded border bg-transparent px-3 py-2 text-sm"
-            style="border-color: var(--vs-hairline)"
+            class="vs-field vs-code w-64 text-sm"
           />
           <button type="submit" class="vs-commit">Add the VIN</button>
         </div>
@@ -173,7 +172,10 @@ defmodule SantoApiWeb.VehicleLive.Show do
         <li :for={link <- @links} id={"link-#{link.id}"}>
           <%= case VehicleLink.provider(link.url) do %>
             <% {:youtube, video_id} -> %>
-              <div class="aspect-video max-w-xl overflow-hidden rounded">
+              <div
+                class="aspect-video max-w-xl overflow-hidden border"
+                style="border-color: var(--vs-hairline)"
+              >
                 <iframe
                   src={"https://www.youtube.com/embed/#{video_id}"}
                   title={link.label || "YouTube video"}
@@ -213,15 +215,13 @@ defmodule SantoApiWeb.VehicleLive.Show do
             type="url"
             name="link[url]"
             placeholder="https://…"
-            class="w-72 rounded border bg-transparent px-3 py-2 text-sm"
-            style="border-color: var(--vs-hairline)"
+            class="vs-field w-72 text-sm"
           />
           <input
             type="text"
             name="link[label]"
             placeholder="Label (optional)"
-            class="w-48 rounded border bg-transparent px-3 py-2 text-sm"
-            style="border-color: var(--vs-hairline)"
+            class="vs-field w-48 text-sm"
           />
           <button type="submit" class="vs-quiet">Add a link</button>
         </div>
@@ -236,8 +236,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
   defp composer_bar(assigns) do
     ~H"""
     <div class="mx-auto -mt-6 mb-12 flex max-w-3xl flex-wrap gap-3 px-5 sm:px-8">
-      <.link navigate={~p"/v/#{@vehicle.public_id}/log"} class="vs-commit">Log an entry</.link>
-      <.link navigate={~p"/v/#{@vehicle.public_id}/spec"} class="vs-quiet">Edit the spec</.link>
+      <.link navigate={~p"/v/#{@vehicle.public_id}/log"} class="vs-commit">Log an update</.link>
+      <.link navigate={~p"/v/#{@vehicle.public_id}/spec"} class="vs-quiet">As it sits</.link>
     </div>
     """
   end
@@ -345,12 +345,12 @@ defmodule SantoApiWeb.VehicleLive.Show do
       aria-labelledby="logbook-heading"
     >
       <h2 id="logbook-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
-        Logbook
+        Updates
       </h2>
 
       <p :if={@entries == []} id="logbook-empty" class="text-base" style="color: var(--vs-dim)">
-        No entries yet. Everything that happens to this car from here — a service, a
-        fill-up, a set of wheels — goes in the log and stays there.
+        No updates yet. A service, a fill-up, a set of wheels, or a memorable drive
+        can be the first one.
       </p>
 
       <ol :if={@entries != []} class="vs-spine space-y-9 pl-6">
@@ -364,7 +364,16 @@ defmodule SantoApiWeb.VehicleLive.Show do
             {Presenter.on_date(entry.date) || "Undated"}
           </p>
 
-          <h3 class="mt-1.5 text-lg leading-snug">{entry.parts.headline}</h3>
+          <h3 class="mt-1.5 text-lg leading-snug">
+            <.link
+              :if={entry.entry_ref}
+              navigate={~p"/v/#{@public_id}/updates/#{entry.entry_ref}"}
+              class="underline-offset-4 hover:underline"
+            >
+              {entry.parts.headline}
+            </.link>
+            <span :if={is_nil(entry.entry_ref)}>{entry.parts.headline}</span>
+          </h3>
 
           <ul
             :if={entry.parts.details != []}
@@ -401,7 +410,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
               style="color: var(--vs-dim)"
               phx-click="delete_entry"
               phx-value-entry_ref={entry.entry_ref}
-              data-confirm="Remove this entry from the car's record?"
+              data-confirm="Remove this update from the car's history?"
             >
               Remove
             </button>
@@ -590,11 +599,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
     <section id="vehicle-record" class="vs-paper" aria-labelledby="record-heading">
       <div class="mx-auto max-w-3xl px-5 py-16 sm:px-8">
         <h2 id="record-heading" class="vs-eyebrow" style="color: var(--vs-ink-dim)">
-          The record
+          History & provenance
         </h2>
 
         <p class="mt-3 max-w-xl text-sm leading-relaxed" style="color: var(--vs-ink-dim)">
-          What this car left the factory as, and what backs each line. Verified facts have
+          What this car left the factory as, and what backs each line. Verified lines have
           been admitted to the record. Unconfirmed evidence stays proposed; disagreement
           keeps every side visible.
         </p>

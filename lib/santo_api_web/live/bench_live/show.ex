@@ -206,9 +206,9 @@ defmodule SantoApiWeb.BenchLive.Show do
         </:actions>
       </.header>
 
-      <div class="flex items-center gap-2 mb-4">
-        <span class="badge badge-outline">{@vehicle.identity_kind}</span>
-        <span :if={@vehicle.identity_kind == :disputed} class="text-sm text-base-content/70">
+      <div class="mb-4 flex items-center gap-2">
+        <span class="club-status club-status-private">{@vehicle.identity_kind}</span>
+        <span :if={@vehicle.identity_kind == :disputed} class="club-muted text-sm">
           candidates: {Enum.join(@vehicle.candidates, ", ")}
         </span>
       </div>
@@ -217,34 +217,34 @@ defmodule SantoApiWeb.BenchLive.Show do
         id="acquisition-run"
         data-run-id={@acquisition_run && @acquisition_run.id}
         data-run-status={@acquisition_run && @acquisition_run.status}
-        class="mt-6 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+        class="club-work-panel mt-6 overflow-hidden"
       >
-        <div class="flex flex-wrap items-start justify-between gap-4 border-b border-base-300 px-5 py-4">
+        <div class="club-rule flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4">
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-lg font-semibold">Acquisition run</h2>
+              <h2 class="club-control-title">Acquisition run</h2>
               <span
                 :if={@acquisition_run}
                 id="acquisition-run-status"
                 class={[
-                  "rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide",
+                  "club-status",
                   run_status_class(@acquisition_run.status)
                 ]}
               >
                 {@acquisition_run.status}
               </span>
             </div>
-            <p class="mt-1 text-sm text-base-content/60">
+            <p class="club-muted mt-1 text-sm">
               Every configured free lookup is recorded, including unsupported questions and failures.
             </p>
           </div>
 
           <dl :if={@acquisition_run} class="grid grid-cols-2 gap-x-5 gap-y-1 text-xs">
-            <dt class="text-base-content/50">Run</dt>
-            <dd class="font-mono text-right">{short_id(@acquisition_run.id)}</dd>
-            <dt class="text-base-content/50">Started</dt>
+            <dt class="club-muted">Run</dt>
+            <dd class="club-code text-right">{short_id(@acquisition_run.id)}</dd>
+            <dt class="club-muted">Started</dt>
             <dd class="text-right">{format_timestamp(@acquisition_run.started_at)}</dd>
-            <dt class="text-base-content/50">Finished</dt>
+            <dt class="club-muted">Finished</dt>
             <dd class="text-right">{format_timestamp(@acquisition_run.finished_at)}</dd>
           </dl>
         </div>
@@ -252,7 +252,7 @@ defmodule SantoApiWeb.BenchLive.Show do
         <div
           :if={is_nil(@acquisition_run)}
           id="no-acquisition-run"
-          class="px-5 py-8 text-sm text-base-content/60"
+          class="club-muted px-5 py-8 text-sm"
         >
           <%= if @vehicle.identity_kind == :vin do %>
             No acquisition has run for this VIN yet.
@@ -265,11 +265,11 @@ defmodule SantoApiWeb.BenchLive.Show do
           :if={@acquisition_run}
           id="acquisition-steps"
           phx-update="stream"
-          class="divide-y divide-base-300"
+          class="divide-y club-divide"
         >
           <div
             id="acquisition-steps-empty"
-            class="hidden px-5 py-8 text-center text-sm text-base-content/50 only:block"
+            class="club-muted hidden px-5 py-8 text-center text-sm only:block"
           >
             No acquisition steps were planned.
           </div>
@@ -282,24 +282,24 @@ defmodule SantoApiWeb.BenchLive.Show do
           >
             <div class="min-w-0">
               <div class="font-medium">{step_source(step)}</div>
-              <div class="mt-0.5 text-xs text-base-content/60">
+              <div class="club-muted mt-0.5 text-xs">
                 {humanize_atom(step.capability)}
               </div>
             </div>
 
-            <div class="col-span-2 min-w-0 border-t border-base-300 pt-3 text-base-content/70 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:border-0 sm:pt-0">
+            <div class="club-rule club-muted col-span-2 min-w-0 border-t pt-3 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:border-0 sm:pt-0">
               <div>{step_result(step)}</div>
-              <div :if={step.missing_selectors != []} class="mt-1 text-xs text-warning">
+              <div :if={step.missing_selectors != []} class="club-warning mt-1 text-xs">
                 Missing: {Enum.join(step.missing_selectors, ", ")}
               </div>
-              <div :if={step.conflicted_selectors != []} class="mt-1 text-xs text-error">
+              <div :if={step.conflicted_selectors != []} class="club-danger mt-1 text-xs">
                 Conflicted: {Enum.join(step.conflicted_selectors, ", ")}
               </div>
               <a
                 :if={step.artifact_id}
                 href={~p"/bench/artifacts/#{step.artifact_id}"}
                 target="_blank"
-                class="link mt-1 inline-block text-xs"
+                class="club-link mt-1 inline-block text-xs"
               >
                 Open snapshot
               </a>
@@ -307,20 +307,20 @@ defmodule SantoApiWeb.BenchLive.Show do
 
             <div class="col-start-2 row-start-1 justify-self-end sm:col-start-3">
               <span class={[
-                "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                "club-status",
                 step_status_class(step.status)
               ]}>
                 {humanize_atom(step.status)}
               </span>
             </div>
 
-            <div class="col-span-2 flex min-w-0 items-start justify-between gap-4 pt-1 text-xs text-base-content/60 sm:col-span-3">
+            <div class="club-muted col-span-2 flex min-w-0 items-start justify-between gap-4 pt-1 text-xs sm:col-span-3">
               <span class="tabular-nums">Attempts {step.attempt_count}</span>
               <details :if={step_details?(step)} class="group min-w-0 text-right">
-                <summary class="cursor-pointer font-medium hover:text-base-content">
+                <summary class="cursor-pointer font-medium hover:text-white">
                   Diagnostics
                 </summary>
-                <pre class="mt-2 max-w-full whitespace-pre-wrap break-words rounded-lg bg-base-200 p-3 text-left text-xs">{step_details(step)}</pre>
+                <pre class="club-code mt-2 max-w-full whitespace-pre-wrap break-words bg-black/25 p-3 text-left text-xs">{step_details(step)}</pre>
               </details>
             </div>
           </article>
@@ -329,27 +329,27 @@ defmodule SantoApiWeb.BenchLive.Show do
 
       <section
         id="nhtsa-reference-findings"
-        class="mt-6 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm"
+        class="club-work-panel mt-6 overflow-hidden"
       >
-        <div class="flex flex-wrap items-start justify-between gap-4 border-b border-base-300 px-5 py-4">
+        <div class="club-rule flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4">
           <div>
-            <h2 class="text-lg font-semibold">NHTSA reference findings</h2>
-            <p class="mt-1 text-sm text-base-content/60">
+            <h2 class="club-control-title">NHTSA reference findings</h2>
+            <p class="club-muted mt-1 text-sm">
               Model-population records from preserved official corpus releases.
             </p>
           </div>
           <dl class="grid grid-cols-2 gap-x-5 gap-y-1 text-xs tabular-nums">
-            <dt class="text-base-content/50">Recall campaigns</dt>
+            <dt class="club-muted">Recall campaigns</dt>
             <dd id="recall-campaign-count" class="text-right">{@recall_campaign_count}</dd>
-            <dt class="text-base-content/50">Technical bulletins</dt>
+            <dt class="club-muted">Technical bulletins</dt>
             <dd id="technical-bulletin-count" class="text-right">{@technical_bulletin_count}</dd>
           </dl>
         </div>
 
-        <div id="reference-findings" phx-update="stream" class="divide-y divide-base-300">
+        <div id="reference-findings" phx-update="stream" class="divide-y club-divide">
           <div
             id="reference-findings-empty"
-            class="hidden px-5 py-8 text-sm text-base-content/60 only:block"
+            class="club-muted hidden px-5 py-8 text-sm only:block"
           >
             No NHTSA reference findings have been acquired for this run.
           </div>
@@ -361,12 +361,12 @@ defmodule SantoApiWeb.BenchLive.Show do
           >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h3 class="font-semibold">{humanize_string(finding.capability)}</h3>
-              <span class="rounded-full bg-base-200 px-2.5 py-1 text-xs font-semibold">
+              <span class="club-status club-status-private">
                 {length(finding.records)} records · {humanize_string(finding.coverage)}
               </span>
             </div>
 
-            <p class="mt-1 text-xs font-medium text-warning">
+            <p class="club-warning mt-1 text-xs font-medium">
               {finding.applicability_label}
             </p>
 
@@ -374,11 +374,11 @@ defmodule SantoApiWeb.BenchLive.Show do
               <div
                 :for={record <- finding.records}
                 id={"reference-record-#{short_id(finding.artifact_id)}-#{dom_key(record["identifier"])}"}
-                class="rounded-xl border border-base-300 bg-base-50 p-4"
+                class="club-rule border bg-black/10 p-4"
               >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="font-mono text-xs font-semibold text-base-content/60">
+                    <div class="club-code club-muted text-xs font-semibold">
                       {record_identifier(record)}
                     </div>
                     <h4 class="mt-1 font-medium">{record["title"] || record["summary"]}</h4>
@@ -388,17 +388,17 @@ defmodule SantoApiWeb.BenchLive.Show do
                     href={record["document_url"] || record["source_url"]}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="link text-sm"
+                    class="club-link text-sm"
                   >
                     Official source
                   </a>
                 </div>
 
-                <p :if={record["summary"]} class="mt-2 line-clamp-3 text-sm text-base-content/70">
+                <p :if={record["summary"]} class="club-muted mt-2 line-clamp-3 text-sm">
                   {record["summary"]}
                 </p>
 
-                <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-base-content/60">
+                <div class="club-muted mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
                   <span>{format_applicability(record["applicability"])}</span>
                   <span>Corpus release {get_in(record, ["corpus_release", "released_on"])}</span>
                 </div>
@@ -408,211 +408,227 @@ defmodule SantoApiWeb.BenchLive.Show do
         </div>
       </section>
 
-      <h2 class="text-lg font-semibold mt-6">Facts</h2>
-      <table class="table table-zebra">
-        <thead>
-          <tr>
-            <th>predicate</th>
-            <th>value</th>
-            <th>status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={{predicate, fact} <- @vehicle.facts} data-predicate={predicate}>
-            <td>{predicate}</td>
-            <td>{inspect(fact["value"])}</td>
-            <td>
-              <span class={["badge", badge_class(fact["status"])]}>{fact["status"]}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Facts</h2>
+      <div class="club-table-wrap mt-3">
+        <table class="club-table">
+          <thead>
+            <tr>
+              <th>predicate</th>
+              <th>value</th>
+              <th>status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={{predicate, fact} <- @vehicle.facts} data-predicate={predicate}>
+              <td>{predicate}</td>
+              <td>{inspect(fact["value"])}</td>
+              <td>
+                <span class={["club-status", badge_class(fact["status"])]}>{fact["status"]}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2 class="text-lg font-semibold mt-6">Comparison</h2>
-      <table class="table table-zebra">
-        <thead>
-          <tr>
-            <th>predicate</th>
-            <th>status</th>
-            <th>claims</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            :for={row <- @comparison}
-            data-predicate={row.predicate}
-            class={row.status == :conflict && "bg-error/10"}
-          >
-            <td>{row.predicate}</td>
-            <td>{row.status}</td>
-            <td>
-              <div :for={claim <- row.claims}>
-                {claim.party}: {inspect(claim.value)}
-              </div>
-              <form
-                :if={row.status == :conflict and length(row.claims) == 2 and @artifacts != []}
-                id={"adjudicate-#{dom_key(row.predicate)}"}
-                phx-submit="adjudicate_claims"
-                class="mt-3 grid gap-2 border-t border-base-300 pt-3"
-              >
-                <.input
-                  type="hidden"
-                  name="claim_a_id"
-                  value={Enum.at(row.claims, 0).claim_id}
-                />
-                <.input
-                  type="hidden"
-                  name="claim_b_id"
-                  value={Enum.at(row.claims, 1).claim_id}
-                />
-                <.input
-                  type="select"
-                  name="prevailing_claim_id"
-                  label="Keep claim"
-                  value={Enum.at(row.claims, 0).claim_id}
-                  options={claim_options(row.claims)}
-                />
-                <.input
-                  type="select"
-                  name="evidence_artifact_ids[]"
-                  label="Decision evidence"
-                  value={nil}
-                  prompt="Choose an artifact"
-                  options={artifact_options(@artifacts)}
-                  required
-                />
-                <.input
-                  type="text"
-                  name="note"
-                  label="Decision note"
-                  value=""
-                  required
-                />
-                <.button>Supersede losing claim</.button>
-              </form>
-              <p
-                :if={row.status == :conflict and @artifacts == []}
-                class="mt-2 text-sm text-base-content/60"
-              >
-                Upload decision evidence to adjudicate.
-              </p>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Comparison</h2>
+      <div class="club-table-wrap mt-3">
+        <table class="club-table">
+          <thead>
+            <tr>
+              <th>predicate</th>
+              <th>status</th>
+              <th>claims</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              :for={row <- @comparison}
+              data-predicate={row.predicate}
+              class={[row.status == :conflict && "club-conflict-row"]}
+            >
+              <td>{row.predicate}</td>
+              <td>{row.status}</td>
+              <td>
+                <div :for={claim <- row.claims}>
+                  {claim.party}: {inspect(claim.value)}
+                </div>
+                <form
+                  :if={row.status == :conflict and length(row.claims) == 2 and @artifacts != []}
+                  id={"adjudicate-#{dom_key(row.predicate)}"}
+                  phx-submit="adjudicate_claims"
+                  class="club-rule mt-3 grid gap-2 border-t pt-3"
+                >
+                  <.input
+                    type="hidden"
+                    name="claim_a_id"
+                    value={Enum.at(row.claims, 0).claim_id}
+                  />
+                  <.input
+                    type="hidden"
+                    name="claim_b_id"
+                    value={Enum.at(row.claims, 1).claim_id}
+                  />
+                  <.input
+                    type="select"
+                    name="prevailing_claim_id"
+                    label="Keep claim"
+                    value={Enum.at(row.claims, 0).claim_id}
+                    options={claim_options(row.claims)}
+                  />
+                  <.input
+                    type="select"
+                    name="evidence_artifact_ids[]"
+                    label="Decision evidence"
+                    value={nil}
+                    prompt="Choose an artifact"
+                    options={artifact_options(@artifacts)}
+                    required
+                  />
+                  <.input
+                    type="text"
+                    name="note"
+                    label="Decision note"
+                    value=""
+                    required
+                  />
+                  <.button variant="danger">Supersede losing claim</.button>
+                </form>
+                <p
+                  :if={row.status == :conflict and @artifacts == []}
+                  class="club-muted mt-2 text-sm"
+                >
+                  Upload decision evidence to adjudicate.
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2 class="text-lg font-semibold mt-6">Claims</h2>
-      <table class="table table-zebra">
-        <thead>
-          <tr>
-            <th>predicate</th>
-            <th>value</th>
-            <th>scope</th>
-            <th>state</th>
-            <th>method</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={claim <- @claims} data-claim-id={claim.id} data-state={claim.state}>
-            <td>{claim.predicate}</td>
-            <td>{inspect(claim.value)}</td>
-            <td>{claim.scope_kind}</td>
-            <td>{claim.state}</td>
-            <td>{claim.method}</td>
-            <td>
-              <div :if={claim.state == :proposed} class="flex gap-2">
-                <.button phx-click="ratify_claim" phx-value-id={claim.id}>Ratify</.button>
-                <.button phx-click="reject_claim" phx-value-id={claim.id}>Reject</.button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Claims</h2>
+      <div class="club-table-wrap mt-3">
+        <table class="club-table">
+          <thead>
+            <tr>
+              <th>predicate</th>
+              <th>value</th>
+              <th>scope</th>
+              <th>state</th>
+              <th>method</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={claim <- @claims} data-claim-id={claim.id} data-state={claim.state}>
+              <td>{claim.predicate}</td>
+              <td>{inspect(claim.value)}</td>
+              <td>{claim.scope_kind}</td>
+              <td>{claim.state}</td>
+              <td>{claim.method}</td>
+              <td>
+                <div :if={claim.state == :proposed} class="flex gap-2">
+                  <.button variant="primary" phx-click="ratify_claim" phx-value-id={claim.id}>
+                    Ratify
+                  </.button>
+                  <.button variant="danger" phx-click="reject_claim" phx-value-id={claim.id}>
+                    Reject
+                  </.button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2 class="text-lg font-semibold mt-6">Adjudications</h2>
-      <table id="adjudications" class="table table-zebra">
-        <thead>
-          <tr>
-            <th>outcome</th>
-            <th>claims</th>
-            <th>decided by</th>
-            <th>note</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={adjudication <- @adjudications} data-adjudication-id={adjudication.id}>
-            <td>{adjudication.outcome}</td>
-            <td>
-              {short_id(adjudication.claim_a_id)} ↔ {short_id(adjudication.claim_b_id)}
-            </td>
-            <td>{adjudication.decided_by_party.name}</td>
-            <td>{adjudication.note}</td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Adjudications</h2>
+      <div class="club-table-wrap mt-3">
+        <table id="adjudications" class="club-table">
+          <thead>
+            <tr>
+              <th>outcome</th>
+              <th>claims</th>
+              <th>decided by</th>
+              <th>note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={adjudication <- @adjudications} data-adjudication-id={adjudication.id}>
+              <td>{adjudication.outcome}</td>
+              <td>
+                {short_id(adjudication.claim_a_id)} ↔ {short_id(adjudication.claim_b_id)}
+              </td>
+              <td>{adjudication.decided_by_party.name}</td>
+              <td>{adjudication.note}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2 class="text-lg font-semibold mt-6">Evidence requests</h2>
-      <table class="table table-zebra">
-        <thead>
-          <tr>
-            <th>subject</th>
-            <th>evidence classes</th>
-            <th>status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={request <- @evidence_requests} data-subject={request.subject}>
-            <td>{request.subject}</td>
-            <td>{Enum.join(request.evidence_classes, ", ")}</td>
-            <td><span class="badge badge-outline">{request.status}</span></td>
-            <td>
-              <form
-                :if={request.status == :open}
-                id={"satisfy-#{request.id}"}
-                phx-submit="satisfy_request"
-              >
-                <input type="hidden" name="request_id" value={request.id} />
-                <select name="artifact_id" class="select select-sm">
-                  <option :for={artifact <- @artifacts} value={artifact.id}>
-                    {artifact.metadata["filename"] || artifact.source_url}
-                  </option>
-                </select>
-                <.button>Satisfy</.button>
-              </form>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Evidence requests</h2>
+      <div class="club-table-wrap mt-3">
+        <table class="club-table">
+          <thead>
+            <tr>
+              <th>subject</th>
+              <th>evidence classes</th>
+              <th>status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={request <- @evidence_requests} data-subject={request.subject}>
+              <td>{request.subject}</td>
+              <td>{Enum.join(request.evidence_classes, ", ")}</td>
+              <td><span class="club-status club-status-private">{request.status}</span></td>
+              <td>
+                <form
+                  :if={request.status == :open}
+                  id={"satisfy-#{request.id}"}
+                  phx-submit="satisfy_request"
+                >
+                  <input type="hidden" name="request_id" value={request.id} />
+                  <select name="artifact_id" class="club-input club-input-compact">
+                    <option :for={artifact <- @artifacts} value={artifact.id}>
+                      {artifact.metadata["filename"] || artifact.source_url}
+                    </option>
+                  </select>
+                  <.button>Satisfy</.button>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2 class="text-lg font-semibold mt-6">Artifacts</h2>
-      <table class="table table-zebra">
-        <thead>
-          <tr>
-            <th>filename</th>
-            <th>kind</th>
-            <th>mime</th>
-            <th>sha256</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :for={artifact <- @artifacts} data-artifact-id={artifact.id}>
-            <td>{artifact.metadata["filename"] || artifact.source_url}</td>
-            <td>{artifact.kind}</td>
-            <td>{artifact.mime}</td>
-            <td>{String.slice(artifact.sha256 || "", 0, 12)}</td>
-          </tr>
-        </tbody>
-      </table>
+      <h2 class="club-bench-heading">Artifacts</h2>
+      <div class="club-table-wrap mt-3">
+        <table class="club-table">
+          <thead>
+            <tr>
+              <th>filename</th>
+              <th>kind</th>
+              <th>mime</th>
+              <th>sha256</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={artifact <- @artifacts} data-artifact-id={artifact.id}>
+              <td>{artifact.metadata["filename"] || artifact.source_url}</td>
+              <td>{artifact.kind}</td>
+              <td>{artifact.mime}</td>
+              <td>{String.slice(artifact.sha256 || "", 0, 12)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <form
         id="artifact-upload-form"
         phx-submit="upload_artifact"
         phx-change="validate_upload"
-        class="mt-4 flex items-end gap-2"
+        class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
       >
-        <.live_file_input upload={@uploads.file} />
+        <.live_file_input upload={@uploads.file} class="club-file" />
         <.input
           type="select"
           name="kind"
@@ -625,7 +641,7 @@ defmodule SantoApiWeb.BenchLive.Show do
             {"Listing", "listing"}
           ]}
         />
-        <.button>Upload</.button>
+        <.button variant="secondary">Upload</.button>
       </form>
       <p :for={entry <- @uploads.file.entries}>{entry.client_name} — {entry.progress}%</p>
     </Layouts.app>
@@ -636,17 +652,17 @@ defmodule SantoApiWeb.BenchLive.Show do
   defp acquisition_message(:restarted), do: "Fresh free-provider acquisition started."
   defp acquisition_message(:active), do: "The active acquisition is already running."
 
-  defp run_status_class(:pending), do: "bg-warning/15 text-warning"
-  defp run_status_class(:running), do: "bg-info/15 text-info"
-  defp run_status_class(:complete), do: "bg-success/15 text-success"
+  defp run_status_class(:pending), do: "club-status-pending"
+  defp run_status_class(:running), do: "club-status-owner"
+  defp run_status_class(:complete), do: "club-status-verified"
 
-  defp step_status_class(:pending), do: "bg-warning/15 text-warning"
-  defp step_status_class(:running), do: "bg-info/15 text-info"
-  defp step_status_class(:complete), do: "bg-success/15 text-success"
-  defp step_status_class(:no_record), do: "bg-base-300 text-base-content/70"
-  defp step_status_class(:needs_input), do: "bg-warning/15 text-warning"
-  defp step_status_class(:failed), do: "bg-error/15 text-error"
-  defp step_status_class(:unsupported), do: "bg-base-300 text-base-content/60"
+  defp step_status_class(:pending), do: "club-status-pending"
+  defp step_status_class(:running), do: "club-status-owner"
+  defp step_status_class(:complete), do: "club-status-verified"
+  defp step_status_class(:no_record), do: "club-status-private"
+  defp step_status_class(:needs_input), do: "club-status-pending"
+  defp step_status_class(:failed), do: "club-status-conflict"
+  defp step_status_class(:unsupported), do: "club-status-private"
 
   defp step_source(%{kind: :santo_decode}), do: "Santo decoder"
   defp step_source(%{provider: :nhtsa_vpic}), do: "NHTSA vPIC"
@@ -706,9 +722,9 @@ defmodule SantoApiWeb.BenchLive.Show do
     Calendar.strftime(timestamp, "%Y-%m-%d %H:%M UTC")
   end
 
-  defp badge_class("verified"), do: "badge-success"
-  defp badge_class("conflicted"), do: "badge-error"
-  defp badge_class(_status), do: "badge-neutral"
+  defp badge_class("verified"), do: "club-status-verified"
+  defp badge_class("conflicted"), do: "club-status-conflict"
+  defp badge_class(_status), do: "club-status-private"
 
   defp normalize_ids(ids) when is_list(ids), do: ids
   defp normalize_ids(id) when is_binary(id) and id != "", do: [id]

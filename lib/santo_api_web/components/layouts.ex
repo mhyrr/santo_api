@@ -31,91 +31,142 @@ defmodule SantoApiWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
 
+  attr :chrome, :boolean, default: true, doc: "whether to render the application chrome"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-    </header>
+    <div class="club-shell">
+      <.topbar :if={@chrome} id="app-topbar" current_scope={@current_scope} />
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+      <main :if={@chrome} id="app-main" class="club-app-main">
         {render_slot(@inner_block)}
-      </div>
-    </main>
+      </main>
 
-    <.flash_group flash={@flash} />
+      <main :if={not @chrome} id="app-main-full">
+        {render_slot(@inner_block)}
+      </main>
+
+      <.flash_group flash={@flash} />
+    </div>
     """
   end
 
   @doc """
-  The public record's layout.
+  The public record and owner layout.
 
-  Deliberately bare: a car page is the whole surface, and an owner arriving
-  from a forum link has no account and nothing to navigate to yet. Chrome gets
-  added when there is somewhere to go.
+  It keeps the car-first instrument face while sharing the product's compact
+  navigation and account controls.
   """
   def public(assigns) do
     ~H"""
-    <main class="vs-face min-h-screen">
-      {@inner_content}
-    </main>
-
-    <!-- Nothing for a visitor arriving from a forum link. A signed-in operator
-         gets one line, so landing here after a magic link is not a dead end. -->
-    <div
-      :if={@current_scope}
-      class="mx-auto flex max-w-3xl flex-wrap items-baseline gap-x-5 px-5 pb-10 text-xs sm:px-8"
-      style="color: var(--vs-ink-dim)"
-    >
-      <span>{@current_scope.user.email}</span>
-      <.link :if={@current_scope.user.operator} navigate={~p"/bench"} class="underline">
-        Bench
-      </.link>
-      <.link navigate={~p"/users/settings"} class="underline">Settings</.link>
-      <.link href={~p"/users/log-out"} method="delete" class="underline">Log out</.link>
+    <div class="club-shell">
+      <.topbar id="public-topbar" current_scope={@current_scope} />
+      <div class="club-public-stage">
+        <img src={~p"/images/tire-arcs.svg"} alt="" class="club-public-tracks" />
+        <main id="public-main" class="vs-face min-h-screen">
+          {@inner_content}
+        </main>
+      </div>
+      <.flash_group flash={@flash} />
     </div>
+    """
+  end
 
-    <.flash_group flash={@flash} />
+  @doc "Renders the universal Vin Santo navigation bar."
+  attr :id, :string, required: true
+  attr :current_scope, :map, default: nil
+  attr :handle, :string, default: nil
+  attr :operator?, :boolean, default: false
+  attr :embedded?, :boolean, default: false
+
+  def topbar(assigns) do
+    assigns =
+      assigns
+      |> assign(:resolved_handle, assigns.handle || handle(assigns.current_scope))
+      |> assign(:resolved_operator?, assigns.operator? || operator?(assigns.current_scope))
+
+    ~H"""
+    <header id={@id} class={["club-topbar", @embedded? && "club-topbar-embedded"]}>
+      <div class="club-topbar-inner">
+        <.link href={~p"/"} class="club-brand" aria-label="Vin Santo home">
+          <img src={~p"/images/vin-santo-mark.svg"} alt="" class="club-brand-mark" />
+          <span class="club-wordmark">Vin Santo</span>
+        </.link>
+
+        <nav class="club-desktop-nav" aria-label="Primary navigation">
+          <.link :if={@resolved_handle} href={~p"/garage"}>Garage</.link>
+          <.link href={~p"/cars"}>Cars</.link>
+        </nav>
+
+        <form action={~p"/cars"} method="get" class="club-topbar-search" role="search">
+          <label for={"#{@id}-car-search"} class="sr-only">Search for a car</label>
+          <input
+            type="search"
+            id={"#{@id}-car-search"}
+            name="q"
+            placeholder="Search cars"
+            autocomplete="off"
+          />
+          <button type="submit" aria-label="Search cars">
+            <.icon name="hero-magnifying-glass" class="size-4" />
+          </button>
+        </form>
+
+        <div class="club-account-nav">
+          <.link href={~p"/start"} class="club-topbar-cta">Add a car</.link>
+          <%= if @resolved_handle do %>
+            <details class="club-avatar-menu">
+              <summary aria-label="Open profile menu">
+                <.avatar handle={@resolved_handle} />
+              </summary>
+              <div id={"#{@id}-profile-menu"} class="club-menu-panel">
+                <p class="club-menu-handle">@{@resolved_handle}</p>
+                <.link href={~p"/garage"}>Your garage</.link>
+                <.link href={~p"/users/settings"}>Settings</.link>
+                <.link :if={@resolved_operator?} href={~p"/bench"}>Operator bench</.link>
+                <.link href={~p"/users/log-out"} method="delete">Log out</.link>
+              </div>
+            </details>
+          <% else %>
+            <.link href={~p"/users/log-in"} class="club-sign-in">Sign in</.link>
+          <% end %>
+        </div>
+      </div>
+    </header>
+    """
+  end
+
+  @doc "Renders a handle-derived profile avatar."
+  attr :handle, :string, required: true
+  attr :size, :atom, values: [:regular, :large], default: :regular
+  attr :tone, :atom, values: [:orange, :petrol, :lime], default: :orange
+
+  def avatar(assigns) do
+    ~H"""
+    <span
+      class={[
+        "club-avatar",
+        @size == :large && "club-avatar-large",
+        @tone == :petrol && "club-avatar-petrol",
+        @tone == :lime && "club-avatar-lime"
+      ]}
+      title={@handle}
+    >
+      {initials(@handle)}
+    </span>
     """
   end
 
   @doc """
-  The document shell for the public record.
-
-  Its own root, not the app's: the application chrome is a generator artifact
-  and an owner arriving from a forum link should land on the car, not on a
-  navbar. The dark ground is set here so the page does not flash white before
-  the instrument face paints.
+  The document shell for public and owner pages. Warm paper is the application
+  default; dark asphalt is reserved for media and deliberate contrast.
   """
   def public_root(assigns) do
     ~H"""
     <!DOCTYPE html>
-    <html lang="en" style="background: #141816; color-scheme: dark">
+    <html lang="en" style="background: #ddd3c1; color-scheme: light">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -125,7 +176,7 @@ defmodule SantoApiWeb.Layouts do
         <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
         </script>
       </head>
-      <body class="vs-face antialiased">
+      <body class="club-shell antialiased">
         {@inner_content}
       </body>
     </html>
@@ -181,40 +232,21 @@ defmodule SantoApiWeb.Layouts do
     """
   end
 
-  @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
+  defp handle(nil), do: nil
+  defp handle(scope), do: scope.user.handle || scope.user.email
 
-  See <head> in root.html.heex which applies the theme before page load.
-  """
-  def theme_toggle(assigns) do
-    ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
+  defp operator?(nil), do: false
+  defp operator?(scope), do: scope.user.operator
 
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
-      >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-    </div>
-    """
+  defp initials(handle) do
+    handle
+    |> String.split(~r/[\s._-]+/, trim: true)
+    |> Enum.take(2)
+    |> Enum.map_join(&String.first/1)
+    |> String.upcase()
+    |> case do
+      "" -> "VS"
+      value -> value
+    end
   end
 end

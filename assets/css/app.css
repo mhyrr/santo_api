@@ -13,91 +13,10 @@
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. */
-@plugin "daisyui/packages/bundle/daisyui" {
-  themes: false;
-}
-
-/* daisyUI theme plugin.
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
-
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
@@ -109,34 +28,33 @@
 
    A car page has two natures and §6 of the owner-surface design fixes their
    order: the living car leads, the provenance record is the foundation
-   underneath. So the page has two grounds. What the car *is* reads on an
-   instrument face — warm off-white on a green-cast charcoal, the way a car's
-   own displays read at night. What the factory *built* reads on document
-   paper. Scrolling goes from the dashboard into the glovebox.
+   underneath. The warm label ground is now the default; asphalt is reserved
+   for navigation, media, and deliberate contrast. What the factory *built*
+   reads on quieter document paper.
 
-   Two inks, both rationed. Oxblood marks divergence and conflict and nothing
-   else. Instrument amber marks what the ledger has verified. If either shows
-   up as decoration it has stopped meaning anything.
+   Flag red marks divergence and conflict and nothing else. Petrol blue carries
+   verification and provenance on paper; lime is reserved for rare dark-ground
+   illustration and never has to carry small text.
    --------------------------------------------------------------------------- */
 :root {
-  --vs-face: #141816;
-  --vs-face-raised: #1d2320;
-  --vs-hairline: #333b37;
-  --vs-dial: #ece7d9;
-  --vs-dim: #8d9088;
-  --vs-needle: #b23a2e;
-  --vs-illum: #c9a227;
+  --vs-face: #ddd3c1;
+  --vs-face-raised: #ebe1cf;
+  --vs-hairline: #b9af9e;
+  --vs-dial: #141716;
+  --vs-dim: #625d54;
+  --vs-needle: #e05243;
+  --vs-illum: #176a75;
 
-  --vs-paper: #ddd9cd;
-  --vs-paper-raised: #e6e2d7;
-  --vs-rule: #bab5a5;
-  --vs-ink: #23211c;
-  --vs-ink-dim: #6c675c;
+  --vs-paper: #ddd3c1;
+  --vs-paper-raised: #ebe1cf;
+  --vs-rule: #b9af9e;
+  --vs-ink: #141716;
+  --vs-ink-dim: #625d54;
 
   /* Codes are set in mono because they *are* codes — a VIN, a paint number,
      a date. Not for texture. */
-  --vs-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  --vs-sans: "Helvetica Neue", Inter, ui-sans-serif, system-ui, sans-serif;
+  --vs-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --vs-sans: "Barlow", "Helvetica Neue", Arial, sans-serif;
 }
 
 .vs-face { background: var(--vs-face); color: var(--vs-dial); }
@@ -145,8 +63,9 @@
 /* The spec line: how an owner writes their car in a forum signature. Set
    heavy, condensed and tight, the way it is stamped on a data plate. */
 .vs-spec {
-  font-family: var(--vs-sans);
-  font-weight: 700;
+  font-family: "Barlow Condensed", "Arial Narrow", "DIN Condensed", sans-serif;
+  font-style: italic;
+  font-weight: 800;
   font-stretch: 85%;
   letter-spacing: -0.022em;
   line-height: 0.98;
@@ -206,7 +125,7 @@
 }
 
 :where(a, button, summary, input, select, textarea):focus-visible {
-  outline: 2px solid var(--vs-illum);
+  outline: 2px solid #b4471f;
   outline-offset: 2px;
 }
 
@@ -217,9 +136,9 @@
    generous and the fast path is vertical: three fields and a commit. A field is
    a ruled *line*, not a box — the value sits on the face the way a figure sits
    on a gauge, and the same treatment makes the numeric fields read as readings
-   rather than as widgets. No new inks: oxblood still means only that something
-   disagrees, and amber still means only that the ledger verified something,
-   which is why neither marks a selected tab.
+   rather than as widgets. No new signals: red still means only that something
+   disagrees, and petrol blue carries verification, which is why neither marks
+   a selected tab.
    --------------------------------------------------------------------------- */
 .vs-field {
   display: block;
@@ -241,8 +160,7 @@
 .vs-field::placeholder { color: var(--vs-dim); }
 textarea.vs-field { resize: vertical; }
 
-/* The date picker's own glyph is near-invisible on a dark face. */
-.vs-field::-webkit-calendar-picker-indicator { filter: invert(0.75); cursor: pointer; }
+.vs-field::-webkit-calendar-picker-indicator { cursor: pointer; }
 
 /* Four keys. The selected one is lit by raising it out of the face and giving it
    a rule along the top edge, the way a pressed key catches the backlight. */
@@ -273,8 +191,9 @@ textarea.vs-field { resize: vertical; }
 .vs-commit {
   display: inline-block;
   padding: 0.9375rem 1.5rem;
-  background: var(--vs-dial);
-  color: var(--vs-face);
+  background: #f26b35;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  color: #0b0d0c;
   border: 0;
   font-family: var(--vs-mono);
   font-size: 0.8125rem;
@@ -284,13 +203,14 @@ textarea.vs-field { resize: vertical; }
   cursor: pointer;
 }
 
-.vs-commit:hover { background: #fff; }
+.vs-commit:hover { background: #ff7b41; transform: translateY(-1px); }
 
 .vs-quiet {
   display: inline-block;
   padding: 0.9375rem 1.5rem;
   color: var(--vs-dim);
   border: 1px solid var(--vs-hairline);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
   font-family: var(--vs-mono);
   font-size: 0.8125rem;
   letter-spacing: 0.14em;
@@ -301,7 +221,7 @@ textarea.vs-field { resize: vertical; }
 .vs-quiet:hover { color: var(--vs-dial); border-color: var(--vs-dial); }
 
 /* A refusal is a disagreement between what was typed and what the record
-   accepts, which is the one other thing oxblood is for. */
+   accepts, which is the one other thing flag red is for. */
 .vs-refusal {
   color: var(--vs-needle);
   border-left: 2px solid var(--vs-needle);
@@ -331,6 +251,811 @@ textarea.vs-field { resize: vertical; }
 .vs-check {
   width: 1.125rem;
   height: 1.125rem;
-  accent-color: var(--vs-illum);
+  accent-color: #f26b35;
   flex: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Vin Santo visual system.
+
+   `club-` components provide the shared shell and generic controls. The `vs-`
+   components above remain the more editorial public-record vocabulary.
+   --------------------------------------------------------------------------- */
+:root {
+  --club-asphalt: #141716;
+  --club-black: #0b0d0c;
+  --club-graphite: #242927;
+  --club-bone: #f2eadb;
+  --club-paper: #ddd3c1;
+  --club-orange: #f26b35;
+  --club-petrol: #176a75;
+  --club-lime: #b7d63b;
+  --club-red: #e05243;
+  --club-muted: #9c9f97;
+  --club-rule-dark: #3b423f;
+  --club-rule-paper: #b9af9e;
+  --club-display: "Barlow Condensed", "Arial Narrow", "DIN Condensed", sans-serif;
+  --club-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --club-code: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.club-shell {
+  min-height: 100vh;
+  background: var(--club-paper);
+  color: var(--club-asphalt);
+  font-family: var(--club-body);
+}
+
+.club-app-main {
+  width: min(1180px, calc(100% - 2rem));
+  min-height: calc(100vh - 4rem);
+  margin-inline: auto;
+  padding-block: clamp(3rem, 7vw, 6rem);
+}
+
+.club-public-stage { position: relative; overflow: hidden; }
+.club-public-stage > main { position: relative; z-index: 1; background: transparent; }
+.club-public-tracks {
+  position: absolute;
+  z-index: 0;
+  top: -18rem;
+  right: -22rem;
+  width: 78rem;
+  max-width: none;
+  filter: brightness(0) saturate(100%);
+  opacity: 0.13;
+  pointer-events: none;
+}
+
+.club-wrap { width: min(1180px, calc(100% - 2rem)); margin-inline: auto; }
+
+.club-display,
+.club-wordmark {
+  font-family: var(--club-display);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+  text-transform: uppercase;
+}
+
+.club-wordmark { font-size: 1.65rem; white-space: nowrap; }
+.club-wordmark-hero { font-size: clamp(4.2rem, 11vw, 9.5rem); }
+.club-display { font-size: clamp(2.5rem, 6vw, 5.75rem); }
+.club-display-dark { color: var(--club-asphalt); }
+
+.club-kicker {
+  color: var(--club-muted);
+  font-family: var(--club-code);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.club-kicker-dark { color: #505952; }
+.club-kicker-paper { color: #70695f; }
+.club-code { font-family: var(--club-code); font-variant-numeric: tabular-nums; }
+.club-orange { color: var(--club-orange); }
+.club-muted { color: var(--club-muted); }
+.club-ink-muted { color: #625d54; }
+
+.club-topbar {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  border-bottom: 1px solid var(--club-rule-dark);
+  background: color-mix(in srgb, var(--club-asphalt) 94%, transparent);
+  color: var(--club-bone);
+  backdrop-filter: blur(14px);
+}
+
+.club-topbar-embedded {
+  position: relative;
+  border: 1px solid var(--club-rule-dark);
+  background: var(--club-asphalt);
+  backdrop-filter: none;
+}
+
+.club-topbar-inner {
+  display: flex;
+  width: min(1260px, calc(100% - 1.5rem));
+  min-height: 4rem;
+  margin-inline: auto;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+.club-brand { display: flex; align-items: center; gap: 0.65rem; }
+.club-brand-mark { width: 2rem; height: 2rem; }
+.club-desktop-nav { display: flex; align-items: center; gap: 1.5rem; margin-left: 1.5rem; }
+.club-desktop-nav a,
+.club-garage-link,
+.club-sign-in {
+  color: var(--club-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: color 150ms ease;
+}
+
+.club-desktop-nav a:hover,
+.club-sign-in:hover { color: var(--club-bone); }
+
+.club-account-nav { display: flex; align-items: center; gap: 1rem; margin-left: auto; }
+
+.club-topbar-cta {
+  padding: 0.65rem 0.9rem;
+  background: var(--club-orange);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  color: var(--club-black);
+  font-family: var(--club-code);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.club-topbar-cta:hover { background: #ff7b41; transform: translateY(-1px); }
+
+.club-avatar {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 2px solid var(--club-bone);
+  border-radius: 999px;
+  background: var(--club-orange);
+  color: var(--club-black);
+  font-family: var(--club-code);
+  font-size: 0.6875rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.club-avatar-large { width: 3.5rem; height: 3.5rem; font-size: 0.875rem; }
+.club-avatar-petrol { background: var(--club-petrol); color: var(--club-bone); }
+.club-avatar-lime { background: var(--club-lime); color: var(--club-black); }
+.club-avatar-menu { position: relative; }
+.club-avatar-menu summary { display: flex; cursor: pointer; list-style: none; }
+.club-avatar-menu summary::-webkit-details-marker { display: none; }
+
+.club-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.75rem);
+  display: grid;
+  min-width: 13rem;
+  border: 1px solid var(--club-rule-dark);
+  background: var(--club-graphite);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+}
+
+.club-menu-panel a,
+.club-menu-handle { padding: 0.75rem 0.9rem; font-size: 0.8125rem; }
+.club-menu-panel a { border-top: 1px solid var(--club-rule-dark); }
+.club-menu-panel a:hover { background: var(--club-asphalt); }
+.club-menu-handle { color: var(--club-orange); font-family: var(--club-code); }
+
+.club-hero { position: relative; overflow: hidden; background: var(--club-asphalt); }
+.club-hero-tracks { position: absolute; inset: auto -8rem -1rem 5%; width: 88rem; max-width: none; pointer-events: none; }
+.club-hero-grid { position: relative; display: grid; min-height: 42rem; align-items: center; gap: 3rem; padding-block: 6rem; }
+.club-hero-copy { position: relative; z-index: 1; max-width: 50rem; }
+.club-lede { max-width: 44rem; margin-top: 1.5rem; font-size: clamp(1.35rem, 2.6vw, 2.1rem); font-weight: 600; line-height: 1.2; }
+.club-body-copy { max-width: 41rem; margin-top: 1rem; color: var(--club-muted); font-size: 1.05rem; line-height: 1.7; }
+.club-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+
+.club-mark-study {
+  position: relative;
+  z-index: 1;
+  max-width: 25rem;
+  padding: 1.5rem;
+  border: 1px solid #c7bcaa;
+  background: var(--club-paper);
+  color: var(--club-asphalt);
+  transform: rotate(1.5deg);
+}
+
+.club-mark-large { width: min(13rem, 65%); margin: 1.5rem auto; }
+.club-mark-note { color: #5f594f; font-size: 0.875rem; line-height: 1.55; }
+
+.club-section { padding-block: clamp(5rem, 9vw, 8rem); }
+.club-section-paper { background: var(--club-paper); color: var(--club-asphalt); }
+.club-section-dark,
+.club-section-asphalt { background: var(--club-asphalt); color: var(--club-bone); }
+.club-section-petrol { background: var(--club-petrol); color: var(--club-bone); }
+.club-section-heading { max-width: 54rem; }
+.club-section-intro { max-width: 44rem; margin-top: 1.25rem; font-size: 1rem; line-height: 1.65; }
+
+.club-swatch-grid { display: grid; gap: 0.75rem; margin-top: 3rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.club-swatch { min-height: 9rem; padding: 1rem; border: 1px solid rgb(20 23 22 / 0.15); color: var(--club-bone); }
+.club-swatch p { font-size: 0.875rem; font-weight: 700; }
+.club-swatch code { display: block; margin-top: 0.3rem; font-family: var(--club-code); font-size: 0.75rem; }
+.club-swatch-dark { color: var(--club-asphalt); }
+.club-swatch-asphalt { background: var(--club-asphalt); }
+.club-swatch-bone { background: var(--club-bone); }
+.club-swatch-orange { background: var(--club-orange); }
+.club-swatch-petrol { background: var(--club-petrol); }
+.club-swatch-lime { background: var(--club-lime); }
+.club-swatch-red { background: var(--club-red); }
+
+.club-type-grid { display: grid; gap: 1rem; margin-top: 4rem; }
+.club-type-display { min-height: 25rem; padding: clamp(1.5rem, 4vw, 3rem); background: var(--club-asphalt); color: var(--club-bone); }
+.club-type-sample { margin-top: 2rem; font-size: clamp(3.5rem, 9vw, 7rem); }
+.club-type-body { padding: clamp(1.5rem, 4vw, 3rem); border: 1px solid var(--club-rule-paper); }
+.club-body-sample { max-width: 46rem; margin-top: 2rem; font-size: clamp(1.2rem, 2.5vw, 1.75rem); line-height: 1.5; }
+.club-code-sample { margin-top: 2.5rem; color: #625d54; font-family: var(--club-code); font-size: 0.75rem; line-height: 1.8; }
+
+.club-shell-studies { display: grid; gap: 2rem; margin-top: 3rem; }
+.club-shell-study { display: grid; gap: 0.75rem; }
+.club-avatar-study { margin-top: 4rem; padding: 1.5rem; border: 1px solid var(--club-rule-dark); background: var(--club-graphite); }
+.club-avatar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.25rem; }
+.club-avatar-row > div { max-width: 28rem; margin-left: 0.5rem; }
+.club-avatar-title { font-weight: 700; }
+.club-avatar-copy { margin-top: 0.25rem; font-size: 0.875rem; line-height: 1.55; }
+
+.club-control-grid { display: grid; gap: 1rem; margin-top: 3rem; }
+.club-control-panel { padding: 1.5rem; background: var(--club-asphalt); color: var(--club-bone); }
+.club-control-title { font-family: var(--club-display); font-size: 2rem; font-style: italic; font-weight: 800; text-transform: uppercase; }
+.club-button-stack,
+.club-field-stack,
+.club-status-stack { display: grid; gap: 0.75rem; margin-top: 1.5rem; }
+.club-button-stack { align-items: start; }
+
+.club-button {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1rem;
+  border: 1px solid transparent;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  font-family: var(--club-code);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.club-button:hover { transform: translateY(-1px); }
+.club-button:disabled,
+.club-button.phx-submit-loading,
+.club-button.phx-click-loading { cursor: wait; opacity: 0.5; transform: none; }
+.club-button-primary { background: var(--club-orange); color: var(--club-black); }
+.club-button-primary:hover { background: #ff7b41; }
+.club-button-secondary { border-color: var(--club-bone); color: var(--club-bone); }
+.club-button-secondary:hover { background: var(--club-bone); color: var(--club-asphalt); }
+.club-button-quiet { color: var(--club-muted); }
+.club-button-quiet:hover { color: var(--club-bone); }
+.club-button-danger { border-color: var(--club-red); color: #ff897e; }
+.club-button-danger:hover { background: var(--club-red); color: var(--club-black); }
+
+.club-fieldset { margin-bottom: 1rem; }
+.club-fieldset > label { display: block; }
+.club-field-label { display: block; margin-bottom: 0.45rem; }
+.club-input {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--club-rule-dark);
+  border-radius: 0.125rem;
+  background: var(--club-graphite);
+  color: var(--club-bone);
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  line-height: 1.4;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.club-input::placeholder { color: var(--club-muted); }
+.club-input:focus { border-color: var(--club-orange); outline: 0; }
+.club-input:disabled { cursor: not-allowed; opacity: 0.55; }
+.club-input-error { border-color: var(--club-red); }
+.club-input-compact { display: inline-block; width: auto; min-height: 2.4rem; padding: 0.45rem 0.6rem; font-size: 0.8125rem; }
+.club-textarea { min-height: 8rem; resize: vertical; }
+.club-field-error {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  color: #ff897e;
+  font-size: 0.8125rem;
+}
+.club-check-row { display: flex !important; align-items: flex-start; gap: 0.7rem; color: var(--club-bone); }
+.club-check-label { display: contents; }
+
+.club-page-header { padding-bottom: 1.5rem; border-bottom: 1px solid var(--club-rule-dark); }
+.club-page-title {
+  font-family: var(--club-display);
+  font-size: clamp(2.75rem, 6vw, 5rem);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.94;
+  text-transform: uppercase;
+}
+.club-page-subtitle { max-width: 44rem; margin-top: 0.75rem; color: var(--club-muted); line-height: 1.6; }
+.club-page-subtitle a { color: var(--club-orange); }
+
+.club-table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--club-rule-dark); }
+.club-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.club-table th {
+  padding: 0.7rem 0.85rem;
+  background: var(--club-graphite);
+  color: var(--club-muted);
+  font-family: var(--club-code);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.club-table td { padding: 0.85rem; border-top: 1px solid var(--club-rule-dark); vertical-align: top; }
+.club-table tbody tr { transition: background 120ms ease; }
+.club-table tbody tr:hover { background: rgb(255 255 255 / 0.025); }
+.club-table a { color: var(--club-orange); }
+
+.club-list { border-top: 1px solid var(--club-rule-dark); }
+.club-list-row { display: grid; gap: 0.25rem; padding-block: 0.9rem; border-bottom: 1px solid var(--club-rule-dark); }
+.club-list-title { color: var(--club-muted); font-family: var(--club-code); font-size: 0.6875rem; letter-spacing: 0.07em; text-transform: uppercase; }
+
+.club-flash-stack { position: fixed; z-index: 60; top: 5rem; right: 1rem; width: min(24rem, calc(100% - 2rem)); }
+.club-flash {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--club-rule-dark);
+  border-left-width: 3px;
+  background: var(--club-graphite);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.32);
+  color: var(--club-bone);
+  font-size: 0.875rem;
+}
+.club-flash-info { border-left-color: var(--club-petrol); }
+.club-flash-error { border-left-color: var(--club-red); }
+
+.club-work-panel { border: 1px solid var(--club-rule-dark); background: var(--club-graphite); }
+.club-paper-panel { border: 1px solid var(--club-rule-paper); background: var(--club-paper); color: var(--club-asphalt); }
+.club-rule { border-color: var(--club-rule-dark); }
+.club-divide > :not(:last-child) { border-color: var(--club-rule-dark); }
+.club-link { color: var(--club-orange); }
+.club-link:hover { text-decoration: underline; }
+.club-warning { color: #f3bf56; }
+.club-danger { color: #ff897e; }
+.club-conflict-row { background: rgb(224 82 67 / 0.1); }
+.club-bench-heading { margin-top: 2.5rem; font-family: var(--club-display); font-size: 1.9rem; font-style: italic; font-weight: 800; text-transform: uppercase; }
+.club-file { color: var(--club-muted); font-size: 0.8125rem; }
+.club-file::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--club-rule-dark);
+  background: transparent;
+  color: var(--club-bone);
+  font-family: var(--club-code);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.club-field-label { color: var(--club-muted); font-family: var(--club-code); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.club-field {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--club-rule-dark);
+  border-radius: 0.125rem;
+  background: var(--club-graphite);
+  color: var(--club-bone);
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+}
+.club-field:focus { border-color: var(--club-orange); outline: 0; }
+.club-field-unit { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.75rem; }
+.club-field-unit span { color: var(--club-muted); font-family: var(--club-code); font-size: 0.75rem; text-transform: uppercase; }
+.club-toggle-row { display: flex; align-items: flex-start; gap: 0.75rem; margin-top: 0.75rem; }
+.club-toggle { width: 1.25rem; height: 1.25rem; margin-top: 0.15rem; accent-color: var(--club-orange); }
+.club-toggle-row strong { display: block; font-size: 0.875rem; }
+.club-toggle-row small { display: block; margin-top: 0.2rem; color: var(--club-muted); }
+
+.club-status-stack { align-items: start; }
+.club-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  font-family: var(--club-code);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.club-status-verified { color: var(--club-lime); }
+.club-status-owner { color: #79d3dd; }
+.club-status-conflict { color: #ff796d; }
+.club-status-private { color: var(--club-muted); }
+.club-status-pending { color: #f3bf56; }
+
+.club-notice { display: flex; gap: 0.65rem; margin-top: 1.5rem; padding: 0.85rem; font-size: 0.8125rem; line-height: 1.5; }
+.club-notice-info { border-left: 3px solid #79d3dd; background: rgb(23 106 117 / 0.22); }
+.club-notice-success { border-left: 3px solid var(--club-lime); background: rgb(183 214 59 / 0.1); }
+.club-notice-warning { border-left: 3px solid var(--club-red); background: rgb(224 82 67 / 0.13); }
+
+.club-auth-page { width: min(28rem, 100%); margin-inline: auto; }
+.club-auth-page::before { display: block; width: 3.5rem; height: 0.28rem; margin-bottom: 2rem; background: var(--club-orange); content: ""; }
+.club-auth-form { margin-top: 2rem; }
+
+.club-domain-grid { display: grid; gap: 1rem; margin-top: 3rem; }
+.club-car-card { overflow: hidden; border: 1px solid var(--club-rule-dark); background: var(--club-graphite); }
+.club-car-art { display: grid; min-height: 19rem; place-items: center; background: var(--club-petrol); color: var(--club-bone); }
+.club-car-art svg { width: 92%; }
+.club-car-art path,
+.club-car-art circle { fill: none; stroke: currentColor; stroke-width: 5; vector-effect: non-scaling-stroke; }
+.club-car-art path:nth-child(2) { fill: rgb(20 23 22 / 0.22); }
+.club-car-card-copy { padding: 1.5rem; }
+.club-card-title { margin-top: 0.75rem; font-size: clamp(2.5rem, 6vw, 4.5rem); }
+.club-card-spec { margin-top: 0.75rem; color: var(--club-muted); }
+.club-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; margin-top: 1.5rem; font-size: 0.75rem; }
+
+.club-log-entry { position: relative; display: grid; grid-template-columns: 0.85rem 1fr; gap: 1.25rem; padding: 1.5rem; border: 1px solid var(--club-rule-dark); }
+.club-log-rail { width: 0.85rem; min-height: 100%; background: repeating-linear-gradient(135deg, var(--club-orange) 0 8px, transparent 8px 15px); }
+.club-entry-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.club-entry-title { max-width: 34rem; margin-top: 1.25rem; font-size: 1.6rem; font-weight: 700; line-height: 1.18; }
+.club-entry-copy { max-width: 38rem; margin-top: 0.75rem; color: var(--club-muted); line-height: 1.65; }
+.club-entry-facts { display: grid; gap: 0.75rem; margin-top: 1.5rem; }
+.club-entry-facts div { padding-top: 0.65rem; border-top: 1px solid var(--club-rule-dark); }
+.club-entry-facts dt { color: var(--club-muted); font-family: var(--club-code); font-size: 0.625rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.club-entry-facts dd { margin-top: 0.25rem; font-size: 0.875rem; }
+.club-entry-actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+.club-entry-actions button { color: var(--club-orange); font-family: var(--club-code); font-size: 0.6875rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+
+.club-record-panel { margin-top: 1rem; padding: clamp(1.25rem, 4vw, 2.5rem); background: var(--club-paper); color: var(--club-asphalt); }
+.club-record-heading { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1.5rem; }
+.club-record-title { margin-top: 0.75rem; font-size: clamp(2.5rem, 5vw, 4.5rem); }
+.club-record-strength { color: #625d54; font-size: 0.8125rem; }
+.club-record-strength strong { color: var(--club-asphalt); font-size: 1.6rem; }
+.club-record-row { border-top: 1px solid var(--club-rule-paper); }
+.club-record-row:first-of-type { margin-top: 2.5rem; }
+.club-record-row summary { display: grid; cursor: pointer; list-style: none; gap: 0.5rem; padding-block: 1.15rem; }
+.club-record-row summary::-webkit-details-marker { display: none; }
+.club-record-label { color: #70695f; font-family: var(--club-code); font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.club-record-value { font-weight: 700; }
+.club-record-row .club-status { justify-self: start; }
+.club-record-row .club-status-verified { color: var(--club-petrol); }
+.club-record-row .club-status-conflict { color: #a62d22; }
+.club-record-detail { padding: 0 0 1.25rem; }
+.club-record-detail dl { display: grid; gap: 0.8rem; padding: 1rem; border-left: 3px solid var(--club-petrol); background: #ece3d2; }
+.club-record-detail dt { color: #70695f; font-family: var(--club-code); font-size: 0.625rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.club-record-detail dd { margin-top: 0.2rem; font-size: 0.8125rem; }
+
+.club-usage-grid { display: grid; gap: 3rem; }
+.club-rules { border-top: 1px solid var(--club-rule-paper); }
+.club-rules li { padding-block: 1rem; border-bottom: 1px solid var(--club-rule-paper); line-height: 1.55; }
+
+/* ---------------------------------------------------------------------------
+   Warm application shell and member-facing product surfaces.
+   --------------------------------------------------------------------------- */
+.club-app-main { color: var(--club-asphalt); }
+.club-muted { color: #625d54; }
+.club-section-dark .club-muted,
+.club-section-asphalt .club-muted,
+.club-section-petrol .club-muted,
+.club-work-panel .club-muted,
+.club-control-panel .club-muted,
+.club-avatar-study .club-muted { color: var(--club-muted); }
+
+.club-page-header { border-color: var(--club-rule-paper); }
+.club-page-subtitle { color: #625d54; }
+.club-page-subtitle a { color: #a43e19; }
+
+.club-button-secondary { border-color: var(--club-asphalt); color: var(--club-asphalt); }
+.club-button-secondary:hover { background: var(--club-asphalt); color: var(--club-bone); }
+.club-button-quiet { color: #625d54; }
+.club-button-quiet:hover { color: var(--club-asphalt); }
+.club-button-danger { color: #a62d22; }
+
+.club-input,
+.club-field {
+  border-color: var(--club-rule-paper);
+  background: rgb(242 234 219 / 0.72);
+  color: var(--club-asphalt);
+}
+.club-input::placeholder,
+.club-field::placeholder { color: #7a7368; }
+.club-check-row { color: var(--club-asphalt); }
+.club-field-label { color: #625d54; }
+.club-toggle-row small { color: #625d54; }
+
+.club-work-panel { color: var(--club-bone); }
+.club-work-panel .club-input,
+.club-work-panel .club-field {
+  border-color: var(--club-rule-dark);
+  background: var(--club-asphalt);
+  color: var(--club-bone);
+}
+.club-work-panel .club-input::placeholder,
+.club-work-panel .club-field::placeholder { color: var(--club-muted); }
+.club-work-panel .club-field-label,
+.club-work-panel .club-check-row { color: var(--club-bone); }
+.club-work-panel .club-button-secondary { border-color: var(--club-bone); color: var(--club-bone); }
+.club-work-panel .club-button-secondary:hover { background: var(--club-bone); color: var(--club-asphalt); }
+
+.club-table-wrap { border-color: var(--club-rule-paper); background: rgb(242 234 219 / 0.45); }
+.club-table th { background: var(--club-asphalt); color: var(--club-muted); }
+.club-table td { border-color: var(--club-rule-paper); }
+.club-table tbody tr:hover { background: rgb(20 23 22 / 0.035); }
+.club-table a { color: #a43e19; }
+.club-list { border-color: var(--club-rule-paper); }
+.club-list-row { border-color: var(--club-rule-paper); }
+.club-list-title { color: #625d54; }
+.club-link { color: #a43e19; }
+.club-rule,
+.club-divide > :not(:last-child) { border-color: var(--club-rule-paper); }
+
+.club-status-verified { color: var(--club-petrol); }
+.club-status-owner { color: #0e626c; }
+.club-status-conflict { color: #a62d22; }
+.club-status-private { color: #625d54; }
+.club-status-pending { color: #765600; }
+.club-section-dark .club-status-verified,
+.club-section-asphalt .club-status-verified,
+.club-section-petrol .club-status-verified { color: #79d3dd; }
+.club-section-dark .club-status-owner,
+.club-section-asphalt .club-status-owner,
+.club-section-petrol .club-status-owner { color: #79d3dd; }
+.club-section-dark .club-status-conflict,
+.club-section-asphalt .club-status-conflict,
+.club-section-petrol .club-status-conflict { color: #ff796d; }
+.club-section-dark .club-status-private,
+.club-section-asphalt .club-status-private,
+.club-section-petrol .club-status-private { color: var(--club-muted); }
+.club-section-dark .club-status-pending,
+.club-section-asphalt .club-status-pending,
+.club-section-petrol .club-status-pending { color: #f3bf56; }
+
+/* The top bar is the single persistent asphalt strip. */
+.club-topbar-search {
+  display: flex;
+  width: min(20rem, 24vw);
+  height: 2.35rem;
+  align-items: center;
+  border: 1px solid var(--club-rule-dark);
+  background: var(--club-graphite);
+}
+.club-topbar-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--club-bone);
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8125rem;
+  outline: 0;
+}
+.club-topbar-search input::placeholder { color: var(--club-muted); }
+.club-topbar-search:focus-within { border-color: var(--club-orange); }
+.club-topbar-search button { color: var(--club-muted); padding: 0.55rem 0.65rem; }
+.club-topbar-search button:hover { color: var(--club-bone); }
+
+/* Public club home. */
+.club-home-hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--club-rule-paper);
+  background: var(--club-paper);
+}
+.club-home-tracks {
+  position: absolute;
+  right: -24rem;
+  bottom: -15rem;
+  width: 80rem;
+  max-width: none;
+  filter: brightness(0) saturate(100%);
+  opacity: 0.17;
+  pointer-events: none;
+}
+.club-home-hero-grid {
+  position: relative;
+  display: grid;
+  gap: 3rem;
+  align-items: end;
+  padding-block: clamp(5rem, 10vw, 9rem);
+}
+.club-home-title { max-width: 58rem; margin-top: 1rem; font-size: clamp(4rem, 10vw, 8.5rem); }
+.club-home-lede { max-width: 44rem; margin-top: 1.5rem; font-size: clamp(1.15rem, 2.2vw, 1.65rem); line-height: 1.45; }
+.club-home-hero .club-body-copy { color: #625d54; }
+.club-home-note {
+  position: relative;
+  max-width: 28rem;
+  border-left: 0.45rem solid var(--club-orange);
+  background: var(--club-asphalt);
+  color: var(--club-bone);
+  padding: 1.4rem 1.5rem;
+  transform: rotate(-1deg);
+}
+.club-home-note p:last-child { margin-top: 0.8rem; color: var(--club-muted); line-height: 1.6; }
+.club-home-cars,
+.club-directory-page { padding-block: clamp(4.5rem, 8vw, 8rem); }
+.club-text-link,
+.club-back-link { color: #893411; font-family: var(--club-code); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.club-text-link:hover,
+.club-back-link:hover { text-decoration: underline; text-underline-offset: 0.25rem; }
+
+/* Shared selectable car cards. */
+.club-car-grid { display: grid; gap: 1rem; margin-top: 2.5rem; }
+.club-car-tile { border: 1px solid var(--club-rule-paper); background: rgb(242 234 219 / 0.58); transition: transform 150ms ease, box-shadow 150ms ease; }
+.club-car-tile:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgb(20 23 22 / 0.10); }
+.club-car-tile-main { display: grid; min-height: 100%; }
+.club-car-plate {
+  position: relative;
+  display: flex;
+  min-height: 10rem;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  background: var(--club-petrol);
+  color: var(--club-bone);
+  padding: 1rem;
+}
+.club-car-plate::after {
+  position: absolute;
+  inset: -50% -25%;
+  border: 1.6rem double rgb(242 234 219 / 0.18);
+  border-radius: 50%;
+  content: "";
+  transform: rotate(-11deg);
+}
+.club-car-plate-marque { position: relative; z-index: 1; max-width: 100%; overflow-wrap: anywhere; font-family: var(--club-display); font-size: clamp(1.65rem, 2.9vw, 2.25rem); font-style: italic; font-weight: 800; letter-spacing: -0.035em; line-height: 0.9; text-transform: uppercase; }
+.club-car-plate-code { position: relative; z-index: 1; font-family: var(--club-code); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.club-car-tile-copy { padding: 1.35rem; }
+.club-car-tile-title { margin-top: 0.65rem; font-family: var(--club-display); font-size: clamp(2.1rem, 4vw, 3.6rem); font-style: italic; font-weight: 800; letter-spacing: -0.025em; line-height: 0.98; text-transform: uppercase; }
+.club-car-tile-spec { margin-top: 0.65rem; color: #625d54; line-height: 1.5; }
+.club-car-tile-latest { margin-top: 1.25rem; padding-top: 0.8rem; border-top: 1px solid var(--club-rule-paper); font-size: 0.9rem; line-height: 1.45; }
+.club-car-tile-latest span { display: block; margin-bottom: 0.25rem; color: #625d54; font-family: var(--club-code); font-size: 0.6rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+.club-car-tile-meta { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; margin-top: 1.25rem; color: #625d54; font-size: 0.7rem; }
+.club-car-maintainer { color: #0e626c; font-family: var(--club-code); font-weight: 800; }
+.club-car-tile-actions { display: flex; gap: 1rem; border-top: 1px solid var(--club-rule-paper); padding: 0.8rem 1.35rem; }
+.club-car-tile-actions a { color: #893411; font-family: var(--club-code); font-size: 0.65rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.club-empty-state { grid-column: 1 / -1; border: 1px dashed #958c7e; padding: 2rem; color: #625d54; }
+.club-empty-state a { display: inline-block; margin-top: 0.75rem; color: #893411; text-decoration: underline; text-underline-offset: 0.2rem; }
+
+/* Searchable directory. */
+.club-directory-header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 2rem; }
+.club-directory-search { position: relative; max-width: 45rem; margin-top: 3rem; }
+.club-directory-search .club-fieldset { margin: 0; }
+.club-directory-search .club-input { min-height: 3.75rem; padding-right: 3.75rem; font-size: 1.05rem; }
+.club-search-submit { position: absolute; right: 0; bottom: 0; display: grid; width: 3.75rem; height: 3.75rem; place-items: center; color: #625d54; }
+.club-search-submit:hover { color: var(--club-asphalt); }
+.club-directory-count { margin-top: 1rem; color: #625d54; font-family: var(--club-code); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* Garage intake: petrol provides richness without making asphalt the page. */
+.club-garage-page { margin: calc(clamp(2.25rem, 5.25vw, 4.5rem) * -1) auto 0; }
+.club-garage-intake { margin-inline: calc((100vw - min(1180px, calc(100vw - 2rem))) / -2); padding: clamp(2.25rem, 5.25vw, 4.5rem) max(1rem, calc((100vw - 1180px) / 2)); background: var(--club-petrol); color: var(--club-bone); }
+.club-garage-intake-copy { max-width: 48rem; }
+.club-garage-intake-copy .club-display { margin-top: 0.7rem; max-width: 43rem; font-size: clamp(2.8rem, 6vw, 5.25rem); }
+.club-garage-intake-copy > p:last-child { max-width: 39rem; margin-top: 0.8rem; color: #b9d8d7; font-size: 0.98rem; line-height: 1.55; }
+.club-garage-empty { max-width: 42rem; margin-top: 2rem; border: 1px solid rgb(242 234 219 / 0.35); padding: 1.4rem; }
+.club-garage-empty .club-button { margin-top: 1rem; }
+.club-intake-form,
+.club-review-form { max-width: 46rem; margin-top: 2rem; }
+.club-intake-car-context { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.45rem 0.8rem; margin-bottom: 1.1rem; color: var(--club-bone); }
+.club-intake-car-context span { color: #b9d8d7; font-family: var(--club-code); font-size: 0.65rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+.club-intake-car-context strong { font-size: 1rem; }
+.club-garage-intake .club-input { border-color: rgb(242 234 219 / 0.38); background: rgb(20 23 22 / 0.22); color: var(--club-bone); }
+.club-garage-intake .club-input::placeholder { color: #b9d8d7; }
+.club-garage-intake .club-field-label,
+.club-garage-intake .club-check-row { color: var(--club-bone); }
+.club-dictation-actions { display: flex; justify-content: flex-end; margin: -3.35rem 0 1.15rem; padding-right: 0.65rem; pointer-events: none; }
+.club-voice-button { position: relative; z-index: 1; display: inline-grid; width: 2.35rem; height: 2.35rem; place-items: center; border: 1px solid rgb(242 234 219 / 0.5); background: var(--club-petrol); color: var(--club-bone); pointer-events: auto; }
+.club-voice-button:hover,
+.club-voice-button[aria-pressed="true"] { background: var(--club-bone); color: var(--club-petrol); }
+.club-voice-button:disabled { cursor: not-allowed; opacity: 0.55; }
+.club-dictation-status { color: #b9d8d7; font-size: 0.78rem; }
+.club-form-error { margin-block: 1rem; border-left: 3px solid var(--club-red); padding-left: 0.8rem; color: #ffd0ca; font-size: 0.875rem; }
+.club-review-form { border: 1px solid rgb(242 234 219 / 0.45); background: rgb(20 23 22 / 0.22); padding: clamp(1rem, 3vw, 1.75rem); }
+.club-review-heading { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 1rem; }
+.club-review-heading h2 { margin-top: 0.35rem; font-family: var(--club-display); font-size: 2.7rem; font-style: italic; font-weight: 800; line-height: 1; text-transform: uppercase; }
+.club-review-notice { margin-top: 1rem; border-left: 3px solid var(--club-orange); padding-left: 0.8rem; color: #d8e9e7; font-size: 0.875rem; }
+.club-review-grid { display: grid; gap: 1rem; margin-top: 1.25rem; }
+.club-review-fields { margin-block: 0.25rem 1.25rem; }
+.club-review-fields > .club-fieldset { margin-top: 1.25rem; }
+.club-text-button { color: inherit; font-family: var(--club-code); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-decoration: underline; text-underline-offset: 0.2rem; text-transform: uppercase; }
+.club-garage-cars { padding-block: clamp(4.5rem, 8vw, 7rem); }
+.club-garage-section-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1.5rem; }
+.club-theme-intake { display: grid; gap: 2rem; margin-top: 3rem; background: var(--club-petrol); color: var(--club-bone); padding: clamp(1.5rem, 5vw, 3rem); }
+.club-theme-intake h3 { margin-top: 0.8rem; font-size: clamp(3rem, 7vw, 6rem); }
+.club-theme-intake > div > p:last-child { max-width: 34rem; margin-top: 1rem; color: #b9d8d7; line-height: 1.6; }
+.club-theme-intake-form { display: grid; gap: 0.6rem; }
+.club-theme-intake .club-input { border-color: rgb(242 234 219 / 0.38); background: rgb(20 23 22 / 0.22); color: var(--club-bone); }
+.club-theme-intake .club-field-label { color: var(--club-bone); margin-top: 0.5rem; }
+
+/* One update and its conversation. */
+.club-update-page { min-height: 100vh; padding-block: clamp(3rem, 7vw, 6rem); }
+.club-update-wrap { max-width: 52rem; }
+.club-update-card { position: relative; display: grid; grid-template-columns: 0.8rem 1fr; gap: 1.4rem; margin-top: 1.5rem; background: var(--club-asphalt); color: var(--club-bone); padding: clamp(1.3rem, 4vw, 2.4rem); }
+.club-update-card-rail { background: repeating-linear-gradient(135deg, var(--club-orange) 0 8px, transparent 8px 15px); }
+.club-update-card h1 { max-width: 42rem; margin-top: 1rem; font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 700; line-height: 1.13; }
+.club-update-details { display: grid; gap: 0.8rem; margin-top: 1.7rem; }
+.club-update-details div { border-top: 1px solid var(--club-rule-dark); padding-top: 0.7rem; }
+.club-update-details dt { color: var(--club-muted); font-family: var(--club-code); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.club-update-details dd { margin-top: 0.25rem; }
+.club-update-byline { margin-top: 1.5rem; color: var(--club-muted); font-size: 0.78rem; }
+.club-update-byline span { color: var(--club-orange); font-family: var(--club-code); }
+.club-conversation { margin-top: 1rem; border: 1px solid var(--club-rule-paper); background: rgb(242 234 219 / 0.6); padding: clamp(1.25rem, 4vw, 2.25rem); }
+.club-conversation-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.25rem; }
+.club-conversation-head h2 { margin-top: 0.45rem; font-family: var(--club-display); font-size: 2.6rem; font-style: italic; font-weight: 800; line-height: 1; text-transform: uppercase; }
+.club-like-button { display: inline-flex; min-height: 2.8rem; align-items: center; gap: 0.5rem; border: 1px solid var(--club-rule-paper); padding: 0.55rem 0.8rem; color: #625d54; font-size: 0.78rem; }
+.club-like-button strong { min-width: 1.2rem; color: var(--club-asphalt); font-family: var(--club-code); }
+.club-like-button:hover,
+.club-like-button-active { border-color: #a62d22; color: #a62d22; }
+.club-comment-list { margin-top: 2rem; border-top: 1px solid var(--club-rule-paper); }
+.club-comment-empty { padding-block: 1.5rem; color: #625d54; font-size: 0.875rem; }
+.club-comment { display: grid; grid-template-columns: 2.25rem 1fr; gap: 0.9rem; border-bottom: 1px solid var(--club-rule-paper); padding-block: 1.25rem; }
+.club-comment-avatar { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: 999px; background: var(--club-petrol); color: var(--club-bone); font-family: var(--club-code); font-size: 0.7rem; font-weight: 900; }
+.club-comment-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 0.8rem; }
+.club-comment-meta strong { color: #0e626c; font-family: var(--club-code); font-size: 0.75rem; }
+.club-comment-meta time { color: #736c61; font-size: 0.7rem; }
+.club-comment p { margin-top: 0.55rem; line-height: 1.6; white-space: pre-wrap; }
+.club-comment-actions { display: flex; gap: 1rem; margin-top: 0.65rem; }
+.club-comment-actions button { color: #736c61; font-family: var(--club-code); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em; text-decoration: underline; text-transform: uppercase; }
+.club-comment-form { margin-top: 2rem; }
+.club-conversation-signin { margin-top: 1.5rem; color: #625d54; }
+.club-conversation-signin a { color: #893411; text-decoration: underline; }
+.club-report-form { margin-top: 1rem; border-left: 3px solid var(--club-red); background: #d3c8b6; padding: 1rem; }
+.club-inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+
+@media (min-width: 42rem) {
+  .club-car-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .club-car-tile-main { grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1.45fr); }
+  .club-car-plate { min-height: 100%; }
+  .club-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .club-review-grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-update-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 48rem) {
+  .club-wrap { width: min(1180px, calc(100% - 4rem)); }
+  .club-app-main { width: min(1180px, calc(100% - 4rem)); }
+  .club-hero-grid { grid-template-columns: minmax(0, 1.55fr) minmax(17rem, 0.65fr); }
+  .club-swatch-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-type-grid { grid-template-columns: minmax(0, 1.45fr) minmax(17rem, 0.55fr); }
+  .club-control-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-domain-grid { grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 0.85fr); }
+  .club-entry-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-record-row summary { grid-template-columns: 10rem 1fr auto; align-items: center; gap: 1.5rem; }
+  .club-record-row .club-status { justify-self: end; }
+  .club-record-detail { padding-left: 11.5rem; }
+  .club-record-detail dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .club-usage-grid { grid-template-columns: minmax(0, 0.8fr) minmax(24rem, 1.2fr); }
+  .club-home-hero-grid { grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.5fr); }
+  .club-theme-intake { grid-template-columns: minmax(0, 0.8fr) minmax(20rem, 1.2fr); }
+}
+
+@media (max-width: 47.99rem) {
+  .club-desktop-nav,
+  .club-garage-link { display: none; }
+  .club-topbar-inner { gap: 0.75rem; }
+  .club-topbar-search { width: 2.5rem; margin-left: auto; }
+  .club-topbar-search input { width: 0; padding: 0; }
+  .club-topbar-search:focus-within { position: absolute; right: 0.75rem; z-index: 2; width: calc(100% - 1.5rem); background: var(--club-graphite); }
+  .club-topbar-search:focus-within input { width: auto; padding: 0.45rem 0.65rem; }
+  .club-account-nav { margin-left: 0; }
+  .club-topbar-cta { padding-inline: 0.65rem; }
+  .club-brand .club-wordmark { display: none; }
+  .club-hero-grid { min-height: auto; padding-block: 4rem; }
+  .club-mark-study { margin-top: 1rem; transform: none; }
+  .club-type-display { min-height: 20rem; }
+  .club-home-note { transform: none; }
+  .club-garage-intake { margin-inline: -1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .club-button,
+  .club-topbar-cta { transition: none; }
 }

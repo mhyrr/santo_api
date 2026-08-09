@@ -89,7 +89,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Claims waiting
         <:subtitle>
@@ -98,35 +98,40 @@ defmodule SantoApiWeb.BenchLive.Claims do
         </:subtitle>
       </.header>
 
-      <div :if={@error} id="claims-error" class="alert alert-error my-4">{@error}</div>
+      <div :if={@error} id="claims-error" class="club-notice club-notice-warning my-4">
+        {@error}
+      </div>
 
-      <p :if={@claims == []} class="text-base-content/70 mt-6">Nothing waiting.</p>
+      <p :if={@claims == []} class="club-muted mt-6">Nothing waiting.</p>
 
       <div
         :for={row <- @claims}
         id={"claim-#{row.challenge.id}"}
-        class="card bg-base-200 mt-6 p-5"
+        class="club-work-panel mt-6 p-5"
       >
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <.link navigate={~p"/bench/vehicles/#{row.vehicle.id}"} class="link text-lg font-semibold">
+            <.link
+              navigate={~p"/bench/vehicles/#{row.vehicle.id}"}
+              class="club-link text-lg font-semibold"
+            >
               {row.title}
             </.link>
-            <p class="font-mono text-sm text-base-content/70">{row.chassis}</p>
+            <p class="club-code club-muted text-sm">{row.chassis}</p>
           </div>
 
           <div class="text-right">
             <p class="text-sm">
               claimed by <span class="font-mono">{row.challenge.handle}</span>
             </p>
-            <p class="text-xs text-base-content/70">{row.challenge.user.email}</p>
-            <p class="text-xs text-base-content/70">
+            <p class="club-muted text-xs">{row.challenge.user.email}</p>
+            <p class="club-muted text-xs">
               sent {Calendar.strftime(row.challenge.inserted_at, "%-d %B %Y, %H:%M UTC")}
             </p>
           </div>
         </div>
 
-        <div :if={row.incumbent} class="alert alert-warning mt-4">
+        <div :if={row.incumbent} class="club-notice club-notice-warning mt-4">
           <span>
             <strong>Contested.</strong>
             This car is maintained by <span class="font-mono">{row.incumbent.name}</span>. Decide the
@@ -137,8 +142,8 @@ defmodule SantoApiWeb.BenchLive.Claims do
 
         <div class="mt-4 flex flex-wrap items-start gap-6">
           <div>
-            <p class="text-xs uppercase tracking-wide text-base-content/70">Code to find</p>
-            <p class="font-mono text-2xl tracking-[0.25em]">
+            <p class="club-kicker">Code to find</p>
+            <p class="club-code text-2xl tracking-[0.25em]">
               {Challenge.spaced(row.challenge.code)}
             </p>
           </div>
@@ -150,7 +155,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
             <img
               src={~p"/bench/artifacts/#{row.challenge.proof_artifact_id}"}
               alt="Possession proof"
-              class="max-h-64 rounded border border-base-300"
+              class="club-rule max-h-64 border"
             />
           </a>
         </div>
@@ -163,7 +168,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
           <form id={"deny-#{row.challenge.id}"} phx-submit="deny" class="flex items-end gap-2">
             <input type="hidden" name="claim_id" value={row.challenge.id} />
             <.input type="text" name="reason" value="" label="Reason, if you deny it" />
-            <.button>Deny</.button>
+            <.button variant="danger">Deny</.button>
           </form>
         </div>
       </div>

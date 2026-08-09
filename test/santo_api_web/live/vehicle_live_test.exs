@@ -81,7 +81,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert has_element?(view, "#logbook-empty", "No entries yet")
+    assert has_element?(view, "#logbook-empty", "No updates yet")
     refute has_element?(view, "#vehicle-logbook", "clean")
   end
 

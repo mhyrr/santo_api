@@ -132,7 +132,7 @@ defmodule SantoApiWeb.ComposerEditTest do
       {:ok, _view, html} = live(ctx.conn, edit_path(ctx, entry))
 
       assert html =~ "Correct"
-      refute html =~ "Log an entry"
+      refute html =~ "Log an update"
     end
   end
 
@@ -260,15 +260,21 @@ defmodule SantoApiWeb.ComposerEditTest do
     end
 
     test "an entry the composer cannot restate exactly is refused, not mangled", ctx do
-      # An outing logged through the agent surface: no composer mode produces
-      # `event.outing`, so prefilling it would mean saving it as something else.
+      # An agent can record the fuel grade, but this deliberately terse form has
+      # no box for it. Prefilling must not make 93 octane disappear on save.
       {:ok, entry} =
         Owners.compose_entry(ctx.scope, ctx.vehicle, %{
           date: ~D[2026-08-02],
           claims: [
             %{
-              predicate: "event.outing",
-              value: %{"kind" => "autocross", "summary" => "Best run 2nd in class"}
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "13.1",
+                "unit" => "gal",
+                "total_cents" => 6745,
+                "currency" => "USD",
+                "grade" => "93"
+              }
             }
           ]
         })
@@ -330,8 +336,14 @@ defmodule SantoApiWeb.ComposerEditTest do
           date: ~D[2026-08-02],
           claims: [
             %{
-              predicate: "event.outing",
-              value: %{"kind" => "autocross", "summary" => "Best run 2nd in class"}
+              predicate: "event.fuel",
+              value: %{
+                "volume" => "13.1",
+                "unit" => "gal",
+                "total_cents" => 6745,
+                "currency" => "USD",
+                "grade" => "93"
+              }
             }
           ]
         })

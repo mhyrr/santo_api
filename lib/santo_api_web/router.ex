@@ -55,9 +55,11 @@ defmodule SantoApiWeb.Router do
     live_session :public,
       layout: {SantoApiWeb.Layouts, :public},
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
-      live "/", VehicleLive.Index
+      live "/", HomeLive
+      live "/cars", VehicleLive.Index
       live "/start", OriginationLive
       live "/v/:public_id", VehicleLive.Show
+      live "/v/:public_id/updates/:entry_ref", VehicleLive.Update
     end
   end
 
@@ -68,8 +70,9 @@ defmodule SantoApiWeb.Router do
   # stranger back to the public page.
   #
   # Its own live_session rather than joining `:require_authenticated_user`,
-  # because these pages wear the public record's layout: an owner arriving to log
-  # a fill-up should stay on the car, not cross into the generator's chrome.
+  # because these pages wear the public record's car-first layout: an owner
+  # arriving to log a fill-up should stay on the car, not cross into the dense
+  # operator workbench.
   scope "/", SantoApiWeb do
     pipe_through [:browser, :public_chrome, :require_authenticated_user]
 
@@ -102,6 +105,7 @@ defmodule SantoApiWeb.Router do
       ] do
       live "/bench", BenchLive.Index
       live "/bench/claims", BenchLive.Claims
+      live "/bench/comments", BenchLive.Comments
       live "/bench/vehicles/:id", BenchLive.Show
     end
   end
@@ -147,6 +151,10 @@ defmodule SantoApiWeb.Router do
 
     live_session :require_authenticated_user,
       on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do
+      # The garage is the authenticated daily-use home. It lives here because
+      # the list and intake are account-scoped; each save still rechecks the
+      # selected car's stewardship in the owner context.
+      live "/garage", GarageLive
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
@@ -157,6 +165,7 @@ defmodule SantoApiWeb.Router do
 
     live_session :current_user,
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
+      live "/theme", ThemeLive
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new

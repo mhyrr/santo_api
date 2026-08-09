@@ -185,6 +185,21 @@ defmodule SantoApi.Owners do
     )
   end
 
+  @doc "Maintaining parties for a set of cars, keyed by vehicle id."
+  def stewards_for(vehicle_ids) when is_list(vehicle_ids) do
+    Repo.all(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        join: p in Party,
+        on: p.id == u.party_id,
+        where: s.vehicle_id in ^vehicle_ids and s.status == :active,
+        select: {s.vehicle_id, p}
+      )
+    )
+    |> Map.new()
+  end
+
   @doc """
   The caller's active stewardship of this car, or `nil`. The authorization every
   owner write goes through.

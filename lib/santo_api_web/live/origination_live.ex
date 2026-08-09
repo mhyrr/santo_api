@@ -321,8 +321,8 @@ defmodule SantoApiWeb.OriginationLive do
     )
   end
 
-  ## Rendering — the vs-* register: an originated car has earned no amber and
-  ## no oxblood, so the flow is almost entirely unlit (§7b.3).
+  ## Rendering — the vs-* register: an originated car has earned no verification
+  ## lime and no conflict red, so the flow is almost entirely unlit (§7b.3).
 
   @impl true
   def render(assigns) do
@@ -363,8 +363,7 @@ defmodule SantoApiWeb.OriginationLive do
         placeholder="2024 Lexus GX 550, green, 35,000 miles — or a 17-character VIN"
         autocomplete="off"
         spellcheck="false"
-        class="w-full rounded border bg-transparent px-4 py-3 text-base"
-        style="border-color: var(--vs-hairline)"
+        class="vs-field w-full px-4 py-3 text-base"
         phx-mounted={JS.focus()}
       />
       <p :if={@error} id="origination-error" class="mt-2 text-sm" style="color: var(--vs-needle)">
@@ -421,8 +420,7 @@ defmodule SantoApiWeb.OriginationLive do
         name={"reading[#{@name}]"}
         value={@value}
         autocomplete="off"
-        class="rounded border bg-transparent px-3 py-2 text-base"
-        style="border-color: var(--vs-hairline)"
+        class="vs-field px-3 py-2 text-base"
       />
     </div>
     """
@@ -448,6 +446,7 @@ defmodule SantoApiWeb.OriginationLive do
           field={@form[:email]}
           type="email"
           label="Email"
+          class="vs-field"
           autocomplete="username"
           spellcheck="false"
           required
@@ -456,6 +455,7 @@ defmodule SantoApiWeb.OriginationLive do
           field={@form[:handle]}
           type="text"
           label="Handle"
+          class="vs-field"
           autocomplete="off"
           spellcheck="false"
           required
@@ -499,8 +499,7 @@ defmodule SantoApiWeb.OriginationLive do
         autocomplete="off"
         spellcheck="false"
         required
-        class="w-full rounded border bg-transparent px-3 py-2 text-base"
-        style="border-color: var(--vs-hairline)"
+        class="vs-field w-full px-3 py-2 text-base"
       />
       <p :if={@error} id="handle-error" class="mt-2 text-sm" style="color: var(--vs-needle)">
         {@error}
@@ -585,15 +584,13 @@ defmodule SantoApiWeb.OriginationLive do
             type="url"
             name="link[url]"
             placeholder="https://…"
-            class="w-72 rounded border bg-transparent px-3 py-2 text-sm"
-            style="border-color: var(--vs-hairline)"
+            class="vs-field w-72 px-3 py-2 text-sm"
           />
           <input
             type="text"
             name="link[label]"
             placeholder="Label (optional)"
-            class="w-48 rounded border bg-transparent px-3 py-2 text-sm"
-            style="border-color: var(--vs-hairline)"
+            class="vs-field w-48 px-3 py-2 text-sm"
           />
           <button type="submit" class="vs-quiet">Add</button>
         </div>

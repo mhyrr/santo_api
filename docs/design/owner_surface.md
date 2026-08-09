@@ -1014,14 +1014,13 @@ post-setup act — the hero's empty state on the owner's own view carries the
 nudge, and the paths are §6c's. The flow asks for a sentence, an email, and a
 handle; everything else is the page's job to invite.
 
-**A note on the ink, because it is load-bearing here.** The `vs-*` system
-rations two colours: amber (`--vs-illum`) means the ledger verified something,
-oxblood (`--vs-needle`) means something disagrees. An originated car has earned
-neither, so the flow is almost entirely unlit — and this is the system telling
-the truth rather than a gap to style around. Amber appears once on screen 4, on
-the owner's own timeline tick (`.vs-tick[data-owner="true"]`, the established
-rule). Oxblood appears once in the entire flow, on screen 7, where something
-finally diverges.
+**A note on the signal colours.** The `vs-*` system rations two: track lime
+(`--vs-illum`) means the ledger verified something, while flag red
+(`--vs-needle`) means something disagrees. An originated car has earned neither,
+so the flow is almost entirely unlit — and this is the system telling the truth
+rather than a gap to style around. Lime appears once on screen 4, on the owner's
+own timeline tick (`.vs-tick[data-owner="true"]`, the established rule). Red
+appears once in the entire flow, on screen 7, where something finally diverges.
 
 **The disclosure and the hook are the same sentence.** *"Everything on this page
 is your word. Add the VIN and the factory record fills in underneath it."* That

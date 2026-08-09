@@ -197,6 +197,36 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  Search the car directory by the identifiers and words already on the record.
+
+  This is intentionally a registry read, not a fuzzy model call. Identity,
+  original input, factory facts, and as-it-sits state are searchable with one
+  case-insensitive query; publication filtering remains the owner context's
+  job because an unconfirmed stewardship is not registry truth.
+  """
+  def search_vehicles(query) when is_binary(query) do
+    case String.trim(query) do
+      "" ->
+        list_vehicles()
+
+      term ->
+        pattern = "%#{term}%"
+
+        Repo.all(
+          from(v in Vehicle,
+            where:
+              ilike(v.identity_key, ^pattern) or ilike(v.input, ^pattern) or
+                fragment("CAST(? AS text) ILIKE ?", v.facts, ^pattern) or
+                fragment("CAST(? AS text) ILIKE ?", v.current_state, ^pattern),
+            order_by: [desc: v.inserted_at]
+          )
+        )
+    end
+  end
+
+  def search_vehicles(_query), do: list_vehicles()
+
+  @doc """
   Resolve a car by its canonical public handle — the `/v/:public_id` path.
   """
   def fetch_by_public_id(public_id) when is_binary(public_id) do
@@ -899,6 +929,23 @@ defmodule SantoApi.Registry do
     |> Enum.group_by(&(&1.entry_ref || &1.claim_id))
     |> Enum.map(fn {_key, claims} -> entry(claims, include_private) end)
     |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
+  end
+
+  @doc """
+  One composed timeline entry by its stable grouping ref.
+
+  The default is deliberately public-only. Social conversation and share URLs
+  may attach only to an update the world can actually read; the owner's private
+  view opts in through the same flag as `timeline/2`.
+  """
+  def fetch_timeline_entry(vehicle_id, entry_ref, opts \\ []) do
+    with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+         entry when not is_nil(entry) <-
+           Enum.find(timeline(vehicle_id, opts), &(&1.entry_ref == ref)) do
+      {:ok, entry}
+    else
+      _absent -> {:error, :not_found}
+    end
   end
 
   defp entry([first | _rest] = claims, include_private) do

@@ -194,7 +194,7 @@ defmodule SantoApiWeb.ClaimTest do
 
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
 
-      assert html =~ "Log an entry"
+      assert html =~ "Log an update"
       refute html =~ "This is my car"
     end
   end

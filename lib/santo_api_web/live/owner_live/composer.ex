@@ -3,7 +3,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   The entry composer (owner_surface §1) — the make-or-break surface.
 
   Phone-first, because the entry moment is standing at the pump or in the garage
-  with greasy hands. Four modes: **Fill-up | Service | Mod | Note**. Fill-up opens
+  with greasy hands. Five modes: **Fill-up | Service | Mod | Drive | Note**. Fill-up opens
   selected with the odometer already carried forward from the last reading, so a
   fill-up is three numbers and a save — the Fuelly bar, which v1 has to clear.
 
@@ -14,21 +14,22 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   agent surface (§8) takes typed claims directly and never sees this mapping.
 
   Two entry points, one surface (§8, decided 2026-08-03). With an `entry_ref`
-  this is the correction form: the same four modes, prefilled from an entry
+  this is the correction form: the same five modes, prefilled from an entry
   already in the ledger, saving through `Owners.amend_entry/4`. The mapping
   runs backwards to fill the form and forwards to save it, so the two can
   never drift — and an entry the backwards direction cannot restate exactly is
   refused rather than silently reshaped.
 
-  No LLM in the loop, deliberately. Fuel and mileage are arithmetic and a
-  structured form beats a sentence; mods and notes are narrative and the text is
-  the value. Voice and free-text structuring arrive through the owner's own
-  assistant over MCP (§8), not through a parser of ours.
+  The form itself remains deterministic. Natural-language and voice intake on
+  `/garage` may prefill the same grammar, but the owner reviews ordinary fields
+  and `EntryDraft` performs every parse and calculation before the ledger sees
+  a claim. MCP remains the direct agent path.
   """
 
   use SantoApiWeb, :live_view
 
   alias SantoApi.Owners
+  alias SantoApi.Logbook.EntryDraft
   alias SantoApi.Registry
   alias SantoApiWeb.VehicleLive.Presenter
 
@@ -36,6 +37,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     {:fuel, "Fill-up"},
     {:service, "Service"},
     {:modification, "Mod"},
+    {:outing, "Drive"},
     {:note, "Note"}
   ]
 
@@ -135,7 +137,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   end
 
   def handle_event("save", %{"entry" => params}, socket) do
-    case claims(socket.assigns.mode, params) do
+    case EntryDraft.claims(socket.assigns.mode, params) do
       {:ok, claims} -> save_entry(socket, params, claims)
       {:error, message} -> {:noreply, socket |> assign(:error, message) |> assign_form(params)}
     end
@@ -189,70 +191,6 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     end)
   end
 
-  ## Form to claims — what each mode means in the vocabulary (§1, §2)
-
-  defp claims(:fuel, params) do
-    with {:ok, volume} <-
-           required_decimal(params["volume"], "A fill-up needs to know how much fuel went in."),
-         {:ok, cents} <- optional_cents(params["price"]),
-         {:ok, odometer} <-
-           optional_integer(params["odometer"], "That odometer reading is not a number.") do
-      fuel =
-        %{"volume" => volume, "unit" => "gal"}
-        |> put_unless_nil("total_cents", cents)
-        |> put_unless_nil("currency", cents && "USD")
-
-      {:ok, [%{predicate: "event.fuel", value: fuel}] ++ mileage(odometer)}
-    end
-  end
-
-  defp claims(:service, params) do
-    with {:ok, summary} <- required_text(params["summary"], "Say what was done."),
-         {:ok, odometer} <-
-           optional_integer(params["odometer"], "That odometer reading is not a number.") do
-      service = %{"summary" => summary, "performer" => trimmed(params["performer"])}
-
-      {:ok, [%{predicate: "event.service", value: service}] ++ mileage(odometer)}
-    end
-  end
-
-  defp claims(:modification, params) do
-    with {:ok, summary} <- required_text(params["summary"], "Say what changed."),
-         {:ok, sets} <- trait_delta(params) do
-      modification =
-        %{"summary" => summary}
-        |> put_unless_nil("area", trimmed(params["area"]))
-        |> put_unless_nil("sets", sets)
-
-      {:ok, [%{predicate: "event.modification", value: modification}]}
-    end
-  end
-
-  defp claims(:note, params) do
-    with {:ok, text} <- required_text(params["text"], "Nothing to log yet — say something first.") do
-      {:ok, [%{predicate: "event.note", value: %{"text" => text}}]}
-    end
-  end
-
-  # A mod may state what the car is *now* as well as what was done to it — the
-  # §2b delta. Without one the entry is timeline-only, which is a fine thing for
-  # a mod to be.
-  defp trait_delta(params) do
-    case {trimmed(params["trait"]), trimmed(params["trait_summary"])} do
-      {nil, _summary} ->
-        {:ok, nil}
-
-      {trait, nil} when is_binary(trait) ->
-        {:error, "Say what the #{Presenter.trait_label(trait) |> String.downcase()} is now."}
-
-      {trait, summary} ->
-        {:ok, [%{"predicate" => trait, "value" => %{"summary" => summary}}]}
-    end
-  end
-
-  defp mileage(nil), do: []
-  defp mileage(odometer), do: [%{predicate: "observation.mileage", value: odometer}]
-
   ## Claims to form — the same mapping, backwards (§8 correction)
 
   @doc """
@@ -261,7 +199,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   The gate on the Edit control, and it is a round trip rather than a list of
   allowed predicates: the entry is read into form fields, and those fields are
   run back through the same mapping that writes an entry. If what comes out is
-  not what went in — an `event.outing` no mode produces, a fill-up carrying a
+  not what went in — an event with no composer mode, or a fill-up carrying a
   field this form has no box for — the entry is not correctable here, because
   saving it would quietly drop whatever did not survive the trip.
 
@@ -275,7 +213,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
     with {:ok, mode} <- entry_mode(stated),
          params = mode_params(mode, stated),
-         {:ok, restated} <- claims(mode, params),
+         {:ok, restated} <- EntryDraft.claims(mode, params),
          true <- assertions(restated) == assertions(claims) do
       {:ok, mode, params}
     else
@@ -295,6 +233,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp event_predicate(:fuel), do: "event.fuel"
   defp event_predicate(:service), do: "event.service"
   defp event_predicate(:modification), do: "event.modification"
+  defp event_predicate(:outing), do: "event.outing"
   defp event_predicate(:note), do: "event.note"
 
   defp mode_params(:fuel, stated) do
@@ -329,6 +268,18 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     }
   end
 
+  defp mode_params(:outing, stated) do
+    outing = stated["event.outing"]
+
+    %{
+      "summary" => outing["summary"],
+      "outing_kind" => outing["kind"],
+      "venue" => outing["venue"],
+      "result" => outing["result"],
+      "odometer" => odometer(stated)
+    }
+  end
+
   defp mode_params(:note, stated), do: %{"text" => stated["event.note"]["text"]}
 
   # One delta is what the form can state. A mod that sets two traits at once
@@ -354,83 +305,10 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   defp dollars(_absent), do: ""
 
-  defp required_text(value, message) do
-    case trimmed(value) do
-      nil -> {:error, message}
-      text -> {:ok, text}
-    end
-  end
-
-  # Volume stays a decimal *string* all the way into the claim: the vocabulary
-  # takes it that way so no float ever touches a measurement.
-  defp required_decimal(value, message) do
-    case trimmed(value) do
-      nil ->
-        {:error, message}
-
-      text ->
-        case Decimal.parse(text) do
-          {decimal, ""} ->
-            if Decimal.negative?(decimal),
-              do: {:error, "A volume cannot be negative."},
-              else: {:ok, Decimal.to_string(decimal, :normal)}
-
-          _unparseable ->
-            {:error, "That volume is not a number."}
-        end
-    end
-  end
-
-  # Dollars in, integer cents stored. The arithmetic stays exact — a float here
-  # would make cost-per-mile wrong in the third decimal place forever.
-  defp optional_cents(value) do
-    case trimmed(value) do
-      nil ->
-        {:ok, nil}
-
-      text ->
-        case Decimal.parse(String.trim_leading(text, "$")) do
-          {decimal, ""} ->
-            if Decimal.negative?(decimal),
-              do: {:error, "A price cannot be negative."},
-              else:
-                {:ok, decimal |> Decimal.mult(100) |> Decimal.round(0) |> Decimal.to_integer()}
-
-          _unparseable ->
-            {:error, "That price is not a number."}
-        end
-    end
-  end
-
-  defp optional_integer(value, message) do
-    case trimmed(value) do
-      nil ->
-        {:ok, nil}
-
-      text ->
-        case Integer.parse(String.replace(text, ",", "")) do
-          {integer, ""} when integer >= 0 -> {:ok, integer}
-          _unparseable -> {:error, message}
-        end
-    end
-  end
-
-  defp trimmed(nil), do: nil
-
-  defp trimmed(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      text -> text
-    end
-  end
-
-  defp put_unless_nil(map, _key, nil), do: map
-  defp put_unless_nil(map, key, value), do: Map.put(map, key, value)
-
   defp visibility("private"), do: :private
   defp visibility(_public), do: :public
 
-  defp mode(mode) when mode in ~w(fuel service modification note),
+  defp mode(mode) when mode in ~w(fuel service modification outing note),
     do: String.to_existing_atom(mode)
 
   defp mode(_unknown), do: :fuel
@@ -442,7 +320,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp refusal(:missing_date), do: "That date could not be read."
   defp refusal({:claim_not_live, :rejected}), do: "This was proposed before and turned down."
   defp refusal({:claim_not_live, _state}), do: "A later claim has already replaced this one."
-  defp refusal(%Ecto.Changeset{}), do: "That entry does not fit the record. Check the numbers."
+  defp refusal(%Ecto.Changeset{}), do: "That update does not fit the record. Check the numbers."
   defp refusal(_reason), do: "That could not be saved."
 
   defp assign_form(socket, params) do
@@ -477,10 +355,10 @@ defmodule SantoApiWeb.OwnerLive.Composer do
       </.link>
 
       <h1 class="vs-spec mt-4 text-3xl sm:text-4xl">
-        {if @entry_ref, do: "Correct this entry", else: "Log an entry"}
+        {if @entry_ref, do: "Correct this update", else: "Log an update"}
       </h1>
 
-      <nav class="mt-7 grid grid-cols-4 gap-1.5" aria-label="Entry type">
+      <nav class="mt-7 grid grid-cols-5 gap-1.5" aria-label="Entry type">
         <button
           :for={{mode, label} <- @modes}
           type="button"
@@ -506,6 +384,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
         <.fuel_fields :if={@mode == :fuel} form={@form} />
         <.service_fields :if={@mode == :service} form={@form} />
         <.mod_fields :if={@mode == :modification} form={@form} />
+        <.outing_fields :if={@mode == :outing} form={@form} />
         <.note_fields :if={@mode == :note} form={@form} />
 
         <div class="grid gap-5 sm:grid-cols-2">
@@ -556,20 +435,20 @@ defmodule SantoApiWeb.OwnerLive.Composer do
             class="vs-check mt-0.5"
           />
           <span>
-            Keep this entry off the public page.
+            Keep this update off the public page.
             <span class="block text-xs">
-              It stays in the record and in your own view, and in any dossier you share.
+              It stays in your own history and in any export you share.
             </span>
           </span>
         </label>
 
         <button type="submit" id="composer-save" class="vs-commit w-full">
-          {if @entry_ref, do: "Save the correction", else: "Log it"}
+          {if @entry_ref, do: "Save the correction", else: "Log the update"}
         </button>
       </.form>
 
       <p class="mt-8 text-xs leading-relaxed" style="color: var(--vs-dim)">
-        Nothing here is overwritten. Correcting an entry writes a new claim and
+        Nothing here is overwritten. Correcting an update writes a new claim and
         withdraws the one it replaces — the withdrawn value stays in the ledger under
         your handle, off the page.
       </p>
@@ -742,6 +621,83 @@ defmodule SantoApiWeb.OwnerLive.Composer do
           />
         </div>
       </fieldset>
+    </div>
+    """
+  end
+
+  attr :form, :map, required: true
+
+  defp outing_fields(assigns) do
+    ~H"""
+    <div class="space-y-5">
+      <div>
+        <label for="entry_summary" class="vs-eyebrow" style="color: var(--vs-dim)">
+          Where did you go?
+        </label>
+        <textarea
+          id="entry_summary"
+          name="entry[summary]"
+          rows="3"
+          class="vs-field mt-2"
+          placeholder="Dawn run up Angeles Crest; empty roads and the car felt perfect"
+        >{@form[:summary].value}</textarea>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="entry_outing_kind" class="vs-eyebrow" style="color: var(--vs-dim)">
+            Kind of day
+          </label>
+          <select id="entry_outing_kind" name="entry[outing_kind]" class="vs-field mt-2">
+            <option value="drive" selected={@form[:outing_kind].value in [nil, "", "drive"]}>
+              Drive
+            </option>
+            <option value="track" selected={@form[:outing_kind].value == "track"}>Track</option>
+            <option value="autocross" selected={@form[:outing_kind].value == "autocross"}>
+              Autocross
+            </option>
+            <option value="show" selected={@form[:outing_kind].value == "show"}>Show</option>
+            <option value="other" selected={@form[:outing_kind].value == "other"}>Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="entry_venue" class="vs-eyebrow" style="color: var(--vs-dim)">Place</label>
+          <input
+            type="text"
+            id="entry_venue"
+            name="entry[venue]"
+            value={@form[:venue].value}
+            class="vs-field mt-2"
+            placeholder="Lime Rock Park"
+          />
+        </div>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="entry_result" class="vs-eyebrow" style="color: var(--vs-dim)">Result</label>
+          <input
+            type="text"
+            id="entry_result"
+            name="entry[result]"
+            value={@form[:result].value}
+            class="vs-field mt-2"
+            placeholder="Best lap 1:03.2"
+          />
+        </div>
+        <div>
+          <label for="entry_odometer" class="vs-eyebrow" style="color: var(--vs-dim)">Odometer</label>
+          <input
+            type="text"
+            inputmode="numeric"
+            id="entry_odometer"
+            name="entry[odometer]"
+            value={@form[:odometer].value}
+            class="vs-field mt-2"
+          />
+        </div>
+      </div>
     </div>
     """
   end

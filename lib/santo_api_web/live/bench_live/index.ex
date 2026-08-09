@@ -13,12 +13,14 @@ defmodule SantoApiWeb.BenchLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     vehicles = Registry.list_vehicles()
+    reported_replies = SantoApi.Social.list_open_reports(socket.assigns.current_scope)
 
     {:ok,
      socket
      |> assign(:lookup_form, to_form(%{"vin" => ""}, as: :lookup))
      |> assign(:error, nil)
      |> assign(:waiting_claims, length(Owners.list_pending_challenges()))
+     |> assign(:reported_replies, length(reported_replies))
      |> assign(:vehicle_count, length(vehicles))
      |> stream(:vehicles, vehicles)}
   end
@@ -66,6 +68,10 @@ defmodule SantoApiWeb.BenchLive.Index do
   defp claims_waiting(1), do: "1 claim waiting"
   defp claims_waiting(count), do: "#{count} claims waiting"
 
+  defp reports_waiting(0), do: "No reported replies"
+  defp reports_waiting(1), do: "1 reported reply"
+  defp reports_waiting(count), do: "#{count} reported replies"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -80,14 +86,26 @@ defmodule SantoApiWeb.BenchLive.Index do
       <!-- Somebody has been waiting since they took that photograph, so the
            count is on the way in rather than behind a menu. -->
       <p class="mb-6">
-        <.link navigate={~p"/bench/claims"} class="link">
+        <.link
+          navigate={~p"/bench/claims"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
           {claims_waiting(@waiting_claims)}
+        </.link>
+      </p>
+
+      <p class="-mt-4 mb-6">
+        <.link
+          navigate={~p"/bench/comments"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
+          {reports_waiting(@reported_replies)}
         </.link>
       </p>
 
       <section
         id="vin-lookup"
-        class="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm"
+        class="club-work-panel p-5"
       >
         <.form
           for={@lookup_form}
@@ -102,12 +120,12 @@ defmodule SantoApiWeb.BenchLive.Index do
             placeholder="WP0CA298X5L001502"
             autocomplete="off"
           />
-          <.button id="build-record-button" variant="primary" class="mb-2 min-h-10 px-5">
+          <.button id="build-record-button" variant="primary" class="mb-2 px-5">
             Build record
           </.button>
         </.form>
 
-        <p class="mt-1 text-sm text-base-content/60">
+        <p class="club-muted mt-1 text-sm leading-relaxed">
           Standard VINs run Santo and every configured free provider. Pre-standard chassis
           numbers are registered without VIN-only searches.
         </p>
@@ -115,7 +133,7 @@ defmodule SantoApiWeb.BenchLive.Index do
         <div
           :if={@error}
           id="vin-lookup-error"
-          class="mt-4 rounded-xl border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
+          class="club-notice club-notice-warning mt-4"
         >
           {@error}
         </div>
@@ -123,26 +141,26 @@ defmodule SantoApiWeb.BenchLive.Index do
 
       <div class="mt-10 flex items-end justify-between gap-4">
         <div>
-          <h2 class="text-lg font-semibold">Registry vehicles</h2>
-          <p class="text-sm text-base-content/60">
+          <h2 class="club-control-title">Registry vehicles</h2>
+          <p class="club-muted mt-1 text-sm">
             Open a VIN to inspect facts, sources, and acquisition work.
           </p>
         </div>
-        <span id="vehicle-count" class="text-sm tabular-nums text-base-content/60">
+        <span id="vehicle-count" class="club-code club-muted text-sm">
           {@vehicle_count} total
         </span>
       </div>
 
       <.table id="registry-vehicles" rows={@streams.vehicles}>
         <:col :let={{_id, vehicle}} label="identifier">
-          <.link navigate={~p"/bench/vehicles/#{vehicle.id}"} class="link">
+          <.link navigate={~p"/bench/vehicles/#{vehicle.id}"} class="club-link">
             {vehicle.identity_key}
           </.link>
         </:col>
         <:col :let={{_id, vehicle}} label="kind">{vehicle.identity_kind}</:col>
         <:col :let={{_id, vehicle}} label="ingested">{vehicle.inserted_at}</:col>
         <:action :let={{_id, vehicle}}>
-          <a href={~p"/v/#{vehicle.public_id}"} class="link">Public record</a>
+          <a href={~p"/v/#{vehicle.public_id}"} class="club-link">Public record</a>
         </:action>
       </.table>
     </Layouts.app>
