@@ -374,7 +374,7 @@ defmodule SantoApi.Registry do
 
     case non_snapshot_artifact_by_sha(sha) do
       %Artifact{} = existing ->
-        {:ok, existing}
+        maybe_add_photo_derivatives(existing, kind, attrs[:metadata])
 
       nil ->
         storage_ref = sha <> Path.extname(filename)
@@ -395,6 +395,27 @@ defmodule SantoApi.Registry do
          })}
     end
   end
+
+  # Content deduplication may find a photo artifact created before the public
+  # image pipeline existed. Derivatives describe the same immutable bytes, so
+  # adding that one generated metadata key does not rewrite supplier, rights,
+  # entry membership, or any acquired content.
+  defp maybe_add_photo_derivatives(
+         %Artifact{kind: :photo, metadata: metadata} = artifact,
+         :photo,
+         %{"photo_derivatives" => derivatives}
+       ) do
+    if Map.has_key?(metadata, "photo_derivatives") do
+      {:ok, artifact}
+    else
+      artifact
+      |> Ecto.Changeset.change(metadata: Map.put(metadata, "photo_derivatives", derivatives))
+      |> Repo.update()
+    end
+  end
+
+  defp maybe_add_photo_derivatives(%Artifact{} = artifact, _kind, _metadata),
+    do: {:ok, artifact}
 
   @doc """
   Persist a source pointer without copying the referenced page. Reference

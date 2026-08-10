@@ -45,7 +45,16 @@ defmodule SantoApiWeb.Router do
 
     post "/builds", VehicleBuildController, :create
     get "/vin/:vin", VehiclePageController, :resolve
+
+    # Media delivery stays in the optional-auth public browser pipeline. An
+    # anonymous visitor may see a published public placement; the same route
+    # can read the mounted session to let a steward see private media without
+    # inventing a second signed-in URL or exposing the original upload.
     get "/events/:public_id/attachments/:id", EventAttachmentController, :show
+    get "/events/:public_id/attachments/:id/:variant", EventAttachmentController, :show
+    get "/v/:public_id/photos/:id/:variant", VehiclePhotoController, :show
+    get "/v/:public_id/updates/:entry_ref/share-card.jpg", DistributionController, :share_card
+    get "/v/:public_id/badge.svg", DistributionController, :badge
 
     # Anonymous is the normal case here, so the scope is mounted but never
     # required — it only decides whether the page admits you are signed in.

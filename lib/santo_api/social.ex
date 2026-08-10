@@ -12,7 +12,7 @@ defmodule SantoApi.Social do
   import Ecto.Query, warn: false
 
   alias SantoApi.Accounts.{Scope, User}
-  alias SantoApi.Registry
+  alias SantoApi.Owners
   alias SantoApi.Registry.Vehicle
   alias SantoApi.Repo
   alias SantoApi.Social.{CommentReport, UpdateComment, UpdateLike}
@@ -291,8 +291,11 @@ defmodule SantoApi.Social do
   def dismiss_report(_scope, _report_id, _note), do: {:error, :not_authorized}
 
   defp public_entry(vehicle, entry_ref) do
-    with {:ok, entry} <- Registry.fetch_timeline_entry(vehicle.id, entry_ref) do
+    with true <- Owners.published?(vehicle),
+         {:ok, entry} <- Owners.fetch_timeline_entry(nil, vehicle, entry_ref) do
       {:ok, entry.entry_ref}
+    else
+      _private_or_missing -> {:error, :not_found}
     end
   end
 

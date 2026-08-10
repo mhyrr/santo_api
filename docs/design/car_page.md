@@ -1,10 +1,10 @@
 # Public car page — working design
 
-*Status: approved 2026-08-09; first production iteration implemented
-2026-08-10. `/theme` remains the review lab, while the production car page and
-generic event surfaces now use the accepted hierarchy. Hero photography still
-waits on the public image pipeline, so cars without it use the deliberate
-typographic fallback.*
+*Status: approved 2026-08-09; production hierarchy, first-party photos, and the
+first distribution slice implemented 2026-08-10. `/theme` remains the review
+lab, while the production car page and generic event surfaces use the accepted
+hierarchy. Cars without a public owner photo keep the deliberate typographic
+fallback.*
 
 ## The job
 
@@ -65,12 +65,13 @@ Car page (/v/:public_id)
 │   └── Log update / Add event / Share
 ├── In-page navigation
 │   ├── Story
+│   ├── Gallery
 │   ├── Journal
 │   ├── As it sits
 │   └── Provenance
 ├── Owner story
 │   ├── Mutable opening-post prose
-│   └── Compact photo strip (after the public image pipeline)
+│   └── Recent-media gallery
 ├── Build-at-a-glance
 │   ├── Current engine / transmission
 │   ├── Suspension / wheels / brakes / exterior
@@ -146,16 +147,37 @@ the journal order and lands on the opening post.
 This is the first unresolved product call in the pass: a traditional build
 thread defaults oldest-first; an active car profile defaults newest-first.
 
-## Photo requirement
+## Photo implementation
 
-The page cannot become a showpiece through typography alone. The next build
-needs:
+The page cannot become a showpiece through typography alone. The first photo
+slice now provides:
 
 - an owner-selected hero image;
 - public serving for public owner-photo artifacts;
 - derived thumbnails and responsive image sizes;
 - photo ordering and alt text;
 - a typographic fallback for cars with no public images.
+
+Upload bytes remain immutable, content-deduplicated `Artifact` records. A
+mutable `vehicle_photos` placement owns the presentation decisions that cannot
+live safely on a deduplicated artifact: entry membership, date, alt text,
+gallery order, hero selection, and public/private visibility. Reusing the same
+bytes in two updates therefore does not let one entry inherit the other's
+privacy or order.
+
+The server validates the image and writes metadata-stripped JPEG derivatives
+at responsive widths. Public pages use `srcset`; the car-photo route resolves a
+named derivative through the placement and never serves the original upload.
+Anonymous delivery requires both a public placement and a published car. The
+steward's optional-auth session may resolve private placements with
+`private, no-store` caching.
+
+A photo may stand alone as a journal update without manufacturing an empty
+`event.note` claim. It receives the same stable update permalink, reactions,
+and replies as a claim-backed post. Removing it removes mutable presentation
+while retaining its immutable artifact. Event photos use the same car-update
+placement and derivative bytes; the event attachment is a second presentation
+of that media, not a second upload.
 
 Marketplace photos are never copied into this gallery. External listings stay
 links or evidence pointers according to their rights profile.
@@ -356,6 +378,10 @@ Ratified with the `/theme` prototype on 2026-08-09:
 7. **Typed extensions:** none. Generic owner-defined details and labeled
    attachments must fail a repeated real workflow before a discipline-specific
    adapter earns a schema.
+8. **Public copy:** domain states stay in the domain. The page says “source,”
+   “date,” “backed by,” “verified,” and “under review”; `claim`, `asserted`,
+   `proposed`, `admitted`, and “live disagreement” remain operator or design
+   language. Empty story and gallery prompts ask one ordinary question and stop.
 
 ### First production slice
 

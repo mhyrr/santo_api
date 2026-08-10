@@ -240,6 +240,39 @@ defmodule SantoApiWeb.ComposerTest do
     end
   end
 
+  describe "photo-first updates" do
+    test "a photo can be the update, with preview and public car-page delivery", ctx do
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log?mode=note")
+
+      assert has_element?(view, "[data-mode=note][aria-current=true]")
+
+      upload =
+        file_input(view, "#composer-form", :photos, [
+          %{
+            name: "cayman-paddock.jpg",
+            content: File.read!("priv/demo/media/cayman-autocross-paddock.jpg"),
+            type: "image/jpeg"
+          }
+        ])
+
+      assert render_upload(upload, "cayman-paddock.jpg") =~ "cayman-paddock.jpg"
+      assert has_element?(view, "[id^=composer-photo-] img")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> form("#composer-form", entry: %{text: "", date: "2026-08-10"})
+               |> render_submit()
+
+      assert to == "/v/#{ctx.vehicle.public_id}"
+      assert [%{claims: [], photos: [_photo]}] = Owners.timeline(nil, ctx.vehicle)
+
+      {:ok, page, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      assert has_element?(page, "#vehicle-hero-photo[srcset]")
+      assert has_element?(page, "#vehicle-gallery [id^=vehicle-photo-]")
+      assert has_element?(page, "#vehicle-logbook [id*=-photo-]")
+    end
+  end
+
   describe "date and visibility" do
     test "back-filling is one field, because it is a first-session behavior", ctx do
       {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log")

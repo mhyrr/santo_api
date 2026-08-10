@@ -212,7 +212,11 @@ defmodule SantoApiWeb.EventLive.Show do
             >
               <img
                 :if={item.attachment.kind == :photo and item.attachment.artifact}
-                src={EventComponents.attachment_href(@event, item.attachment)}
+                src={EventComponents.attachment_image_src(@event, item.attachment)}
+                srcset={EventComponents.attachment_srcset(@event, item.attachment)}
+                sizes="(max-width: 640px) 100vw, 33vw"
+                width={EventComponents.attachment_width(item.attachment)}
+                height={EventComponents.attachment_height(item.attachment)}
                 alt={item.attachment.label}
               />
               <div :if={item.attachment.kind != :photo or is_nil(item.attachment.artifact)}>

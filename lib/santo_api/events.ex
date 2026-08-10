@@ -38,6 +38,58 @@ defmodule SantoApi.Events do
 
   def create_participation(_scope, %Vehicle{}, _attrs), do: {:error, :authentication_required}
 
+  @doc "Add labeled photo uploads to an existing participation and its car update."
+  def add_uploads(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        %EventParticipation{} = participation,
+        uploads
+      )
+      when is_list(uploads) do
+    if participation.user_id == user_id and participation.vehicle_id == vehicle.id do
+      case Repo.transaction(fn ->
+             media =
+               case Owners.attach_photos(scope, vehicle, participation.entry_ref, uploads) do
+                 {:ok, media} -> media
+                 {:error, reason} -> Repo.rollback(reason)
+               end
+
+             position =
+               Repo.aggregate(
+                 from(a in EventAttachment, where: a.participation_id == ^participation.id),
+                 :count
+               )
+
+             uploads
+             |> Enum.zip(media.artifacts)
+             |> Enum.with_index(position)
+             |> Enum.each(fn {{upload, artifact}, index} ->
+               %EventAttachment{participation_id: participation.id, artifact_id: artifact.id}
+               |> EventAttachment.changeset(%{
+                 label: value(upload, :label, value(upload, :filename, "Photo")),
+                 kind: :photo,
+                 position: index
+               })
+               |> insert_or_rollback!()
+             end)
+
+             Repo.preload(
+               participation,
+               [:event, :user, :vehicle, attachments: :artifact],
+               force: true
+             )
+           end) do
+        {:ok, updated} -> {:ok, updated}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :not_authorized}
+    end
+  end
+
+  def add_uploads(_scope, %Vehicle{}, %EventParticipation{}, _uploads),
+    do: {:error, :authentication_required}
+
   @doc "Validate the combined occurrence/participation draft before its review step."
   def validate_draft(attrs) do
     with {:ok, event} <- validate_draft_event(value(attrs, :event_id), value(attrs, :event, %{})),
@@ -353,7 +405,7 @@ defmodule SantoApi.Events do
                on: artifact.id == a.artifact_id,
                where:
                  a.id == ^id and e.public_id == ^event_public_id and
-                   p.visibility == :public and artifact.visibility == :public,
+                   p.visibility == :public,
                preload: [artifact: artifact]
              )
            ) do

@@ -29,6 +29,7 @@ defmodule SantoApi.Demo.DmvSeed do
   @wdcr_hpde_source "https://www.motorsportreg.com/events/wdcr-hpde-tt-4-summit-point-apr-24-26-circuit-scca-washington-dc-071517"
   @katies_source "https://www.facebook.com/groups/710572889036708/"
   @katies_listing "https://carscene.net/events/c17650f7-4cdf-408b-8b57-6edc67b4734c"
+  @demo_media_dir Path.expand("../../../priv/demo/media", __DIR__)
 
   @cars [
     %{
@@ -239,6 +240,15 @@ defmodule SantoApi.Demo.DmvSeed do
             %{label: "Tire pressure", value: "32F / 30R hot"},
             %{label: "Change tried", value: "Rear bar one step softer"}
           ],
+          photos: [
+            %{
+              path: Path.join(@demo_media_dir, "cayman-autocross-paddock.jpg"),
+              filename: "cayman-autocross-paddock.jpg",
+              mime: "image/jpeg",
+              kind: :photo,
+              label: "The Cayman in the Waldorf paddock between runs"
+            }
+          ],
           links: [
             %{label: "WDCR registration & event details", kind: :link, url: @wdcr_ax_source}
           ]
@@ -269,6 +279,15 @@ defmodule SantoApi.Demo.DmvSeed do
             %{label: "Best clean lap", value: "1:24.8"},
             %{label: "Coach", value: "Sam"},
             %{label: "Tires", value: "Michelin Pilot Sport Cup 2"}
+          ],
+          photos: [
+            %{
+              path: Path.join(@demo_media_dir, "gt3-touring-summit-point.jpg"),
+              filename: "gt3-touring-summit-point.jpg",
+              mime: "image/jpeg",
+              kind: :photo,
+              label: "The Linden Green GT3 Touring at Summit Point"
+            }
           ],
           links: [
             %{label: "WDCR registration & event details", kind: :link, url: @wdcr_hpde_source}
@@ -301,6 +320,15 @@ defmodule SantoApi.Demo.DmvSeed do
             %{label: "Parked near", value: "The Old Brogue side"},
             %{label: "Most asked about", value: "Cooling and hood clearance"},
             %{label: "Coffee", value: "Black, one refill"}
+          ],
+          photos: [
+            %{
+              path: Path.join(@demo_media_dir, "datsun-katies-dawn.jpg"),
+              filename: "datsun-katies-dawn.jpg",
+              mime: "image/jpeg",
+              kind: :photo,
+              label: "The Ivory White 280Z at Katie's just after sunrise"
+            }
           ],
           links: [
             %{label: "Katie's Cars & Coffee community group", kind: :link, url: @katies_source},
@@ -496,6 +524,7 @@ defmodule SantoApi.Demo.DmvSeed do
           Repo.preload(participation, [:event, :user, :vehicle, attachments: :artifact])
 
         sync_links!(participation, spec.links)
+        sync_photos!(car, participation, Map.get(spec, :photos, []))
 
         Repo.preload(
           participation,
@@ -512,6 +541,7 @@ defmodule SantoApi.Demo.DmvSeed do
             details: spec.details,
             visibility: :public
           },
+          uploads: Map.get(spec, :photos, []),
           links: spec.links
         }
 
@@ -521,6 +551,8 @@ defmodule SantoApi.Demo.DmvSeed do
   end
 
   defp sync_links!(participation, links) do
+    media_count = Enum.count(participation.attachments, &(&1.kind != :link))
+
     links
     |> Enum.with_index()
     |> Enum.each(fn {attrs, position} ->
@@ -530,9 +562,29 @@ defmodule SantoApi.Demo.DmvSeed do
         end) || %EventAttachment{participation_id: participation.id}
 
       attachment
-      |> EventAttachment.changeset(Map.put(attrs, :position, position))
+      |> EventAttachment.changeset(Map.put(attrs, :position, media_count + position))
       |> Repo.insert_or_update!()
     end)
+  end
+
+  defp sync_photos!(_car, _participation, []), do: :ok
+
+  defp sync_photos!(car, participation, photos) do
+    missing =
+      Enum.reject(photos, fn photo ->
+        Enum.any?(participation.attachments, fn attachment ->
+          attachment.kind == :photo and attachment.label == photo.label
+        end)
+      end)
+
+    if missing != [] do
+      unwrap!(
+        Events.add_uploads(car.scope, car.vehicle, participation, missing),
+        "add event photos"
+      )
+    end
+
+    :ok
   end
 
   defp seed_conversation!(cars, events) do

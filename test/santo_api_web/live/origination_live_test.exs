@@ -390,7 +390,7 @@ defmodule SantoApiWeb.OriginationLiveTest do
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.created.vehicle.public_id}")
 
       refute html =~ "vehicle-record"
-      assert html =~ "Everything on this page is your word"
+      assert html =~ "Add the VIN when you have it"
       # The visitor is told, but only the steward gets the form.
       refute html =~ "resolve-form"
     end

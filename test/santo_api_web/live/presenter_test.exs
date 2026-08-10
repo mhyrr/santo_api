@@ -238,7 +238,7 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
         })
 
       assert parts.headline == "Planned: Try lighter wheels"
-      assert parts.details == [%{label: "Plan", value: "Wheels & tires"}]
+      assert parts.details == [%{label: "Area", value: "Wheels & tires"}]
     end
 
     test "a fill-up shows what it cost" do

@@ -20,7 +20,8 @@ defmodule SantoApi.Owners do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Accounts.User
-  alias SantoApi.Owners.{Challenge, Notifier, Stewardship}
+  alias SantoApi.Media
+  alias SantoApi.Owners.{Challenge, Notifier, Photos, Stewardship, VehiclePhoto}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
@@ -682,7 +683,86 @@ defmodule SantoApi.Owners do
   can see is a hole, not a feature.
   """
   def timeline(scope, %Vehicle{} = vehicle) do
-    Registry.timeline(vehicle.id, include_private: stewarding?(scope, vehicle))
+    include_private = stewarding?(scope, vehicle)
+    entries = Registry.timeline(vehicle.id, include_private: include_private)
+    photos = Photos.list_photos(vehicle, include_private: include_private)
+    photo_groups = Enum.group_by(photos, & &1.entry_ref)
+
+    claim_entries =
+      Enum.map(entries, fn entry ->
+        Map.put(entry, :photos, Map.get(photo_groups, entry.entry_ref, []))
+      end)
+
+    claim_refs = MapSet.new(entries, & &1.entry_ref)
+
+    photo_entries =
+      photo_groups
+      |> Enum.reject(fn {entry_ref, _photos} -> MapSet.member?(claim_refs, entry_ref) end)
+      |> Enum.map(fn {_entry_ref, entry_photos} -> photo_entry(entry_photos) end)
+
+    (claim_entries ++ photo_entries)
+    |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
+  end
+
+  @doc "Public journal-entry counts, including photo-first entries with no claim row."
+  def public_entry_counts([]), do: %{}
+
+  def public_entry_counts(vehicle_ids) when is_list(vehicle_ids) do
+    claim_refs =
+      Repo.all(
+        from(claim in Claim,
+          where:
+            claim.vehicle_id in ^vehicle_ids and claim.state == :admitted and
+              claim.visibility == :public and claim.scope_kind in [:event, :observed],
+          select: {claim.vehicle_id, claim.entry_ref, claim.id}
+        )
+      )
+      |> Enum.map(fn {vehicle_id, entry_ref, claim_id} ->
+        {vehicle_id, entry_ref || claim_id}
+      end)
+
+    photo_refs =
+      Repo.all(
+        from(photo in VehiclePhoto,
+          where: photo.vehicle_id in ^vehicle_ids and photo.visibility == :public,
+          select: {photo.vehicle_id, photo.entry_ref}
+        )
+      )
+
+    (claim_refs ++ photo_refs)
+    |> Enum.uniq()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {vehicle_id, refs} -> {vehicle_id, length(refs)} end)
+  end
+
+  @doc "One timeline entry with its visible owner photos."
+  def fetch_timeline_entry(scope, %Vehicle{} = vehicle, entry_ref) do
+    with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+         entry when not is_nil(entry) <-
+           Enum.find(timeline(scope, vehicle), &(&1.entry_ref == ref)) do
+      {:ok, entry}
+    else
+      _absent -> {:error, :not_found}
+    end
+  end
+
+  defp photo_entry([%VehiclePhoto{} = first | _rest] = photos) do
+    %{
+      entry_ref: first.entry_ref,
+      date: first.entry_date,
+      party: first.author_user.handle,
+      party_kind: :owner,
+      method: :human,
+      visibility: photo_entry_visibility(photos),
+      recorded_at: Enum.max_by(photos, & &1.inserted_at, DateTime).inserted_at,
+      evidence: [],
+      claims: [],
+      photos: photos
+    }
+  end
+
+  defp photo_entry_visibility(photos) do
+    if Enum.any?(photos, &(&1.visibility == :private)), do: :private, else: :public
   end
 
   ## Entries — the composer's write path
@@ -711,7 +791,8 @@ defmodule SantoApi.Owners do
 
     * `:date` — required. The timeline orders by it and the fold reads recency
       off it, so an owner entry is never undated.
-    * `:claims` — `[%{predicate: ..., value: ...}]`, at least one.
+    * `:claims` — `[%{predicate: ..., value: ...}]`. May be empty only when
+      the entry contains a photo; a photo-first update is still an update.
     * `:photos` — `[%{path:, filename:, mime:}]`, owner-supplied photo artifacts.
     * `:attachments` — `[%{path:, filename:, mime:, kind:}]`, generic event
       files. `:photo` remains a photo artifact; other kinds are stored as
@@ -723,11 +804,51 @@ defmodule SantoApi.Owners do
   def compose_entry(scope, %Vehicle{} = vehicle, attrs) do
     with {:ok, stewardship} <- authorize_entry(scope, vehicle),
          {:ok, date} <- entry_date(attrs),
-         {:ok, claim_attrs} <- entry_claims(attrs) do
+         {:ok, claim_attrs} <- composed_claims(attrs) do
       party = party(%User{id: stewardship.user_id})
-      write_entry(vehicle, party, date, claim_attrs, attrs)
+      write_entry(scope, vehicle, party, date, claim_attrs, attrs)
     end
   end
+
+  @doc """
+  Add owner-supplied photos to an existing authored entry.
+
+  Event participation seeding and future day-two editing use this narrow door
+  so an event can reuse the car update's photo placements rather than creating
+  a second media record. Date and visibility are inherited from the entry's
+  live claims; this function cannot turn event-local media into durable state.
+  """
+  def attach_photos(scope, %Vehicle{} = vehicle, entry_ref, uploads) when is_list(uploads) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, claims} <- fetch_own_entry(vehicle, party, entry_ref),
+         [%Claim{scope_date: date} | _rest] <- claims,
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      visibility = entry_visibility(claims)
+
+      case Repo.transaction(fn ->
+             results =
+               Enum.map(
+                 uploads,
+                 &write_photo!(scope, vehicle, party, ref, date, visibility, &1)
+               )
+
+             %{
+               artifacts: Enum.map(results, &elem(&1, 0)),
+               photos: Enum.map(results, &elem(&1, 1))
+             }
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      [] -> {:error, :entry_not_found}
+      other -> other
+    end
+  end
+
+  def attach_photos(_scope, %Vehicle{}, _entry_ref, _uploads),
+    do: {:error, :authentication_required}
 
   defp authorize_entry(scope, vehicle) do
     case stewardship(scope, vehicle) do
@@ -750,26 +871,59 @@ defmodule SantoApi.Owners do
   defp entry_claims(%{claims: [_first | _rest] = claims}), do: {:ok, claims}
   defp entry_claims(_attrs), do: {:error, :empty_entry}
 
-  defp write_entry(vehicle, party, date, claim_attrs, attrs) do
+  defp composed_claims(attrs) do
+    claims = Map.get(attrs, :claims, [])
+
+    cond do
+      not is_list(claims) -> {:error, :empty_entry}
+      claims != [] -> {:ok, claims}
+      photo_upload?(Map.get(attrs, :photos, [])) -> {:ok, []}
+      photo_attachment?(Map.get(attrs, :attachments, [])) -> {:ok, []}
+      true -> {:error, :empty_entry}
+    end
+  end
+
+  defp photo_upload?([_photo | _rest]), do: true
+  defp photo_upload?(_photos), do: false
+
+  defp photo_attachment?(attachments) when is_list(attachments),
+    do: Enum.any?(attachments, &(Map.get(&1, :kind) in [:photo, "photo"]))
+
+  defp photo_attachment?(_attachments), do: false
+
+  defp write_entry(scope, vehicle, party, date, claim_attrs, attrs) do
     entry_ref = Registry.new_entry_ref()
-    visibility = Map.get(attrs, :visibility, :public)
+    visibility = entry_visibility_value(Map.get(attrs, :visibility, :public))
     opts = basis_opts(attrs)
 
     result =
       Repo.transaction(fn ->
         claims = Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
 
-        artifacts =
-          Enum.map(Map.get(attrs, :photos, []), &write_photo!(vehicle, party, entry_ref, &1)) ++
-            Enum.map(
-              Map.get(attrs, :attachments, []),
-              &write_attachment!(vehicle, party, entry_ref, &1)
-            )
+        photo_results =
+          Enum.map(
+            Map.get(attrs, :photos, []),
+            &write_photo!(scope, vehicle, party, entry_ref, date, visibility, &1)
+          )
+
+        attachment_results =
+          Enum.map(
+            Map.get(attrs, :attachments, []),
+            &write_attachment!(scope, vehicle, party, entry_ref, date, visibility, &1)
+          )
+
+        artifacts = Enum.map(photo_results ++ attachment_results, &elem(&1, 0))
+
+        photos =
+          (photo_results ++ attachment_results)
+          |> Enum.map(&elem(&1, 1))
+          |> Enum.reject(&is_nil/1)
 
         %{
           entry_ref: entry_ref,
           claims: Enum.map(claims, &apply_visibility!(&1, visibility)),
-          artifacts: Enum.map(artifacts, &apply_visibility!(&1, visibility))
+          artifacts: Enum.map(artifacts, &apply_visibility!(&1, visibility)),
+          photos: photos
         }
       end)
 
@@ -870,31 +1024,60 @@ defmodule SantoApi.Owners do
 
   defp maybe_self_ratify!(%Claim{} = claim, _party), do: claim
 
-  # Raises rather than returning an error, which rolls the entry back with the
-  # original exception — a photo that cannot be read or stored is not a case the
-  # composer can helpfully explain away.
-  defp write_photo!(vehicle, party, entry_ref, %{path: path, filename: filename} = photo) do
-    {:ok, artifact} =
-      Registry.create_upload_artifact(%{
-        vehicle_id: vehicle.id,
-        path: path,
-        filename: filename,
-        mime: photo[:mime],
-        kind: :photo,
-        entry_ref: entry_ref,
-        source_party: party
-      })
-
-    artifact
-  end
-
-  defp write_attachment!(
+  # A failed photo preparation rolls the enclosing entry transaction back. The
+  # reason survives so the composer can explain an unreadable or oversized file.
+  defp write_photo!(
+         scope,
          vehicle,
          party,
          entry_ref,
+         date,
+         visibility,
+         %{path: path, filename: filename} = photo
+       ) do
+    with {:ok, derivatives} <- Media.prepare_photo(path),
+         {:ok, artifact} <-
+           Registry.create_upload_artifact(%{
+             vehicle_id: vehicle.id,
+             path: path,
+             filename: filename,
+             mime: photo[:mime],
+             kind: :photo,
+             entry_ref: entry_ref,
+             source_party: party,
+             metadata: %{"photo_derivatives" => derivatives}
+           }),
+         {:ok, placement} <-
+           Photos.attach(scope, vehicle, artifact, %{
+             entry_ref: entry_ref,
+             entry_date: date,
+             alt_text: photo[:alt_text],
+             visibility: visibility
+           }) do
+      {artifact, placement}
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp write_attachment!(
+         scope,
+         vehicle,
+         party,
+         entry_ref,
+         date,
+         visibility,
          %{path: path, filename: filename} = attachment
        ) do
     kind = if attachment[:kind] in [:photo, "photo"], do: :photo, else: :document
+
+    derivatives =
+      if kind == :photo do
+        case Media.prepare_photo(path) do
+          {:ok, derivatives} -> derivatives
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
 
     {:ok, artifact} =
       Registry.create_upload_artifact(%{
@@ -904,11 +1087,28 @@ defmodule SantoApi.Owners do
         mime: attachment[:mime],
         kind: kind,
         entry_ref: entry_ref,
-        source_party: party
+        source_party: party,
+        metadata: if(derivatives, do: %{"photo_derivatives" => derivatives}, else: %{})
       })
 
-    artifact
+    placement =
+      if kind == :photo do
+        case Photos.attach(scope, vehicle, artifact, %{
+               entry_ref: entry_ref,
+               entry_date: date,
+               alt_text: attachment[:label],
+               visibility: visibility
+             }) do
+          {:ok, placement} -> placement
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+
+    {artifact, placement}
   end
+
+  defp entry_visibility_value(value) when value in [:private, "private"], do: :private
+  defp entry_visibility_value(_value), do: :public
 
   # Public is the default on both tables, so only a private entry writes here.
   defp apply_visibility!(row, :public), do: row
@@ -994,20 +1194,30 @@ defmodule SantoApi.Owners do
   end
 
   @doc """
-  Withdraw an entry the caller logged, whole. Returns how many claims went.
+  Withdraw an entry the caller logged, whole. Returns how many authored records went.
 
-  Deleting a logbook line is retracting the claims it was made of — the rows
-  stay, their state flips, and the entry leaves every projection because both
-  of them read `:admitted` only.
+  Ledger claims remain as retractions; mutable photo placements are removed
+  from presentation while their immutable artifacts remain retained. This also
+  handles a photo-first entry with no claim rows.
   """
   def retract_entry(scope, %Vehicle{} = vehicle, entry_ref) do
     with {:ok, stewardship} <- authorize_entry(scope, vehicle),
          party = party(%User{id: stewardship.user_id}),
-         {:ok, existing} <- fetch_own_entry(vehicle, party, entry_ref) do
-      Repo.transaction(fn ->
-        Enum.each(existing, &retract!(&1, party))
-        length(existing)
-      end)
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      claims = own_live_claims(vehicle, party, ref)
+
+      if claims == [] and not own_photos?(vehicle, stewardship.user_id, ref) do
+        {:error, :entry_not_found}
+      else
+        Repo.transaction(fn ->
+          Enum.each(claims, &retract!(&1, party))
+
+          case Photos.remove_entry(scope, vehicle, ref) do
+            {:ok, photo_count} -> length(claims) + photo_count
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+      end
     end
   end
 
@@ -1030,23 +1240,44 @@ defmodule SantoApi.Owners do
   # rather than refused, so an owner amending their fill-up never discovers
   # they cannot because a third party wrote alongside them.
   defp fetch_own_entry(vehicle, party, entry_ref) do
-    case Ecto.UUID.cast(entry_ref) do
+    case cast_entry_ref(entry_ref) do
       {:ok, ref} ->
-        Repo.all(
-          from(c in Claim,
-            where:
-              c.vehicle_id == ^vehicle.id and c.entry_ref == ^ref and
-                c.asserted_by_party_id == ^party.id and c.state in [:proposed, :admitted]
-          )
-        )
+        own_live_claims(vehicle, party, ref)
         |> case do
           [] -> {:error, :entry_not_found}
           claims -> {:ok, claims}
         end
 
-      :error ->
+      {:error, :entry_not_found} ->
         {:error, :entry_not_found}
     end
+  end
+
+  defp cast_entry_ref(entry_ref) do
+    case Ecto.UUID.cast(entry_ref) do
+      {:ok, ref} -> {:ok, ref}
+      :error -> {:error, :entry_not_found}
+    end
+  end
+
+  defp own_live_claims(vehicle, party, ref) do
+    Repo.all(
+      from(c in Claim,
+        where:
+          c.vehicle_id == ^vehicle.id and c.entry_ref == ^ref and
+            c.asserted_by_party_id == ^party.id and c.state in [:proposed, :admitted]
+      )
+    )
+  end
+
+  defp own_photos?(vehicle, user_id, ref) do
+    Repo.exists?(
+      from(photo in VehiclePhoto,
+        where:
+          photo.vehicle_id == ^vehicle.id and photo.entry_ref == ^ref and
+            photo.author_user_id == ^user_id
+      )
+    )
   end
 
   # An entry is private if any part of it is (the same rule `Registry.timeline/2`

@@ -407,7 +407,7 @@ defmodule SantoApi.OwnersEntryTest do
 
   defp photo(filename) do
     path = Path.join(System.tmp_dir!(), "#{System.unique_integer([:positive])}-#{filename}")
-    File.write!(path, "photo bytes #{System.unique_integer([:positive])}")
+    File.cp!("priv/demo/media/cayman-autocross-paddock.jpg", path)
     %{path: path, filename: filename, mime: "image/jpeg"}
   end
 end

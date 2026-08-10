@@ -73,7 +73,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
     assert has_element?(view, "#vehicle-description-gap", "Nobody has described this car yet")
-    assert has_element?(view, "#record-empty", "Nothing on file yet")
+    assert has_element?(view, "#record-empty", "Nothing here yet")
   end
 
   test "an empty logbook invites an entry rather than showing a clean record", %{conn: conn} do
@@ -286,7 +286,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
     assert has_element?(view, "#fact-identity-model_year", "1972")
-    assert has_element?(view, "#claim-#{claim.id}-artifact", "No public artifact")
+    assert has_element?(view, "#claim-#{claim.id}-artifact", "No source file attached")
     refute has_element?(view, ~s(a[href="#{url}"]))
   end
 
@@ -435,9 +435,9 @@ defmodule SantoApiWeb.VehicleLiveTest do
     large_queries = page_query_count(build_conn(), large)
 
     assert large_queries == small_queries
-    # The mutable story and generic event association each add one constant
-    # page query; claim volume must still add none.
-    assert large_queries <= 18
+    # The mutable story, generic event association, and photo placement each
+    # add one constant page query; claim volume must still add none.
+    assert large_queries <= 19
   end
 
   test "an admitted unsuccessful auction event renders as a high bid, not a sale", %{conn: conn} do

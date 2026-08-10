@@ -628,6 +628,22 @@ owner's own content (rights-clean by construction); platform content flows
 crosspost points back to — the build thread keeps the audience, Vin Santo
 keeps the ledger.
 
+**First distribution slice shipped 2026-08-10 (TK-018).** Every public update
+permalink now exposes one coherent kit:
+
+- a server-rendered 1080×1350 JPEG card, using the update's first-party lead
+  photo when present and a typographic asphalt field otherwise;
+- ready-to-copy Markdown and BBCode containing the owner text, details, photo,
+  and canonical update URL;
+- a 560×120 SVG car badge plus HTML and BBCode embed copy;
+- one optional `vehicle_links.kind = :build_thread` destination. “Copy and open
+  thread” copies BBCode and opens that owner-supplied URL; Vin Santo never holds
+  forum credentials or pretends a legacy forum has a posting API.
+
+The share card and badge are the two named image transforms promised in §9.4.
+They are public only when the car and update are public. Distribution produces
+no ledger writes and imports no platform content.
+
 **Export from day one.** The owner can download their complete record —
 claims, entries, artifacts — in a documented format, no gatekeeping. The
 landscape's trust price (lesson 4): Wheelwell's death losing users' build
@@ -731,7 +747,8 @@ for the first user-to-user content in the product.
 
 ## 6c. The narrative layer — story, plans, photos
 
-*Opened 2026-08-04, round 5. The review's finding: a build thread is story +
+*Opened 2026-08-04, round 5; first complete slice shipped 2026-08-10. The
+review's finding: a build thread is story +
 plan + photos + replies, and the ledger had formalized only the events.
 Rennlist 1451795 opens with prose — "Last week I found a slightly neglected
 996 GT2 Clubsport in Germany" — and §7b stores that sentence as an artifact
@@ -790,6 +807,16 @@ already exist or ride existing machinery:
 - **The nudge** — the hero's empty state on the owner's own view says "add a
   photo" and lands in the composer. A photoless page can't be shared, and the
   nudge lives on the page, not in the onboarding flow.
+
+**Implemented shape, 2026-08-10.** The immutable artifact owns retained bytes
+and generated derivative metadata. A separate mutable `vehicle_photos`
+placement owns entry membership, alt text, gallery order, hero selection, and
+visibility. Composition accepts zero claims only when a photo is present, so a
+photo-first post does not mint an empty note to satisfy the ledger. Public
+delivery exposes metadata-stripped responsive derivatives, never the original;
+private placements are available only to the steward through the existing
+optional-auth browser session. Event attachments reuse the same car-update
+photo and its derivatives.
 
 ---
 
@@ -1333,18 +1360,18 @@ instead of only operator-fed auction documents.
 | F | Entry composer: segmented modes, photos, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. Shipped 2026-08-02 (TK-014) without links — the table moved to N. Plan mode arrives with O. |
 | G | Privacy controls (flipping visibility after the fact) + full-record export | F | TK-016. The own-view slice shipped 2026-08-03; `vehicle_links` moved to N in round 5. |
 | H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below, `attach_link` waits on N's table. |
-| I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Entries travel to existing audiences; page is the canonical record. Needs J's image pipeline. |
+| I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Shipped 2026-08-10 (TK-018). Entries travel to existing audiences; page remains canonical. |
 | J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
 | K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. |
 | L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
 | N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | TK-024. Load-bearing at the identity key — main-thread work, not delegated. |
-| O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first note (`text` optional), hero photo nudge | C, F | TK-025. Needs N's `vehicle_links` only for external-gallery links. |
+| O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first update, mutable hero/gallery presentation | C, F | Shipped 2026-08-10 (TK-025). External-gallery links reuse N's `vehicle_links`. |
 
-**Status, 2026-08-04.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
+**Status, 2026-08-10.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
 (TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), H (TK-017), J
-(TK-006), plus G's own-view slice and the composer edit mode ticket H's
-correction rule exposed (TK-021, open). Open: G (TK-016, minus links), I
-(TK-018), K (TK-019), L (TK-020), N (TK-024), O (TK-025).
+(TK-006), I (TK-018), O (TK-025), plus G's own-view slice and the composer edit
+mode ticket H's correction rule exposed (TK-021, open). Open: G (TK-016, minus
+links), K (TK-019), L (TK-020), N (TK-024).
 
 **Build order (Greg, round 3): infra first.** J, A, B open the build — no
 design dependencies, and they gate everything downstream (email gates A's

@@ -132,6 +132,40 @@ defmodule SantoApiWeb.EventLiveTest do
       assert has_element?(update, "#event-card-#{ctx.result.participation.id}")
       assert has_element?(update, "#update-conversation")
     end
+
+    test "one first-party photo is reused by the car update and shared event", ctx do
+      {:ok, result} =
+        Events.create_participation(
+          ctx.scope,
+          ctx.vehicle,
+          Map.put(context_attrs(), :uploads, [
+            %{
+              path: "priv/demo/media/cayman-autocross-paddock.jpg",
+              filename: "cayman-autocross-paddock.jpg",
+              mime: "image/jpeg",
+              kind: :photo,
+              label: "The Cayman in the paddock"
+            }
+          ])
+        )
+
+      [attachment | _rest] = result.participation.attachments
+
+      {:ok, event, _html} = live(build_conn(), ~p"/events/#{result.event.public_id}")
+      assert has_element?(event, "#event-media-#{attachment.id} img[srcset]")
+
+      {:ok, car, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      assert has_element?(car, "#event-card-#{result.participation.id} img[srcset]")
+
+      conn =
+        get(
+          build_conn(),
+          "/events/#{result.event.public_id}/attachments/#{attachment.id}/480"
+        )
+
+      assert <<0xFF, 0xD8, _rest::binary>> = response(conn, 200)
+      assert get_resp_header(conn, "content-type") == ["image/jpeg"]
+    end
   end
 
   defp composer_params(view) do

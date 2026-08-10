@@ -8,18 +8,24 @@ defmodule SantoApiWeb.VehicleLive.Update do
   use SantoApiWeb, :live_view
 
   alias SantoApi.{Events, Owners}
+  alias SantoApi.Owners.Links
   alias SantoApi.Registry
   alias SantoApi.Social
   alias SantoApi.Social.CommentReport
+  alias SantoApiWeb.DistributionComponents
+  alias SantoApiWeb.DistributionPresenter
   alias SantoApiWeb.EventComponents
+  alias SantoApiWeb.VehiclePhotoComponents
   alias SantoApiWeb.VehicleLive.Presenter
 
   @impl true
   def mount(%{"public_id" => public_id, "entry_ref" => entry_ref}, _session, socket) do
     with {:ok, vehicle} <- Registry.fetch_by_public_id(public_id),
          true <- visible_car?(socket.assigns.current_scope, vehicle),
-         {:ok, entry} <- Registry.fetch_timeline_entry(vehicle.id, entry_ref) do
+         {:ok, entry} <-
+           Owners.fetch_timeline_entry(nil, vehicle, entry_ref) do
       scope = socket.assigns.current_scope
+      thread = Links.build_thread(vehicle)
 
       {:ok,
        socket
@@ -28,6 +34,11 @@ defmodule SantoApiWeb.VehicleLive.Update do
        |> assign(:entry, entry)
        |> assign(:parts, Presenter.entry_parts(entry))
        |> assign(:event_participation, event_participation(scope, vehicle, entry.entry_ref))
+       |> assign(:distribution, DistributionPresenter.entry(vehicle, entry))
+       |> assign(:shareable?, Owners.published?(vehicle))
+       |> assign(:stewarding?, Owners.stewarding?(scope, vehicle))
+       |> assign(:thread, thread)
+       |> assign(:thread_form, thread_form(thread))
        |> assign(:signed_in?, signed_in?(scope))
        |> assign(:viewer_id, viewer_id(scope))
        |> assign(:comment_form, comment_form(scope, vehicle, entry.entry_ref))
@@ -50,6 +61,10 @@ defmodule SantoApiWeb.VehicleLive.Update do
 
   defp viewer_id(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{id: id}}), do: id
   defp viewer_id(_scope), do: nil
+
+  defp thread_form(thread) do
+    to_form(%{"url" => (thread && thread.url) || ""}, as: :thread)
+  end
 
   defp event_participation(scope, vehicle, entry_ref) do
     case Events.participation_for_entry(scope, vehicle, entry_ref) do
@@ -170,6 +185,41 @@ defmodule SantoApiWeb.VehicleLive.Update do
     end
   end
 
+  def handle_event("save_thread", %{"thread" => params}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Links.set_build_thread(scope, vehicle, params) do
+      {:ok, thread} ->
+        {:noreply,
+         socket
+         |> assign(:thread, thread)
+         |> assign(:thread_form, thread_form(thread))
+         |> put_flash(:info, "Build thread saved.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :thread_form, to_form(changeset, as: :thread))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That thread could not be saved.")}
+    end
+  end
+
+  def handle_event("clear_thread", _params, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Links.clear_build_thread(scope, vehicle) do
+      {:ok, _thread} ->
+        {:noreply,
+         socket
+         |> assign(:thread, nil)
+         |> assign(:thread_form, thread_form(nil))
+         |> put_flash(:info, "Build thread forgotten.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That thread could not be changed.")}
+    end
+  end
+
   defp social_error(:authentication_required), do: "Sign in to join the conversation."
   defp social_error(:not_authorized), do: "That reply is not yours to withdraw."
   defp social_error(:own_comment), do: "You can withdraw your own reply instead."
@@ -209,6 +259,31 @@ defmodule SantoApiWeb.VehicleLive.Update do
             </p>
           </div>
         </header>
+
+        <div
+          :if={is_nil(@event_participation) and Map.get(@entry, :photos, []) != []}
+          id="update-photos"
+          class={[
+            "club-update-photos",
+            length(@entry.photos) == 1 && "club-update-photos-single"
+          ]}
+        >
+          <VehiclePhotoComponents.image
+            :for={photo <- @entry.photos}
+            id={"update-photo-#{photo.id}"}
+            vehicle={@vehicle}
+            photo={photo}
+            sizes="(max-width: 640px) 100vw, 760px"
+          />
+        </div>
+
+        <DistributionComponents.share_kit
+          :if={@shareable?}
+          payload={@distribution}
+          thread={@thread}
+          thread_form={@thread_form}
+          stewarding?={@stewarding?}
+        />
 
         <section
           id="update-conversation"

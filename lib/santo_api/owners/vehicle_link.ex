@@ -31,6 +31,7 @@ defmodule SantoApi.Owners.VehicleLink do
     field :url, :string
     field :label, :string
     field :position, :integer, default: 0
+    field :kind, Ecto.Enum, values: [:other, :build_thread], default: :other
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -48,6 +49,9 @@ defmodule SantoApi.Owners.VehicleLink do
     |> validate_required([:url])
     |> validate_length(:label, max: @label_max_length)
     |> validate_change(:url, &validate_url/2)
+    |> unique_constraint(:vehicle_id,
+      name: :vehicle_links_one_build_thread_per_vehicle_index
+    )
   end
 
   defp validate_url(:url, url) do

@@ -5,6 +5,7 @@ defmodule SantoApiWeb.UpdateLiveTest do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Owners
+  alias SantoApi.Owners.Links
   alias SantoApi.Registry
   alias SantoApi.Social
 
@@ -48,8 +49,48 @@ defmodule SantoApiWeb.UpdateLiveTest do
 
     assert has_element?(view, "#update-card", "Dawn run up Angeles Crest")
     assert has_element?(view, "#update-conversation")
+    assert has_element?(view, "#update-distribution")
+    assert has_element?(view, "#update-share-card-preview")
+    assert has_element?(view, "#copy-update-bbcode[data-copy*='Dawn run up Angeles Crest']")
+    assert has_element?(view, "#vehicle-badge-kit")
     assert has_element?(view, "a[href='/users/log-in']", "Love this")
+    refute has_element?(view, "#build-thread-form")
     refute has_element?(view, "#update-comment-form")
+  end
+
+  test "the share card and badge are public named transforms", ctx do
+    card_path = ~p"/v/#{ctx.vehicle.public_id}/updates/#{ctx.entry.entry_ref}/share-card.jpg"
+    card_conn = get(build_conn(), card_path)
+
+    assert <<0xFF, 0xD8, _rest::binary>> = response(card_conn, 200)
+    assert get_resp_header(card_conn, "content-type") == ["image/jpeg"]
+    assert get_resp_header(card_conn, "cache-control") == ["public, max-age=300"]
+
+    badge_conn = get(build_conn(), ~p"/v/#{ctx.vehicle.public_id}/badge.svg")
+    assert response(badge_conn, 200) =~ "VIN SANTO"
+    assert get_resp_header(badge_conn, "content-type") == ["image/svg+xml"]
+  end
+
+  test "the maintainer remembers one build thread and can post back to it", ctx do
+    conn = log_in_user(build_conn(), ctx.owner)
+    {:ok, view, _html} = live(conn, ctx.path)
+
+    assert has_element?(view, "#build-thread-form")
+
+    view
+    |> form("#build-thread-form", thread: %{url: "https://rennlist.com/forums/987/build"})
+    |> render_submit()
+
+    assert Links.build_thread(ctx.vehicle).url == "https://rennlist.com/forums/987/build"
+
+    assert has_element?(
+             view,
+             "#post-to-build-thread[data-open-url='https://rennlist.com/forums/987/build']"
+           )
+
+    view |> element("#forget-build-thread") |> render_click()
+    assert Links.build_thread(ctx.vehicle) == nil
+    assert has_element?(view, "#build-thread-form")
   end
 
   test "a member can appreciate and reply without changing the timeline", ctx do
@@ -121,5 +162,13 @@ defmodule SantoApiWeb.UpdateLiveTest do
         ~p"/v/#{ctx.vehicle.public_id}/updates/#{private_entry.entry_ref}"
       )
     end
+
+    card_conn =
+      get(
+        build_conn(),
+        ~p"/v/#{ctx.vehicle.public_id}/updates/#{private_entry.entry_ref}/share-card.jpg"
+      )
+
+    assert response(card_conn, 404) == "Not found"
   end
 end

@@ -12,7 +12,6 @@ defmodule SantoApiWeb.HomeLive do
     if signed_in?(socket.assigns.current_scope) do
       {:ok, redirect(socket, to: ~p"/garage")}
     else
-      counts = Registry.entry_counts()
       unpublished = Owners.unpublished_vehicle_ids()
 
       vehicles =
@@ -21,10 +20,11 @@ defmodule SantoApiWeb.HomeLive do
         |> Enum.take(6)
 
       stewards = Owners.stewards_for(Enum.map(vehicles, & &1.id))
+      counts = Owners.public_entry_counts(Enum.map(vehicles, & &1.id))
 
       rows =
         Enum.map(vehicles, fn vehicle ->
-          latest = vehicle.id |> Registry.timeline() |> List.first()
+          latest = nil |> Owners.timeline(vehicle) |> List.first()
 
           Presenter.car_card(vehicle,
             entries: Map.get(counts, vehicle.id, 0),

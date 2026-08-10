@@ -12,7 +12,6 @@ defmodule SantoApiWeb.GarageLive do
   alias SantoApi.EntryExtraction
   alias SantoApi.Logbook.EntryDraft
   alias SantoApi.Owners
-  alias SantoApi.Registry
   alias SantoApiWeb.VehicleLive.Presenter
 
   @review_fields ~w(
@@ -41,7 +40,7 @@ defmodule SantoApiWeb.GarageLive do
   end
 
   defp put_car_stream(socket, vehicles) do
-    counts = Registry.entry_counts()
+    counts = Owners.public_entry_counts(Enum.map(vehicles, & &1.id))
     stewards = Owners.stewards_for(Enum.map(vehicles, & &1.id))
     scope = socket.assigns.current_scope
 

@@ -73,6 +73,47 @@ defmodule SantoApi.OwnersLinksTest do
     end
   end
 
+  describe "build thread" do
+    test "stores one replaceable forum destination without disturbing other links", ctx do
+      {:ok, other} =
+        Links.add_link(ctx.scope, ctx.vehicle, %{url: "https://youtube.com/watch?v=one"})
+
+      assert {:ok, thread} =
+               Links.set_build_thread(ctx.scope, ctx.vehicle, %{
+                 url: "https://rennlist.com/forums/builds/first"
+               })
+
+      assert thread.kind == :build_thread
+      assert thread.label == "Build thread"
+      assert Links.build_thread(ctx.vehicle).id == thread.id
+
+      assert {:ok, replaced} =
+               Links.set_build_thread(ctx.scope, ctx.vehicle, %{
+                 "url" => "https://rennlist.com/forums/builds/second"
+               })
+
+      assert replaced.id == thread.id
+      assert replaced.url =~ "/second"
+      assert Enum.map(Links.list_links(ctx.vehicle), & &1.id) == [other.id, thread.id]
+
+      assert {:ok, _removed} = Links.clear_build_thread(ctx.scope, ctx.vehicle)
+      assert Links.build_thread(ctx.vehicle) == nil
+      assert [remaining] = Links.list_links(ctx.vehicle)
+      assert remaining.id == other.id
+    end
+
+    test "requires stewardship", ctx do
+      stranger = Scope.for_user(user_fixture())
+
+      assert {:error, :not_stewarded} =
+               Links.set_build_thread(stranger, ctx.vehicle, %{
+                 url: "https://rennlist.com/forums/builds/nope"
+               })
+
+      assert {:error, :not_stewarded} = Links.clear_build_thread(stranger, ctx.vehicle)
+    end
+  end
+
   describe "remove_link/3" do
     test "deletes the row", ctx do
       {:ok, link} = Links.add_link(ctx.scope, ctx.vehicle, %{url: "https://example.com/1"})

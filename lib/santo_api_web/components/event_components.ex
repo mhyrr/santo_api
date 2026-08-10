@@ -12,6 +12,7 @@ defmodule SantoApiWeb.EventComponents do
 
   import SantoApiWeb.CoreComponents
 
+  alias SantoApi.Media
   alias SantoApi.Events.{EventAttachment, EventOccurrence, EventParticipation}
   alias SantoApiWeb.VehicleLive.Presenter
 
@@ -119,7 +120,11 @@ defmodule SantoApiWeb.EventComponents do
     <figure class="theme-event-lead-media production-event-media">
       <img
         :if={@attachment.kind == :photo and @attachment.artifact}
-        src={attachment_href(@event, @attachment)}
+        src={attachment_image_src(@event, @attachment)}
+        srcset={attachment_srcset(@event, @attachment)}
+        sizes="(max-width: 640px) 100vw, 720px"
+        width={attachment_width(@attachment)}
+        height={attachment_height(@attachment)}
         alt={@attachment.label}
       />
       <a
@@ -145,6 +150,49 @@ defmodule SantoApiWeb.EventComponents do
 
   def attachment_href(%EventOccurrence{} = event, %EventAttachment{id: id}) do
     ~p"/events/#{event.public_id}/attachments/#{id}"
+  end
+
+  def attachment_image_src(%EventOccurrence{} = event, %EventAttachment{} = attachment) do
+    case attachment.artifact && List.last(Media.variants(attachment.artifact)) do
+      %{"width" => width} -> attachment_variant_href(event, attachment, width)
+      _missing -> attachment_href(event, attachment)
+    end
+  end
+
+  def attachment_srcset(%EventOccurrence{} = event, %EventAttachment{} = attachment) do
+    case attachment.artifact do
+      nil ->
+        nil
+
+      artifact ->
+        artifact
+        |> Media.variants()
+        |> Enum.map_join(", ", fn %{"width" => width} ->
+          "#{attachment_variant_href(event, attachment, width)} #{width}w"
+        end)
+    end
+  end
+
+  def attachment_width(%EventAttachment{artifact: artifact}) when not is_nil(artifact) do
+    case List.last(Media.variants(artifact)) do
+      %{"width" => width} -> width
+      _missing -> nil
+    end
+  end
+
+  def attachment_width(_attachment), do: nil
+
+  def attachment_height(%EventAttachment{artifact: artifact}) when not is_nil(artifact) do
+    case List.last(Media.variants(artifact)) do
+      %{"height" => height} -> height
+      _missing -> nil
+    end
+  end
+
+  def attachment_height(_attachment), do: nil
+
+  defp attachment_variant_href(event, attachment, width) do
+    ~p"/events/#{event.public_id}/attachments/#{attachment.id}/#{width}"
   end
 
   def event_date(%EventOccurrence{starts_on: starts_on, ends_on: nil}) do

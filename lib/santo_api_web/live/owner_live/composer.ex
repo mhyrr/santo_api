@@ -50,7 +50,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     case Registry.fetch_by_public_id(public_id) do
       {:ok, vehicle} ->
         if Owners.stewarding?(socket.assigns.current_scope, vehicle),
-          do: {:ok, open(socket, vehicle, params["entry_ref"])},
+          do: {:ok, open(socket, vehicle, params["entry_ref"], params["mode"])},
           else: {:ok, turn_away(socket, vehicle, "You do not maintain this car's log.")}
 
       {:error, :not_found} ->
@@ -58,24 +58,25 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     end
   end
 
-  defp open(socket, vehicle, nil), do: mount_composer(socket, vehicle)
+  defp open(socket, vehicle, nil, requested_mode),
+    do: mount_composer(socket, vehicle, requested_mode)
 
   # Stewarding the car is not enough to correct a line of it: `Owners.entry/3`
   # hands back the caller's *own* claims, so a previous steward's entry and the
   # registry's own are absent rather than editable.
-  defp open(socket, vehicle, entry_ref) do
+  defp open(socket, vehicle, entry_ref, _requested_mode) do
     case Owners.entry(socket.assigns.current_scope, vehicle, entry_ref) do
       {:ok, entry} -> mount_correction(socket, vehicle, entry)
       {:error, _reason} -> turn_away(socket, vehicle, "That entry is not yours to correct.")
     end
   end
 
-  defp mount_composer(socket, vehicle) do
+  defp mount_composer(socket, vehicle, requested_mode) do
     socket
     |> mount_shared(vehicle)
     |> assign(:page_title, "Log — #{Presenter.title(vehicle)}")
     |> assign(:entry_ref, nil)
-    |> assign(:mode, :fuel)
+    |> assign(:mode, mode(requested_mode))
     |> assign(:date_default, Date.utc_today())
     |> assign(:defaults, Owners.last_entry_defaults(socket.assigns.current_scope, vehicle))
     |> assign_form(%{})
@@ -139,8 +140,15 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   def handle_event("save", %{"entry" => params}, socket) do
     case EntryDraft.claims(socket.assigns.mode, params) do
-      {:ok, claims} -> save_entry(socket, params, claims)
-      {:error, message} -> {:noreply, socket |> assign(:error, message) |> assign_form(params)}
+      {:ok, claims} ->
+        save_entry(socket, params, claims)
+
+      {:error, message} ->
+        if photo_only_draft?(socket, params) do
+          save_entry(socket, params, [])
+        else
+          {:noreply, socket |> assign(:error, message) |> assign_form(params)}
+        end
     end
   end
 
@@ -166,7 +174,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp commit(%{assigns: %{entry_ref: nil}} = socket, attrs, params) do
     attrs =
       attrs
-      |> Map.put(:photos, consume_photos(socket))
+      |> Map.put(:photos, consume_photos(socket, params))
       |> Map.put(:visibility, visibility(params["visibility"]))
 
     Owners.compose_entry(socket.assigns.current_scope, socket.assigns.vehicle, attrs)
@@ -184,13 +192,38 @@ defmodule SantoApiWeb.OwnerLive.Composer do
 
   # Copied out of the upload's temp path, which is removed the moment this
   # callback returns — the registry hashes and stores the bytes itself.
-  defp consume_photos(socket) do
+  defp consume_photos(socket, params) do
+    alt_text = Map.get(params, "photo_alt", %{})
+
     consume_uploaded_entries(socket, :photos, fn %{path: path}, entry ->
       destination = Path.join(System.tmp_dir!(), "#{Ecto.UUID.generate()}-#{entry.client_name}")
       File.cp!(path, destination)
-      {:ok, %{path: destination, filename: entry.client_name, mime: entry.client_type}}
+
+      {:ok,
+       %{
+         path: destination,
+         filename: entry.client_name,
+         mime: entry.client_type,
+         alt_text: Map.get(alt_text, entry.ref)
+       }}
     end)
   end
+
+  defp photo_only_draft?(socket, params) do
+    socket.assigns.entry_ref == nil and socket.assigns.uploads.photos.entries != [] and
+      Enum.all?(photo_mode_fields(socket.assigns.mode), &blank?(params[&1]))
+  end
+
+  defp photo_mode_fields(:fuel), do: ~w(volume price)
+  defp photo_mode_fields(:service), do: ~w(summary performer)
+  defp photo_mode_fields(:modification), do: ~w(summary area trait trait_summary)
+  defp photo_mode_fields(:outing), do: ~w(summary venue result)
+  defp photo_mode_fields(:plan), do: ~w(text area)
+  defp photo_mode_fields(:note), do: ~w(text)
+
+  defp blank?(nil), do: true
+  defp blank?(text) when is_binary(text), do: String.trim(text) == ""
+  defp blank?(_value), do: false
 
   ## Claims to form — the same mapping, backwards (§8 correction)
 
@@ -412,13 +445,33 @@ defmodule SantoApiWeb.OwnerLive.Composer do
             <div class="mt-2">
               <.live_file_input upload={@uploads.photos} class="vs-file" />
             </div>
-            <p
+            <div
               :for={entry <- @uploads.photos.entries}
-              class="vs-code mt-1 text-xs"
-              style="color: var(--vs-dim)"
+              id={"composer-photo-#{entry.ref}"}
+              class="composer-photo-preview"
             >
-              {entry.client_name}
-            </p>
+              <.live_img_preview entry={entry} />
+              <div>
+                <p class="vs-code text-xs" style="color: var(--vs-dim)">
+                  {entry.client_name}
+                </p>
+                <label for={"entry_photo_alt_#{entry.ref}"} class="vs-eyebrow">
+                  Alt text <span class="normal-case tracking-normal">(recommended)</span>
+                </label>
+                <input
+                  type="text"
+                  id={"entry_photo_alt_#{entry.ref}"}
+                  name={"entry[photo_alt][#{entry.ref}]"}
+                  value={photo_alt_value(@form, entry.ref)}
+                  maxlength="240"
+                  class="vs-field"
+                  placeholder="The car in the Summit Point paddock at dusk"
+                />
+                <p :for={error <- upload_errors(@uploads.photos, entry)} class="vs-refusal text-xs">
+                  {upload_error(error)}
+                </p>
+              </div>
+            </div>
             <p
               :for={error <- upload_errors(@uploads.photos)}
               class="vs-refusal mt-1 text-xs"
@@ -771,4 +824,11 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp upload_error(:too_many_files), do: "Four photos to an entry."
   defp upload_error(:not_accepted), do: "Photos only."
   defp upload_error(_error), do: "That photo could not be read."
+
+  defp photo_alt_value(form, ref) do
+    case form[:photo_alt].value do
+      value when is_map(value) -> Map.get(value, ref, "")
+      _absent -> ""
+    end
+  end
 end

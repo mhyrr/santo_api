@@ -13,12 +13,14 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   alias SantoApi.{Events, Owners, Social}
   alias SantoApi.Owners.Links
+  alias SantoApi.Owners.Photos
   alias SantoApi.Owners.Stories
   alias SantoApi.Owners.VehicleLink
   alias SantoApi.Owners.VehicleStory
   alias SantoApi.Registry
   alias SantoApiWeb.EventComponents
   alias SantoApiWeb.OwnerLive.Composer
+  alias SantoApiWeb.VehiclePhotoComponents
   alias SantoApiWeb.VehicleLive.Presenter
 
   @impl true
@@ -30,6 +32,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
         published? = Owners.published?(vehicle)
         timeline = Owners.timeline(scope, vehicle)
         story = Stories.get_story(vehicle)
+        photos = timeline_photos(timeline)
 
         # An unconfirmed origination is nobody's business but its steward's —
         # the magic-link click publishes (owner_surface §7b.1 decision 6).
@@ -43,6 +46,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:vehicle, vehicle)
          |> assign(:published?, published?)
          |> assign(:timeline, timeline)
+         |> assign(:photos, photos)
+         |> assign(:hero_photo, Enum.find(photos, & &1.hero))
          |> assign(:event_updates, event_updates(scope, vehicle))
          |> assign(:record_provenance, Registry.public_fact_provenance(vehicle.id))
          |> assign(:steward, Owners.steward(vehicle))
@@ -95,6 +100,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
         story={@story}
         timeline={@timeline}
         stewarding?={@stewarding?}
+        photo={@hero_photo}
       />
       <.claim_bar
         :if={not @stewarding? and @vehicle.identity_kind != :asserted}
@@ -103,9 +109,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
       />
       <.car_nav
         story?={not is_nil(@story) or @stewarding?}
+        gallery?={@photos != [] or @stewarding?}
         provenance?={@vehicle.identity_kind != :asserted}
       />
       <.owner_story story={@story} story_form={@story_form} stewarding?={@stewarding?} />
+      <.gallery photos={@photos} vehicle={@vehicle} stewarding?={@stewarding?} />
       <div class="club-wrap car-page-body">
         <.logbook
           entries={@timeline}
@@ -151,8 +159,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
     ~H"""
     <section id="your-word" class="mx-auto max-w-3xl px-5 pb-20 sm:px-8">
       <p class="max-w-xl text-sm leading-relaxed" style="color: var(--vs-dim)">
-        Everything on this page is your word. Add the VIN and the factory record
-        fills in underneath it.
+        Add the VIN when you have it. We’ll use it to fill in the factory details.
       </p>
 
       <form :if={@stewarding?} id="resolve-form" phx-submit="resolve_vin" class="mt-5">
@@ -266,6 +273,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
   end
 
   attr :story?, :boolean, required: true
+  attr :gallery?, :boolean, required: true
   attr :provenance?, :boolean, required: true
 
   defp car_nav(assigns) do
@@ -273,7 +281,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
       assign(
         assigns,
         :count,
-        2 + if(assigns.story?, do: 1, else: 0) + if(assigns.provenance?, do: 1, else: 0)
+        2 + if(assigns.story?, do: 1, else: 0) + if(assigns.gallery?, do: 1, else: 0) +
+          if(assigns.provenance?, do: 1, else: 0)
       )
 
     ~H"""
@@ -283,6 +292,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
       aria-label="Car page sections"
     >
       <a :if={@story?} href="#vehicle-owner-story">Story</a>
+      <a :if={@gallery?} href="#vehicle-gallery">Gallery</a>
       <a href="#vehicle-logbook">Journal</a>
       <a href="#vehicle-current-state">As it sits</a>
       <a :if={@provenance?} href="#vehicle-record">Provenance</a>
@@ -303,7 +313,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
       aria-labelledby="owner-story-heading"
     >
       <div :if={@story} class="car-owner-story-copy">
-        <p class="club-kicker club-kicker-paper">Owner story</p>
+        <p class="club-kicker club-kicker-paper">The story</p>
         <h2 id="owner-story-heading">{@story.tagline}</h2>
         <p :if={@story.body} class="car-story-body">{@story.body}</p>
         <p class="car-story-byline">
@@ -314,18 +324,18 @@ defmodule SantoApiWeb.VehicleLive.Show do
       </div>
 
       <div :if={is_nil(@story)} class="car-owner-story-empty">
-        <p class="club-kicker club-kicker-paper">Owner story</p>
-        <h2 id="owner-story-heading">What is the story with this car?</h2>
-        <p>One honest sentence is enough. You can rewrite it as the car changes.</p>
+        <p class="club-kicker club-kicker-paper">The story</p>
+        <h2 id="owner-story-heading">Why this car?</h2>
+        <p>Start with why you bought it. You can add the rest later.</p>
       </div>
 
       <details :if={@stewarding?} id="story-editor" class="car-story-editor">
-        <summary>{if @story, do: "Edit the story", else: "Write the story"}</summary>
+        <summary>{if @story, do: "Edit story", else: "Add your story"}</summary>
         <.form for={@story_form} id="story-form" phx-submit="save_story">
           <.input
             field={@story_form[:tagline]}
             type="text"
-            label="One-line story"
+            label="Headline"
             placeholder="Bought for the roads, slowly made my own."
             maxlength="180"
             required
@@ -333,8 +343,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
           <.input
             field={@story_form[:body]}
             type="textarea"
-            label="Opening paragraph (optional)"
-            placeholder="Where it came from, why it matters, and what you want to make of it."
+            label="The story (optional)"
+            placeholder="How you found it, why it matters, and where you want to take it."
             rows="6"
           />
           <button type="submit" class="club-button club-button-primary">Save story</button>
@@ -348,6 +358,139 @@ defmodule SantoApiWeb.VehicleLive.Show do
     do: handle
 
   defp story_handle(_story), do: "maintainer"
+
+  # The gallery is mutable presentation over immutable upload artifacts. Order,
+  # hero choice, alt text, and removal belong to the owner surface; none of them
+  # rewrites the provenance record or the bytes it retains.
+  attr :photos, :list, required: true
+  attr :vehicle, :map, required: true
+  attr :stewarding?, :boolean, required: true
+
+  defp gallery(assigns) do
+    items =
+      Enum.map(assigns.photos, fn photo ->
+        %{
+          photo: photo,
+          form: to_form(%{"alt_text" => photo.alt_text || ""}, as: :photo)
+        }
+      end)
+
+    assigns =
+      assigns
+      |> assign(:items, items)
+      |> assign(:first_id, assigns.photos |> List.first() |> photo_id())
+      |> assign(:last_id, assigns.photos |> List.last() |> photo_id())
+
+    ~H"""
+    <section
+      :if={@photos != [] or @stewarding?}
+      id="vehicle-gallery"
+      class="club-wrap car-gallery"
+      aria-labelledby="vehicle-gallery-heading"
+    >
+      <header class="car-section-heading car-gallery-heading">
+        <div>
+          <p class="club-kicker club-kicker-paper">Photos</p>
+          <h2 id="vehicle-gallery-heading">From the garage</h2>
+        </div>
+        <.link
+          :if={@stewarding?}
+          navigate={~p"/v/#{@vehicle.public_id}/log?mode=note"}
+          class="club-button club-button-secondary"
+        >
+          <.icon name="hero-camera" class="size-4" /> Add photos
+        </.link>
+      </header>
+
+      <p :if={@photos == []} id="vehicle-gallery-empty" class="car-gallery-empty">
+        Add the first photo. It will lead the page until you choose another.
+      </p>
+
+      <div :if={@photos != []} class="car-gallery-grid">
+        <figure
+          :for={item <- @items}
+          id={"vehicle-photo-#{item.photo.id}"}
+          class={["car-gallery-item", item.photo.hero && "car-gallery-item-hero"]}
+          data-visibility={item.photo.visibility}
+        >
+          <VehiclePhotoComponents.image
+            vehicle={@vehicle}
+            photo={item.photo}
+            sizes="(max-width: 640px) 100vw, 33vw"
+            loading="lazy"
+          />
+          <figcaption>
+            <span :if={item.photo.hero} class="car-gallery-badge">
+              <.icon name="hero-star" class="size-3.5" /> Hero
+            </span>
+            <span :if={item.photo.visibility == :private} class="car-gallery-badge">
+              <.icon name="hero-eye-slash" class="size-3.5" /> Private
+            </span>
+            <span class="vs-code">{Presenter.on_date(item.photo.entry_date)}</span>
+          </figcaption>
+
+          <div :if={@stewarding?} class="car-gallery-editor">
+            <.form
+              for={item.form}
+              id={"photo-alt-form-#{item.photo.id}"}
+              phx-submit="photo_alt"
+            >
+              <input type="hidden" name="photo[id]" value={item.photo.id} />
+              <.input
+                field={item.form[:alt_text]}
+                type="text"
+                label="Alt text"
+                placeholder={"Describe this #{Presenter.title(@vehicle)}"}
+                maxlength="240"
+              />
+              <button type="submit" class="vs-quiet">Save description</button>
+            </.form>
+
+            <div class="car-gallery-controls">
+              <button
+                :if={not item.photo.hero and item.photo.visibility == :public}
+                type="button"
+                phx-click="photo_hero"
+                phx-value-id={item.photo.id}
+              >
+                Use as hero
+              </button>
+              <button
+                type="button"
+                phx-click="photo_move"
+                phx-value-id={item.photo.id}
+                phx-value-direction="earlier"
+                disabled={item.photo.id == @first_id}
+              >
+                Earlier
+              </button>
+              <button
+                type="button"
+                phx-click="photo_move"
+                phx-value-id={item.photo.id}
+                phx-value-direction="later"
+                disabled={item.photo.id == @last_id}
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                phx-click="photo_remove"
+                phx-value-id={item.photo.id}
+                data-confirm="Remove this photo from the car page? The original upload stays retained."
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+    """
+  end
+
+  defp photo_id(nil), do: nil
+  defp photo_id(photo), do: photo.id
 
   # The seeded-but-incomplete page is the bait (§4): the one thing an owner who
   # stumbles onto their own car should be able to do is say so. It stays quiet
@@ -378,6 +521,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
   attr :story, :map, default: nil
   attr :timeline, :list, required: true
   attr :stewarding?, :boolean, required: true
+  attr :photo, :map, default: nil
 
   defp hero(assigns) do
     assigns =
@@ -463,9 +607,26 @@ defmodule SantoApiWeb.VehicleLive.Show do
           </div>
         </div>
 
-        <div class="car-showpiece-field" aria-hidden="true">
-          <span class="car-showpiece-line"></span>
+        <div
+          class={["car-showpiece-field", @photo && "car-showpiece-field-photo"]}
+          aria-hidden={if is_nil(@photo), do: "true", else: nil}
+        >
+          <VehiclePhotoComponents.image
+            :if={@photo}
+            id="vehicle-hero-photo"
+            vehicle={@vehicle}
+            photo={@photo}
+            sizes="(max-width: 767px) 100vw, 50vw"
+          />
+          <span :if={is_nil(@photo)} class="car-showpiece-line"></span>
           <span class="car-showpiece-public-id">{@vehicle.public_id}</span>
+          <.link
+            :if={is_nil(@photo) and @stewarding?}
+            navigate={~p"/v/#{@vehicle.public_id}/log?mode=note"}
+            class="car-hero-photo-nudge"
+          >
+            <.icon name="hero-camera" class="size-4" /> Add a hero photo
+          </.link>
         </div>
       </div>
 
@@ -561,6 +722,21 @@ defmodule SantoApiWeb.VehicleLive.Show do
                 </.link>
                 <span :if={is_nil(entry.entry_ref)}>{entry.parts.headline}</span>
               </h3>
+
+              <div
+                :if={Map.get(entry, :photos, []) != []}
+                class={["car-journal-media", length(entry.photos) == 1 && "car-journal-media-single"]}
+              >
+                <VehiclePhotoComponents.image
+                  :for={photo <- entry.photos}
+                  id={"#{entry_dom_id(entry)}-photo-#{photo.id}"}
+                  public_id={@public_id}
+                  photo={photo}
+                  sizes="(max-width: 640px) 100vw, 620px"
+                  fallback_alt="this car"
+                  loading="lazy"
+                />
+              </div>
 
               <ul
                 :if={entry.parts.details != []}
@@ -710,6 +886,58 @@ defmodule SantoApiWeb.VehicleLive.Show do
     end
   end
 
+  def handle_event("photo_alt", %{"photo" => %{"id" => id, "alt_text" => alt_text}}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Photos.update_alt(scope, vehicle, id, alt_text) do
+      {:ok, _photo} ->
+        {:noreply, socket |> reload_media() |> put_flash(:info, "Photo description saved.")}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, put_flash(socket, :error, "Keep the description under 240 characters.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That photo is not yours to change.")}
+    end
+  end
+
+  def handle_event("photo_hero", %{"id" => id}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Photos.set_hero(scope, vehicle, id) do
+      {:ok, _photo} ->
+        {:noreply, socket |> reload_media() |> put_flash(:info, "Hero photo updated.")}
+
+      {:error, :private_photo} ->
+        {:noreply, put_flash(socket, :error, "A private photo cannot lead the public page.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That photo is not yours to change.")}
+    end
+  end
+
+  def handle_event("photo_move", %{"id" => id, "direction" => direction}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+    direction = if direction == "earlier", do: :earlier, else: :later
+
+    case Photos.move(scope, vehicle, id, direction) do
+      {:ok, _photo} -> {:noreply, reload_media(socket)}
+      {:error, _reason} -> {:noreply, put_flash(socket, :error, "That photo could not move.")}
+    end
+  end
+
+  def handle_event("photo_remove", %{"id" => id}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Photos.remove(scope, vehicle, id) do
+      {:ok, _photo} ->
+        {:noreply, socket |> reload_media() |> put_flash(:info, "Photo removed from the page.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That photo is not yours to remove.")}
+    end
+  end
+
   def handle_event("delete_entry", %{"entry_ref" => entry_ref}, socket) do
     %{current_scope: scope, vehicle: vehicle} = socket.assigns
 
@@ -729,6 +957,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:vehicle, vehicle)
          |> assign(:timeline, Owners.timeline(scope, vehicle))
          |> assign(:event_updates, event_updates(scope, vehicle))
+         |> reload_media()
          |> put_flash(:info, "Entry removed.")}
 
       {:error, _reason} ->
@@ -753,6 +982,24 @@ defmodule SantoApiWeb.VehicleLive.Show do
       reply_count = counts |> Map.fetch!({vehicle.id, entry_ref}) |> Map.fetch!(:reply_count)
       {entry_ref, %{participation: participation, reply_count: reply_count}}
     end)
+  end
+
+  defp reload_media(socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+    timeline = Owners.timeline(scope, vehicle)
+    photos = timeline_photos(timeline)
+
+    socket
+    |> assign(:photos, photos)
+    |> assign(:hero_photo, Enum.find(photos, & &1.hero))
+    |> assign(:timeline, timeline)
+  end
+
+  defp timeline_photos(timeline) do
+    timeline
+    |> Enum.flat_map(&Map.get(&1, :photos, []))
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.sort_by(&{&1.position, &1.inserted_at})
   end
 
   # What this caller may do to one entry, decided once per render rather than
@@ -847,9 +1094,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
         </h2>
 
         <p class="mt-3 max-w-xl text-sm leading-relaxed" style="color: var(--vs-ink-dim)">
-          What this car left the factory as, and what backs each line. Verified lines have
-          been admitted to the record. Unconfirmed evidence stays proposed; disagreement
-          keeps every side visible.
+          Factory details and records from the car’s past. Open any row to see the source.
         </p>
 
         <p
@@ -858,7 +1103,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
           class="mt-8 text-sm"
           style="color: var(--vs-ink-dim)"
         >
-          Nothing on file yet. A build sheet, a window sticker, or a Kardex would start it.
+          Nothing here yet. A build sheet, window sticker, or factory record would give us a
+          place to start.
         </p>
 
         <div :if={@rows != []} class="mt-8 divide-y" style="border-color: var(--vs-rule)">
@@ -905,17 +1151,17 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
                 <dl class="mt-3 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
                   <div>
-                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Asserted by</dt>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Source</dt>
                     <dd id={"#{claim.dom_id}-party"} class="mt-1">{claim.party}</dd>
                   </div>
                   <div>
-                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Applicable</dt>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Date</dt>
                     <dd id={"#{claim.dom_id}-applicable"} class="mt-1">
                       {applicable_label(claim.scope_date)}
                     </dd>
                   </div>
                   <div>
-                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Evidence</dt>
+                    <dt class="vs-eyebrow" style="color: var(--vs-ink-dim)">Backed by</dt>
                     <dd id={"#{claim.dom_id}-artifact"} class="mt-1">
                       <%= if claim.artifact do %>
                         {Presenter.artifact_kind(claim.artifact.kind)}
@@ -923,7 +1169,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
                           · acquired {artifact_date(claim.artifact.acquired_at)}
                         </span>
                       <% else %>
-                        No public artifact
+                        No source file attached
                       <% end %>
                     </dd>
                   </div>
@@ -959,7 +1205,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
           <span class="vs-figure font-semibold" style="color: var(--vs-ink)">
             {@strength.verified} of {@strength.total}
           </span>
-          facts on this car are admitted without a live disagreement.
+          {if @strength.total == 1, do: "detail", else: "details"} verified.
         </p>
       </div>
     </section>
@@ -976,10 +1222,10 @@ defmodule SantoApiWeb.VehicleLive.Show do
   defp status_class("conflicted"), do: "vs-conflicted"
   defp status_class(_status), do: ""
 
-  defp claim_state_word(:admitted), do: "admitted"
-  defp claim_state_word(:proposed), do: "proposed"
+  defp claim_state_word(:admitted), do: "included"
+  defp claim_state_word(:proposed), do: "under review"
 
-  defp applicable_label(nil), do: "Timeless factory claim"
+  defp applicable_label(nil), do: "As built"
   defp applicable_label(date), do: Presenter.on_date(date)
 
   defp artifact_date(%DateTime{} = acquired_at) do
@@ -1001,8 +1247,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
           {Presenter.identity_label(@vehicle)} {Presenter.chassis(@vehicle)}
         </p>
         <p class="text-xs">
-          Every line on this page traces to a dated, attributed claim. Nothing here is
-          edited — corrections are added, and the original stays visible.
+          Every detail includes its source and date. When something changes, the earlier
+          version stays in the history.
         </p>
       </div>
     </footer>

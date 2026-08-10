@@ -274,9 +274,16 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   def entry_parts(entry) do
     ordered = Enum.sort_by(entry.claims, &headline_priority/1)
 
-    if Enum.all?(ordered, &trait_claim?/1),
-      do: spec_parts(ordered),
-      else: event_parts(ordered)
+    cond do
+      ordered == [] and Map.get(entry, :photos, []) != [] ->
+        %{headline: "Photo update", details: []}
+
+      Enum.all?(ordered, &trait_claim?/1) ->
+        spec_parts(ordered)
+
+      true ->
+        event_parts(ordered)
+    end
   end
 
   # An entry made only of trait claims is the spec panel's work (§2b), not an
@@ -325,9 +332,9 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # has to be no line at all — an empty labelled chip reads as a fact we are
   # withholding rather than one nobody gave us.
   defp lead_details(%{predicate: "event.fuel", value: value}), do: fuel_details(value)
-  defp lead_details(%{predicate: "event.service"} = claim), do: own_detail(claim)
-  defp lead_details(%{predicate: "event.outing"} = claim), do: own_detail(claim)
-  defp lead_details(%{predicate: "event.plan"} = claim), do: own_detail(claim)
+  defp lead_details(%{predicate: "event.service"} = claim), do: detail("Performed by", claim)
+  defp lead_details(%{predicate: "event.outing"} = claim), do: detail("Place", claim)
+  defp lead_details(%{predicate: "event.plan"} = claim), do: detail("Area", claim)
   defp lead_details(_claim), do: []
 
   # What a fill-up cost. Its own label rather than the entry's, because "Total"
@@ -378,10 +385,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp unit_label("l"), do: "L"
   defp unit_label(unit), do: unit
 
-  defp own_detail(claim) do
+  defp detail(label, claim) do
     case claim_detail(claim) do
       nil -> []
-      value -> [%{label: entry_label(claim.predicate), value: value}]
+      value -> [%{label: label, value: value}]
     end
   end
 

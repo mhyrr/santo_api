@@ -32,6 +32,11 @@ defmodule SantoApi.Owners.Links do
     )
   end
 
+  @doc "The forum thread selected as this car's cross-post destination."
+  def build_thread(%Vehicle{} = vehicle) do
+    Repo.get_by(VehicleLink, vehicle_id: vehicle.id, kind: :build_thread)
+  end
+
   @doc """
   Add a link to the end of the car's list (owner_surface §7b.1 decision 8,
   onboarding's last step). Requires the caller's active stewardship of
@@ -44,6 +49,30 @@ defmodule SantoApi.Owners.Links do
       |> VehicleLink.changeset(attrs)
       |> Ecto.Changeset.put_change(:position, next_position(vehicle))
       |> Repo.insert()
+    end
+  end
+
+  @doc "Create or replace the one build-thread destination for a car."
+  def set_build_thread(%Scope{} = scope, %Vehicle{} = vehicle, attrs) do
+    with {:ok, _stewardship} <- authorize(scope, vehicle) do
+      link = build_thread(vehicle) || %VehicleLink{vehicle_id: vehicle.id}
+      position = if link.id, do: link.position, else: next_position(vehicle)
+
+      link
+      |> VehicleLink.changeset(%{url: value(attrs, :url), label: "Build thread"})
+      |> Ecto.Changeset.put_change(:kind, :build_thread)
+      |> Ecto.Changeset.put_change(:position, position)
+      |> Repo.insert_or_update()
+    end
+  end
+
+  @doc "Forget the build-thread destination without touching the forum itself."
+  def clear_build_thread(%Scope{} = scope, %Vehicle{} = vehicle) do
+    with {:ok, _stewardship} <- authorize(scope, vehicle) do
+      case build_thread(vehicle) do
+        %VehicleLink{} = link -> Repo.delete(link)
+        nil -> {:ok, nil}
+      end
     end
   end
 
@@ -105,5 +134,9 @@ defmodule SantoApi.Owners.Links do
       nil -> 0
       max -> max + 1
     end
+  end
+
+  defp value(attrs, key) do
+    Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
   end
 end

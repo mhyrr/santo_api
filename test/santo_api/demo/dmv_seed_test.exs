@@ -25,7 +25,7 @@ defmodule SantoApi.Demo.DmvSeedTest do
     assert katies.ends_at == ~T[09:00:00]
     assert katies.place_text =~ "Great Falls"
     assert katies.participant_count == 2
-    assert katies.media_count == 0
+    assert katies.media_count == 1
 
     assert Enum.sort(Enum.map(katies.participations, & &1.user.handle)) == [
              "slowcarfast",
@@ -35,7 +35,7 @@ defmodule SantoApi.Demo.DmvSeedTest do
     assert Enum.any?(katies.participations, fn participation ->
              Enum.any?(
                participation.attachments,
-               &(&1.url =~ "facebook.com/groups/710572889036708")
+               &(is_binary(&1.url) and &1.url =~ "facebook.com/groups/710572889036708")
              )
            end)
 
@@ -45,6 +45,10 @@ defmodule SantoApi.Demo.DmvSeedTest do
     assert wdcr.place_text =~ "Regency Furniture Stadium"
 
     [participation] = wdcr.participations
+
+    assert Enum.any?(participation.attachments, fn attachment ->
+             attachment.kind == :photo and attachment.artifact.mime == "image/jpeg"
+           end)
 
     assert Enum.map(participation.details, &{&1.label, &1.value}) == [
              {"Class", "S2"},

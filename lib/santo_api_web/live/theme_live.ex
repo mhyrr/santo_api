@@ -350,10 +350,10 @@ defmodule SantoApiWeb.ThemeLive do
                 <div>
                   <p class={["club-kicker club-kicker-paper"]}>History &amp; provenance</p>
                   <h3 class={["club-display club-display-dark club-record-title"]}>
-                    Factory and provenance
+                    Factory details
                   </h3>
                 </div>
-                <p class="club-record-strength"><strong>62%</strong> document-backed</p>
+                <p class="club-record-strength"><strong>5 of 8</strong> details verified</p>
               </div>
               <details open class="club-record-row">
                 <summary>
@@ -364,13 +364,13 @@ defmodule SantoApiWeb.ThemeLive do
                 <div class="club-record-detail">
                   <dl>
                     <div>
-                      <dt>Asserted by</dt><dd>Porsche factory data</dd>
+                      <dt>Source</dt><dd>Porsche factory data</dd>
                     </div>
                     <div>
-                      <dt>Applicable</dt><dd>At production</dd>
+                      <dt>Date</dt><dd>At production</dd>
                     </div>
                     <div>
-                      <dt>Evidence</dt><dd>Vehicle data sticker</dd>
+                      <dt>Backed by</dt><dd>Vehicle data sticker</dd>
                     </div>
                   </dl>
                 </div>
@@ -483,8 +483,8 @@ defmodule SantoApiWeb.ThemeLive do
             <h2 class="club-display club-display-dark">The car earns the first screen</h2>
           </div>
           <p>
-            One page, read in order: the car and its keeper, the living thread, then the
-            documentary record that backs it.
+            The car comes first, followed by the owner’s journal, its current setup, and the
+            history underneath it.
           </p>
         </header>
 
@@ -537,7 +537,7 @@ defmodule SantoApiWeb.ThemeLive do
             aria-labelledby="theme-story-heading"
           >
             <div class="theme-owner-story-copy">
-              <p class="club-kicker club-kicker-paper">Owner story</p>
+              <p class="club-kicker club-kicker-paper">The story</p>
               <h3 id="theme-story-heading">Bought for the roads, slowly made my own.</h3>
               <p>
                 I found this Cayman after a year of looking for a simple, analog car I would not
@@ -645,7 +645,7 @@ defmodule SantoApiWeb.ThemeLive do
               class="theme-current-state"
               aria-labelledby="theme-current-heading"
             >
-              <p class="club-kicker club-kicker-paper">Useful now, quiet by design</p>
+              <p class="club-kicker club-kicker-paper">Current setup</p>
               <h3 id="theme-current-heading">As it sits</h3>
               <dl>
                 <div>
@@ -681,10 +681,10 @@ defmodule SantoApiWeb.ThemeLive do
           >
             <header class="theme-provenance-head">
               <div>
-                <p class="club-kicker club-kicker-paper">The documentary foundation</p>
+                <p class="club-kicker club-kicker-paper">Original details and history</p>
                 <h3 id="theme-provenance-heading">History &amp; provenance</h3>
               </div>
-              <p><strong>7 of 9</strong> lines admitted without a live disagreement</p>
+              <p><strong>7 of 9</strong> details verified</p>
             </header>
 
             <div class="theme-provenance-rows">
@@ -697,13 +697,13 @@ defmodule SantoApiWeb.ThemeLive do
                 <div class="theme-provenance-detail">
                   <dl>
                     <div>
-                      <dt>Asserted by</dt><dd>Porsche factory data</dd>
+                      <dt>Source</dt><dd>Porsche factory data</dd>
                     </div>
                     <div>
-                      <dt>Applicable</dt><dd>At production</dd>
+                      <dt>Date</dt><dd>At production</dd>
                     </div>
                     <div>
-                      <dt>Evidence</dt><dd>Vehicle data sticker</dd>
+                      <dt>Backed by</dt><dd>Vehicle data sticker</dd>
                     </div>
                   </dl>
                   <a href="#theme-provenance-verified">Open public source</a>

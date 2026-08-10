@@ -35,14 +35,14 @@ defmodule SantoApiWeb.VehicleLive.Index do
       |> Registry.search_vehicles()
       |> Enum.reject(&MapSet.member?(unpublished, &1.id))
 
-    counts = Registry.entry_counts()
+    counts = Owners.public_entry_counts(Enum.map(vehicles, & &1.id))
     stewards = Owners.stewards_for(Enum.map(vehicles, & &1.id))
 
     rows =
       Enum.map(vehicles, fn vehicle ->
         Presenter.car_card(vehicle,
           entries: Map.get(counts, vehicle.id, 0),
-          latest: vehicle.id |> Registry.timeline() |> List.first(),
+          latest: nil |> Owners.timeline(vehicle) |> List.first(),
           steward: stewards[vehicle.id]
         )
       end)
