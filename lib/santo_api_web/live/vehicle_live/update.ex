@@ -7,10 +7,11 @@ defmodule SantoApiWeb.VehicleLive.Update do
 
   use SantoApiWeb, :live_view
 
-  alias SantoApi.Owners
+  alias SantoApi.{Events, Owners}
   alias SantoApi.Registry
   alias SantoApi.Social
   alias SantoApi.Social.CommentReport
+  alias SantoApiWeb.EventComponents
   alias SantoApiWeb.VehicleLive.Presenter
 
   @impl true
@@ -26,6 +27,7 @@ defmodule SantoApiWeb.VehicleLive.Update do
        |> assign(:vehicle, vehicle)
        |> assign(:entry, entry)
        |> assign(:parts, Presenter.entry_parts(entry))
+       |> assign(:event_participation, event_participation(scope, vehicle, entry.entry_ref))
        |> assign(:signed_in?, signed_in?(scope))
        |> assign(:viewer_id, viewer_id(scope))
        |> assign(:comment_form, comment_form(scope, vehicle, entry.entry_ref))
@@ -48,6 +50,13 @@ defmodule SantoApiWeb.VehicleLive.Update do
 
   defp viewer_id(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{id: id}}), do: id
   defp viewer_id(_scope), do: nil
+
+  defp event_participation(scope, vehicle, entry_ref) do
+    case Events.participation_for_entry(scope, vehicle, entry_ref) do
+      {:ok, participation} -> participation
+      {:error, :not_found} -> nil
+    end
+  end
 
   defp comment_form(
          %SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{handle: handle}} = scope,
@@ -176,7 +185,15 @@ defmodule SantoApiWeb.VehicleLive.Update do
           <span aria-hidden="true">←</span> {Presenter.title(@vehicle)}
         </.link>
 
-        <header id="update-card" class="club-update-card">
+        <EventComponents.event_journal_card
+          :if={@event_participation}
+          participation={@event_participation}
+          reply_count={@comment_count}
+          heading_level={1}
+          show_our_day={false}
+        />
+
+        <header :if={is_nil(@event_participation)} id="update-card" class="club-update-card">
           <div class="club-update-card-rail" aria-hidden="true"></div>
           <div>
             <p class="club-kicker">{Presenter.on_date(@entry.date) || "Undated"}</p>

@@ -123,6 +123,10 @@ distinction.
   the home for reactions and replies.
 - `/v/:public_id/log` — the structured review/editor for a new update. It may
   be opened with natural language from the garage.
+- `/v/:public_id/events/new` — the authenticated generic event composer for a
+  car the member maintains.
+- `/events/:public_id` — the public shared occurrence, aggregating public
+  participation accounts without an event-wide comment river or scoreboard.
 
 `Garage` is the primary personal noun. `My cars` is too ownership-specific for
 a stewardship model, while `Projects` excludes stock, survivor, and daily cars.
@@ -199,6 +203,14 @@ The lab must show the identity, full token palette, type scale, real top-bar
 states, avatars, controls and their states, and the three load-bearing domain
 objects: car card, log entry, and record row. It should include desktop and
 compact shell examples and remain usable at 390px without horizontal overflow.
+
+The 2026-08-09 review pass extends the lab with one cohesive public-car study,
+a rich event journal card, a shared-event page, and the generic event composer.
+The study deliberately chooses newest-first journal order, a mutable story near
+the hero, a desktop current-state rail, and Share without Follow. Greg ratified
+those choices for the first production iteration on 2026-08-09. The sample
+content remains illustrative; the event persistence contract comes from
+`car_page.md`, not from copying the lab's markup into schemas.
 
 The accepted review uses petrol teal as a large field and `Vin Santo` as two
 words in prose and the wordmark. The carafe remains the compact mark; it can be

@@ -206,6 +206,29 @@ defmodule SantoApiWeb.ComposerTest do
       assert claim.value["text"] == "Sounds different cold. Watch it."
     end
 
+    test "a plan is dated intent and never changes current state", ctx do
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log")
+
+      view |> element("[data-mode=plan]") |> render_click()
+
+      view
+      |> form("#composer-form",
+        entry: %{text: "Try a lighter set of wheels next season", area: "Wheels & tires"}
+      )
+      |> render_submit()
+
+      assert [entry] = Registry.timeline(ctx.vehicle.id)
+      assert [claim] = entry.claims
+      assert claim.predicate == "event.plan"
+      assert claim.value["area"] == "Wheels & tires"
+
+      {:ok, vehicle} = Registry.fetch_vehicle(ctx.vehicle.id)
+      assert vehicle.current_state == %{}
+
+      {:ok, page, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      assert has_element?(page, "[data-plan=true]", "Planned:")
+    end
+
     test "an empty note says so rather than logging nothing", ctx do
       {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log")
 

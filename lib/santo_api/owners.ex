@@ -712,7 +712,10 @@ defmodule SantoApi.Owners do
     * `:date` — required. The timeline orders by it and the fold reads recency
       off it, so an owner entry is never undated.
     * `:claims` — `[%{predicate: ..., value: ...}]`, at least one.
-    * `:photos` — `[%{path:, filename:, mime:}]`, owner-supplied artifacts.
+    * `:photos` — `[%{path:, filename:, mime:}]`, owner-supplied photo artifacts.
+    * `:attachments` — `[%{path:, filename:, mime:, kind:}]`, generic event
+      files. `:photo` remains a photo artifact; other kinds are stored as
+      documents. Event labels and ordering live outside the ledger.
     * `:visibility` — `:public` (default) or `:private`. Presentation only: a
       private claim is still admitted, still counts, and still folds into
       current state.
@@ -757,7 +760,11 @@ defmodule SantoApi.Owners do
         claims = Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
 
         artifacts =
-          Enum.map(Map.get(attrs, :photos, []), &write_photo!(vehicle, party, entry_ref, &1))
+          Enum.map(Map.get(attrs, :photos, []), &write_photo!(vehicle, party, entry_ref, &1)) ++
+            Enum.map(
+              Map.get(attrs, :attachments, []),
+              &write_attachment!(vehicle, party, entry_ref, &1)
+            )
 
         %{
           entry_ref: entry_ref,
@@ -874,6 +881,28 @@ defmodule SantoApi.Owners do
         filename: filename,
         mime: photo[:mime],
         kind: :photo,
+        entry_ref: entry_ref,
+        source_party: party
+      })
+
+    artifact
+  end
+
+  defp write_attachment!(
+         vehicle,
+         party,
+         entry_ref,
+         %{path: path, filename: filename} = attachment
+       ) do
+    kind = if attachment[:kind] in [:photo, "photo"], do: :photo, else: :document
+
+    {:ok, artifact} =
+      Registry.create_upload_artifact(%{
+        vehicle_id: vehicle.id,
+        path: path,
+        filename: filename,
+        mime: attachment[:mime],
+        kind: kind,
         entry_ref: entry_ref,
         source_party: party
       })

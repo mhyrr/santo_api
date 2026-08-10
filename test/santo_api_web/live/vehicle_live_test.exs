@@ -435,7 +435,9 @@ defmodule SantoApiWeb.VehicleLiveTest do
     large_queries = page_query_count(build_conn(), large)
 
     assert large_queries == small_queries
-    assert large_queries <= 16
+    # The mutable story and generic event association each add one constant
+    # page query; claim volume must still add none.
+    assert large_queries <= 18
   end
 
   test "an admitted unsuccessful auction event renders as a high bid, not a sale", %{conn: conn} do

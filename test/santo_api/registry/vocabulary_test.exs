@@ -285,6 +285,7 @@ defmodule SantoApi.Registry.VocabularyTest do
           ]
         },
         "event.note" => %{"text" => "Sounds different cold"},
+        "event.plan" => %{"text" => "Try lighter wheels", "area" => "wheels"},
         "event.outing" => %{
           "kind" => "autocross",
           "venue" => "Crows Landing",
@@ -333,6 +334,18 @@ defmodule SantoApi.Registry.VocabularyTest do
     test "notes are the escape hatch — any text is accepted" do
       assert :ok = Vocabulary.validate("event.note", %{"text" => "Car sat all winter."})
       assert {:error, _} = Vocabulary.validate("event.note", %{"text" => nil})
+    end
+
+    test "plans carry intent and an optional free-text area" do
+      assert :ok = Vocabulary.validate("event.plan", %{"text" => "Try lighter wheels"})
+
+      assert :ok =
+               Vocabulary.validate("event.plan", %{
+                 "text" => "Try lighter wheels",
+                 "area" => "Wheels & tires"
+               })
+
+      assert {:error, _} = Vocabulary.validate("event.plan", %{"text" => nil})
     end
 
     test "outings carry a kind from the closed list" do
@@ -422,6 +435,7 @@ defmodule SantoApi.Registry.VocabularyTest do
       assert Vocabulary.scope_kind("event.fuel") == :event
       assert Vocabulary.scope_kind("event.modification") == :event
       assert Vocabulary.scope_kind("event.note") == :event
+      assert Vocabulary.scope_kind("event.plan") == :event
       assert Vocabulary.scope_kind("event.outing") == :event
       assert Vocabulary.scope_kind("state.engine") == :observed
       assert Vocabulary.scope_kind("state.exterior") == :observed

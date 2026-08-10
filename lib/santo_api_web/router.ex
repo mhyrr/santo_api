@@ -45,6 +45,7 @@ defmodule SantoApiWeb.Router do
 
     post "/builds", VehicleBuildController, :create
     get "/vin/:vin", VehiclePageController, :resolve
+    get "/events/:public_id/attachments/:id", EventAttachmentController, :show
 
     # Anonymous is the normal case here, so the scope is mounted but never
     # required — it only decides whether the page admits you are signed in.
@@ -60,6 +61,10 @@ defmodule SantoApiWeb.Router do
       live "/start", OriginationLive
       live "/v/:public_id", VehicleLive.Show
       live "/v/:public_id/updates/:entry_ref", VehicleLive.Update
+      # A shared event is a public coordinate. Optional auth stays mounted so
+      # the same page can render the real signed-in shell without making a
+      # visitor register merely to see what happened.
+      live "/events/:public_id", EventLive.Show
     end
   end
 
@@ -84,6 +89,9 @@ defmodule SantoApiWeb.Router do
       # Correcting an entry is the same surface with the entry already in it —
       # one composer, two entry points (owner_surface §8).
       live "/v/:public_id/log/:entry_ref", OwnerLive.Composer
+      # Creating a participation writes both event data and an ordinary car
+      # update. Login is the router gate; stewardship is rechecked in Events.
+      live "/v/:public_id/events/new", OwnerLive.EventComposer
       live "/v/:public_id/spec", OwnerLive.Spec
     end
   end

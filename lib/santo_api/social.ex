@@ -47,6 +47,50 @@ defmodule SantoApi.Social do
     end
   end
 
+  @doc "Reaction and visible-reply counts for several update subjects in two queries."
+  def conversation_counts(entries) when is_list(entries) do
+    pairs =
+      entries
+      |> Enum.flat_map(fn
+        {%Vehicle{id: vehicle_id}, entry_ref} -> cast_pair(vehicle_id, entry_ref)
+        {vehicle_id, entry_ref} -> cast_pair(vehicle_id, entry_ref)
+        _other -> []
+      end)
+      |> Enum.uniq()
+
+    refs = Enum.map(pairs, &elem(&1, 1))
+    vehicles = Enum.map(pairs, &elem(&1, 0))
+    allowed = MapSet.new(pairs)
+
+    like_counts =
+      Repo.all(
+        from(l in UpdateLike,
+          where: l.vehicle_id in ^vehicles and l.entry_ref in ^refs,
+          group_by: [l.vehicle_id, l.entry_ref],
+          select: {{l.vehicle_id, l.entry_ref}, count(l.id)}
+        )
+      )
+      |> Map.new()
+
+    reply_counts =
+      Repo.all(
+        from(c in UpdateComment,
+          where: c.vehicle_id in ^vehicles and c.entry_ref in ^refs and c.status == :visible,
+          group_by: [c.vehicle_id, c.entry_ref],
+          select: {{c.vehicle_id, c.entry_ref}, count(c.id)}
+        )
+      )
+      |> Map.new()
+
+    Map.new(allowed, fn pair ->
+      {pair,
+       %{
+         like_count: Map.get(like_counts, pair, 0),
+         reply_count: Map.get(reply_counts, pair, 0)
+       }}
+    end)
+  end
+
   @doc "Add or remove this member's appreciation for one public update."
   def toggle_like(%Scope{user: %User{} = user}, %Vehicle{} = vehicle, entry_ref) do
     with {:ok, ref} <- public_entry(vehicle, entry_ref) do
@@ -265,6 +309,15 @@ defmodule SantoApi.Social do
   end
 
   defp liked?(_scope, _vehicle_id, _entry_ref), do: false
+
+  defp cast_pair(vehicle_id, entry_ref) do
+    with {:ok, vehicle_id} <- Ecto.UUID.cast(vehicle_id),
+         {:ok, entry_ref} <- Ecto.UUID.cast(entry_ref) do
+      [{vehicle_id, entry_ref}]
+    else
+      _invalid -> []
+    end
+  end
 
   # Two browser clicks can race. The unique index wins; the resulting state is
   # still liked, so report the semantic result instead of surfacing a form error.

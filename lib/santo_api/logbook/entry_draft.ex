@@ -10,7 +10,7 @@ defmodule SantoApi.Logbook.EntryDraft do
 
   alias SantoApi.Registry.Vocabulary
 
-  @modes [:fuel, :service, :modification, :outing, :note]
+  @modes [:fuel, :service, :modification, :outing, :plan, :note]
 
   def modes, do: @modes
 
@@ -90,6 +90,16 @@ defmodule SantoApi.Logbook.EntryDraft do
         |> put_unless_nil("result", trimmed(params["result"]))
 
       {:ok, [%{predicate: "event.outing", value: outing}] ++ mileage(odometer)}
+    end
+  end
+
+  def claims(:plan, params) do
+    with {:ok, text} <- required_text(params["text"], "Say what you are considering.") do
+      plan =
+        %{"text" => text}
+        |> put_unless_nil("area", trimmed(params["area"]))
+
+      {:ok, [%{predicate: "event.plan", value: plan}]}
     end
   end
 

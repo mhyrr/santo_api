@@ -1,8 +1,10 @@
 # Public car page — working design
 
-*Status: design pass, 2026-08-09. The hierarchy below is proposed, not
-ratified. Small corrections to the existing page may ship independently; the
-page reconstruction waits for Greg's review.*
+*Status: approved 2026-08-09; first production iteration implemented
+2026-08-10. `/theme` remains the review lab, while the production car page and
+generic event surfaces now use the accepted hierarchy. Hero photography still
+waits on the public image pipeline, so cars without it use the deliberate
+typographic fallback.*
 
 ## The job
 
@@ -60,7 +62,7 @@ Car page (/v/:public_id)
 │   ├── Owner-selected hero photo or typographic fallback
 │   ├── Current-build title and one-line story
 │   ├── Maintainer, location if shared, odometer, last update
-│   └── Log update / Follow / Share
+│   └── Log update / Add event / Share
 ├── In-page navigation
 │   ├── Story
 │   ├── Journal
@@ -68,7 +70,7 @@ Car page (/v/:public_id)
 │   └── Provenance
 ├── Owner story
 │   ├── Mutable opening-post prose
-│   └── Compact photo strip
+│   └── Compact photo strip (after the public image pipeline)
 ├── Build-at-a-glance
 │   ├── Current engine / transmission
 │   ├── Suspension / wheels / brakes / exterior
@@ -160,11 +162,11 @@ links or evidence pointers according to their rights profile.
 
 ## Event-centered journal
 
-*Opened 2026-08-09. Working design, not ratified.*
+*Ratified 2026-08-09; first persistent slice implemented 2026-08-10.*
 
 An outing is not merely a larger timeline entry. **The shared event is the
-coordinate; the car's participation is the journal object.** "WDCR 2026 Event
-2" should exist once as a place, time, organizer, and field. The Cayman's
+coordinate; the car's participation is the journal object.** "WDCR 2026 AX
+Championship Event #2" should exist once as a place, time, organizer, and field. The Cayman's
 story, setup, runs, video, and result are its participation in that occurrence.
 Another member's Corvette gets a separate participation attached to the same
 event. The event page can then show who was there and what they did without
@@ -259,7 +261,7 @@ modification/current-state delta.
 The car page gets a rich event card in its journal:
 
 ```text
-19 APR 2026  /  WDCR 2026 EVENT 2                  SUMMIT POINT
+24 MAY 2026  /  WDCR 2026 AX CHAMPIONSHIP #2      WALDORF
 AUTOCROSS · #37 · S2
 
 Owner's account of the day, a lead photo or video, and whichever details the
@@ -334,26 +336,49 @@ Landscape references:
 - [MotorsportReg REST API](https://api.motorsportreg.com/)
 - [SCCA National Solo live timing example](https://sololive.scca.com/26LVPS2/index.php)
 
-## Open decisions for the walk
+## First-iteration decisions
 
-1. **Default journal order:** newest-first with *Start at the beginning*, or
-   oldest-first like a forum thread?
-2. **Owner story:** one mutable opening paragraph near the hero, or a pinned
-   first journal post that remains immutable?
-3. **Current-state rail:** show the six folded traits persistently on desktop,
-   or keep the first pass single-column and let imagery carry the showpiece?
-4. **Follower action:** ship *Follow this car* with notifications in this pass,
-   or make Share the only audience action until notification policy is designed?
-5. **Event attachment:** may any member create a community occurrence and attach
-   their own car, with operator merge later? Recommendation: yes; organizer-only
-   creation would kill the ten-second logging path.
-6. **Future attendance:** should a public plan automatically announce that an
-   owner will be at a future event? Recommendation: event plans keep the existing
-   entry visibility control, but Vin Santo never publishes live location or
-   implies checked-in attendance from a plan.
-7. **First typed extension:** none by default. Let real event posts accumulate,
-   then promote a repeated workflow only when generic details and attachments
-   fail to support something owners are actually trying to do.
+Ratified with the `/theme` prototype on 2026-08-09:
+
+1. **Default journal order:** newest-first, with *Start at the beginning* as the
+   alternate reading path.
+2. **Owner story:** one mutable opening paragraph near the hero, outside the
+   claim ledger.
+3. **Current-state rail:** the six folded traits remain visible as a secondary
+   desktop rail and return to normal flow on compact screens.
+4. **Audience action:** Share ships first. Follow waits for a notification
+   policy rather than creating a button with no honest consequence.
+5. **Event attachment:** any member may create a community occurrence and
+   attach a car they maintain; similar occurrences are suggestions, never
+   automatic merges.
+6. **Future attendance:** event plans retain the entry visibility control, but
+   Vin Santo never publishes live location or infers checked-in attendance.
+7. **Typed extensions:** none. Generic owner-defined details and labeled
+   attachments must fail a repeated real workflow before a discipline-specific
+   adapter earns a schema.
+
+### First production slice
+
+The 2026-08-10 implementation keeps the universal model literal:
+
+- `event_occurrences` holds the stable public ID, local date/time or range,
+  optional timezone, place text, description, tags, creator, and source status.
+- `event_participations` joins one member and one maintained car to the
+  occurrence. It holds the journal, visibility, tags, an ordered JSON list of
+  arbitrary label/value details, and the ordinary ledger `entry_ref`.
+- `event_attachments` holds ordered labeled artifacts or links. The attachment
+  kind affects presentation only; it does not create a discipline-specific
+  entity.
+- Creating a participation and its `event.outing` log entry is one transaction.
+  The update permalink remains **Our day** and owns replies; the shared event
+  page owns aggregation and has no comment river.
+- `event.plan` is a separate dated-intent claim available in the ordinary
+  composer. It never changes `current_state`; completing the work still
+  requires a modification update.
+
+The first slice deliberately omits event editing, operator merging, event
+archive/search UI, organizer authority, and typed import adapters. Those need
+real usage or a moderation contract before they earn more schema.
 
 ## Deliberately excluded
 

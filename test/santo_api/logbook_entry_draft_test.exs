@@ -88,4 +88,17 @@ defmodule SantoApi.Logbook.EntryDraftTest do
              "venue" => "Angeles Crest Highway"
            }
   end
+
+  test "a plan records dated intent without claiming that the car changed" do
+    assert {:ok, [%{predicate: "event.plan", value: value}]} =
+             EntryDraft.claims(:plan, %{
+               "text" => "Try a lighter set of wheels next season",
+               "area" => "Wheels & tires"
+             })
+
+    assert value == %{
+             "text" => "Try a lighter set of wheels next season",
+             "area" => "Wheels & tires"
+           }
+  end
 end

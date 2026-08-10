@@ -38,6 +38,7 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     "event.service" => "Service",
     "event.modification" => "Modification",
     "event.note" => "Note",
+    "event.plan" => "Plan",
     "event.outing" => "Outing",
     "event.sale" => "Sale",
     "event.origination" => "Record started",
@@ -326,6 +327,7 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp lead_details(%{predicate: "event.fuel", value: value}), do: fuel_details(value)
   defp lead_details(%{predicate: "event.service"} = claim), do: own_detail(claim)
   defp lead_details(%{predicate: "event.outing"} = claim), do: own_detail(claim)
+  defp lead_details(%{predicate: "event.plan"} = claim), do: own_detail(claim)
   defp lead_details(_claim), do: []
 
   # What a fill-up cost. Its own label rather than the entry's, because "Total"
@@ -394,6 +396,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   def claim_detail(%{predicate: "event.note", value: %{"text" => text}}) when is_binary(text),
     do: text
 
+  def claim_detail(%{predicate: "event.plan", value: %{"area" => area}})
+      when is_binary(area),
+      do: area
+
   def claim_detail(%{predicate: "event.service", value: %{"performer" => performer}})
       when is_binary(performer),
       do: performer
@@ -434,6 +440,9 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp claim_headline(%{predicate: "event.service", value: %{"summary" => summary}}), do: summary
   defp claim_headline(%{predicate: "event.modification", value: %{"summary" => s}}), do: s
   defp claim_headline(%{predicate: "event.note", value: %{"text" => text}}), do: text
+
+  defp claim_headline(%{predicate: "event.plan", value: %{"text" => text}}),
+    do: "Planned: #{text}"
 
   defp claim_headline(%{predicate: "event.outing", value: value}),
     do: value["summary"] || value["result"] || outing_kind(value["kind"])

@@ -141,7 +141,7 @@ defmodule SantoApiWeb.Layouts do
   @doc "Renders a handle-derived profile avatar."
   attr :handle, :string, required: true
   attr :size, :atom, values: [:regular, :large], default: :regular
-  attr :tone, :atom, values: [:orange, :petrol, :lime], default: :orange
+  attr :tone, :atom, values: [:orange, :petrol], default: :orange
 
   def avatar(assigns) do
     ~H"""
@@ -149,8 +149,7 @@ defmodule SantoApiWeb.Layouts do
       class={[
         "club-avatar",
         @size == :large && "club-avatar-large",
-        @tone == :petrol && "club-avatar-petrol",
-        @tone == :lime && "club-avatar-lime"
+        @tone == :petrol && "club-avatar-petrol"
       ]}
       title={@handle}
     >

@@ -3,7 +3,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   The entry composer (owner_surface §1) — the make-or-break surface.
 
   Phone-first, because the entry moment is standing at the pump or in the garage
-  with greasy hands. Five modes: **Fill-up | Service | Mod | Drive | Note**. Fill-up opens
+  with greasy hands. Six modes: **Fill-up | Service | Mod | Drive | Plan | Note**. Fill-up opens
   selected with the odometer already carried forward from the last reading, so a
   fill-up is three numbers and a save — the Fuelly bar, which v1 has to clear.
 
@@ -14,7 +14,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   agent surface (§8) takes typed claims directly and never sees this mapping.
 
   Two entry points, one surface (§8, decided 2026-08-03). With an `entry_ref`
-  this is the correction form: the same five modes, prefilled from an entry
+  this is the correction form: the same six modes, prefilled from an entry
   already in the ledger, saving through `Owners.amend_entry/4`. The mapping
   runs backwards to fill the form and forwards to save it, so the two can
   never drift — and an entry the backwards direction cannot restate exactly is
@@ -38,6 +38,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     {:service, "Service"},
     {:modification, "Mod"},
     {:outing, "Drive"},
+    {:plan, "Plan"},
     {:note, "Note"}
   ]
 
@@ -234,6 +235,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp event_predicate(:service), do: "event.service"
   defp event_predicate(:modification), do: "event.modification"
   defp event_predicate(:outing), do: "event.outing"
+  defp event_predicate(:plan), do: "event.plan"
   defp event_predicate(:note), do: "event.note"
 
   defp mode_params(:fuel, stated) do
@@ -280,6 +282,11 @@ defmodule SantoApiWeb.OwnerLive.Composer do
     }
   end
 
+  defp mode_params(:plan, stated) do
+    plan = stated["event.plan"]
+    %{"text" => plan["text"], "area" => plan["area"]}
+  end
+
   defp mode_params(:note, stated), do: %{"text" => stated["event.note"]["text"]}
 
   # One delta is what the form can state. A mod that sets two traits at once
@@ -308,7 +315,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
   defp visibility("private"), do: :private
   defp visibility(_public), do: :public
 
-  defp mode(mode) when mode in ~w(fuel service modification outing note),
+  defp mode(mode) when mode in ~w(fuel service modification outing plan note),
     do: String.to_existing_atom(mode)
 
   defp mode(_unknown), do: :fuel
@@ -358,7 +365,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
         {if @entry_ref, do: "Correct this update", else: "Log an update"}
       </h1>
 
-      <nav class="mt-7 grid grid-cols-5 gap-1.5" aria-label="Entry type">
+      <nav class="mt-7 grid grid-cols-3 gap-1.5 sm:grid-cols-6" aria-label="Entry type">
         <button
           :for={{mode, label} <- @modes}
           type="button"
@@ -385,6 +392,7 @@ defmodule SantoApiWeb.OwnerLive.Composer do
         <.service_fields :if={@mode == :service} form={@form} />
         <.mod_fields :if={@mode == :modification} form={@form} />
         <.outing_fields :if={@mode == :outing} form={@form} />
+        <.plan_fields :if={@mode == :plan} form={@form} />
         <.note_fields :if={@mode == :note} form={@form} />
 
         <div class="grid gap-5 sm:grid-cols-2">
@@ -698,6 +706,46 @@ defmodule SantoApiWeb.OwnerLive.Composer do
           />
         </div>
       </div>
+    </div>
+    """
+  end
+
+  attr :form, :map, required: true
+
+  defp plan_fields(assigns) do
+    ~H"""
+    <div class="space-y-5">
+      <div>
+        <label for="entry_text" class="vs-eyebrow" style="color: var(--vs-dim)">
+          What are you considering?
+        </label>
+        <textarea
+          id="entry_text"
+          name="entry[text]"
+          rows="5"
+          class="vs-field mt-2"
+          placeholder="I’m looking at a lighter set of wheels for next season."
+        >{@form[:text].value}</textarea>
+      </div>
+
+      <div>
+        <label for="entry_area" class="vs-eyebrow" style="color: var(--vs-dim)">
+          Part of the car <span class="normal-case tracking-normal">(optional)</span>
+        </label>
+        <input
+          type="text"
+          id="entry_area"
+          name="entry[area]"
+          value={@form[:area].value}
+          class="vs-field mt-2"
+          placeholder="Wheels & tires"
+        />
+      </div>
+
+      <p class="text-xs leading-relaxed" style="color: var(--vs-dim)">
+        A plan records what you were thinking on this date. It does not change the car’s
+        current setup; log a modification if the work happens.
+      </p>
     </div>
     """
   end

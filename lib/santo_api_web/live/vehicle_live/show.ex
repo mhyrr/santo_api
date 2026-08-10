@@ -11,10 +11,13 @@ defmodule SantoApiWeb.VehicleLive.Show do
   """
   use SantoApiWeb, :live_view
 
-  alias SantoApi.Owners
+  alias SantoApi.{Events, Owners, Social}
   alias SantoApi.Owners.Links
+  alias SantoApi.Owners.Stories
   alias SantoApi.Owners.VehicleLink
+  alias SantoApi.Owners.VehicleStory
   alias SantoApi.Registry
+  alias SantoApiWeb.EventComponents
   alias SantoApiWeb.OwnerLive.Composer
   alias SantoApiWeb.VehicleLive.Presenter
 
@@ -25,6 +28,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
         scope = socket.assigns.current_scope
         stewarding? = Owners.stewarding?(scope, vehicle)
         published? = Owners.published?(vehicle)
+        timeline = Owners.timeline(scope, vehicle)
+        story = Stories.get_story(vehicle)
 
         # An unconfirmed origination is nobody's business but its steward's —
         # the magic-link click publishes (owner_surface §7b.1 decision 6).
@@ -37,10 +42,13 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:page_title, Presenter.title(vehicle))
          |> assign(:vehicle, vehicle)
          |> assign(:published?, published?)
-         |> assign(:timeline, Owners.timeline(scope, vehicle))
+         |> assign(:timeline, timeline)
+         |> assign(:event_updates, event_updates(scope, vehicle))
          |> assign(:record_provenance, Registry.public_fact_provenance(vehicle.id))
          |> assign(:steward, Owners.steward(vehicle))
          |> assign(:stewarding?, stewarding?)
+         |> assign(:story, story)
+         |> assign(:story_form, story_form(story, scope, vehicle, stewarding?))
          |> assign(:links, Links.list_links(vehicle))
          |> assign(:resolve_error, nil)
          |> assign(:my_handle, my_handle(scope))
@@ -66,20 +74,47 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   defp my_handle(_anonymous), do: nil
 
+  defp story_form(_story, _scope, _vehicle, false), do: nil
+
+  defp story_form(story, scope, vehicle, true) do
+    story = story || %VehicleStory{vehicle_id: vehicle.id, author_user_id: scope.user.id}
+
+    story
+    |> Stories.change_story()
+    |> to_form(as: :story)
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
     <article>
       <.unpublished_banner :if={not @published?} />
-      <.hero vehicle={@vehicle} steward={@steward} />
-      <.composer_bar :if={@stewarding?} vehicle={@vehicle} />
+      <.hero
+        vehicle={@vehicle}
+        steward={@steward}
+        story={@story}
+        timeline={@timeline}
+        stewarding?={@stewarding?}
+      />
       <.claim_bar
         :if={not @stewarding? and @vehicle.identity_kind != :asserted}
         vehicle={@vehicle}
         signed_in?={@signed_in?}
       />
-      <.logbook entries={@timeline} my_handle={@my_handle} public_id={@vehicle.public_id} />
-      <.current_spec vehicle={@vehicle} />
+      <.car_nav
+        story?={not is_nil(@story) or @stewarding?}
+        provenance?={@vehicle.identity_kind != :asserted}
+      />
+      <.owner_story story={@story} story_form={@story_form} stewarding?={@stewarding?} />
+      <div class="club-wrap car-page-body">
+        <.logbook
+          entries={@timeline}
+          event_updates={@event_updates}
+          my_handle={@my_handle}
+          public_id={@vehicle.public_id}
+        />
+        <.current_spec vehicle={@vehicle} />
+      </div>
       <.links_section links={@links} stewarding?={@stewarding?} />
       <%= if @vehicle.identity_kind == :asserted do %>
         <.your_word stewarding?={@stewarding?} resolve_error={@resolve_error} />
@@ -230,17 +265,89 @@ defmodule SantoApiWeb.VehicleLive.Show do
     """
   end
 
-  # The steward's own two doors, and nobody else's.
-  attr :vehicle, :map, required: true
+  attr :story?, :boolean, required: true
+  attr :provenance?, :boolean, required: true
 
-  defp composer_bar(assigns) do
+  defp car_nav(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :count,
+        2 + if(assigns.story?, do: 1, else: 0) + if(assigns.provenance?, do: 1, else: 0)
+      )
+
     ~H"""
-    <div class="mx-auto -mt-6 mb-12 flex max-w-3xl flex-wrap gap-3 px-5 sm:px-8">
-      <.link navigate={~p"/v/#{@vehicle.public_id}/log"} class="vs-commit">Log an update</.link>
-      <.link navigate={~p"/v/#{@vehicle.public_id}/spec"} class="vs-quiet">As it sits</.link>
-    </div>
+    <nav
+      id="car-page-nav"
+      class={["car-page-nav", "car-page-nav-#{@count}"]}
+      aria-label="Car page sections"
+    >
+      <a :if={@story?} href="#vehicle-owner-story">Story</a>
+      <a href="#vehicle-logbook">Journal</a>
+      <a href="#vehicle-current-state">As it sits</a>
+      <a :if={@provenance?} href="#vehicle-record">Provenance</a>
+    </nav>
     """
   end
+
+  attr :story, :map, default: nil
+  attr :story_form, :map, default: nil
+  attr :stewarding?, :boolean, required: true
+
+  defp owner_story(assigns) do
+    ~H"""
+    <section
+      :if={@story || @stewarding?}
+      id="vehicle-owner-story"
+      class="club-wrap car-owner-story"
+      aria-labelledby="owner-story-heading"
+    >
+      <div :if={@story} class="car-owner-story-copy">
+        <p class="club-kicker club-kicker-paper">Owner story</p>
+        <h2 id="owner-story-heading">{@story.tagline}</h2>
+        <p :if={@story.body} class="car-story-body">{@story.body}</p>
+        <p class="car-story-byline">
+          Written by @{story_handle(@story)} · edited {Presenter.on_date(
+            DateTime.to_date(@story.updated_at)
+          )}
+        </p>
+      </div>
+
+      <div :if={is_nil(@story)} class="car-owner-story-empty">
+        <p class="club-kicker club-kicker-paper">Owner story</p>
+        <h2 id="owner-story-heading">What is the story with this car?</h2>
+        <p>One honest sentence is enough. You can rewrite it as the car changes.</p>
+      </div>
+
+      <details :if={@stewarding?} id="story-editor" class="car-story-editor">
+        <summary>{if @story, do: "Edit the story", else: "Write the story"}</summary>
+        <.form for={@story_form} id="story-form" phx-submit="save_story">
+          <.input
+            field={@story_form[:tagline]}
+            type="text"
+            label="One-line story"
+            placeholder="Bought for the roads, slowly made my own."
+            maxlength="180"
+            required
+          />
+          <.input
+            field={@story_form[:body]}
+            type="textarea"
+            label="Opening paragraph (optional)"
+            placeholder="Where it came from, why it matters, and what you want to make of it."
+            rows="6"
+          />
+          <button type="submit" class="club-button club-button-primary">Save story</button>
+        </.form>
+      </details>
+    </section>
+    """
+  end
+
+  defp story_handle(%VehicleStory{author_user: %{handle: handle}}) when is_binary(handle),
+    do: handle
+
+  defp story_handle(_story), do: "maintainer"
 
   # The seeded-but-incomplete page is the bait (§4): the one thing an owner who
   # stumbles onto their own car should be able to do is say so. It stays quiet
@@ -268,62 +375,118 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   attr :vehicle, :map, required: true
   attr :steward, :map, default: nil
+  attr :story, :map, default: nil
+  attr :timeline, :list, required: true
+  attr :stewarding?, :boolean, required: true
 
   defp hero(assigns) do
     assigns =
       assigns
       |> assign(:spec, Presenter.spec_line(assigns.vehicle))
       |> assign(:odometer, Presenter.odometer(assigns.vehicle))
+      |> assign(:latest, List.first(assigns.timeline))
 
     ~H"""
-    <header id="vehicle-hero" class="mx-auto max-w-3xl px-5 pt-16 pb-14 sm:px-8 sm:pt-24">
-      <p id="vehicle-identity" class="vs-eyebrow vs-rise" style="color: var(--vs-dim)">
-        {Presenter.identity_label(@vehicle)}
-        <span class="vs-code ml-2" style="color: var(--vs-dial)">{Presenter.chassis(@vehicle)}</span>
-      </p>
+    <header id="vehicle-hero" class="car-showpiece-hero">
+      <img src={~p"/images/tire-arcs.svg"} alt="" class="car-showpiece-tracks" />
+      <div class="club-wrap car-showpiece-inner">
+        <div class="car-showpiece-copy">
+          <p id="vehicle-identity" class="club-kicker vs-rise">
+            {Presenter.identity_label(@vehicle)}
+            <span class="club-code">{Presenter.chassis(@vehicle)}</span>
+          </p>
 
-      <h1 id="vehicle-title" class="vs-spec vs-rise mt-5 text-[2.75rem] sm:text-6xl">
-        {Presenter.title(@vehicle)}
-      </h1>
+          <h1 id="vehicle-title" class="vs-rise">{Presenter.title(@vehicle)}</h1>
 
-      <p
-        :if={@spec != []}
-        id="vehicle-spec"
-        class="vs-rise mt-4 text-lg sm:text-xl"
-        style="color: var(--vs-dim)"
-      >
-        <span :for={{part, index} <- Enum.with_index(@spec)}>
-          <span :if={index > 0} aria-hidden="true" class="mx-2">·</span><span style="color: var(--vs-dial)">{part}</span>
-        </span>
-      </p>
+          <p :if={@story} id="vehicle-storyline" class="car-showpiece-story vs-rise">
+            {@story.tagline}
+          </p>
 
-      <p
-        :if={@spec == []}
-        id="vehicle-description-gap"
-        class="vs-rise mt-4 text-lg"
-        style="color: var(--vs-dim)"
-      >
-        Nobody has described this car yet.
-      </p>
+          <p
+            :if={is_nil(@story) and @spec == []}
+            id="vehicle-description-gap"
+            class="car-showpiece-story vs-rise"
+          >
+            Nobody has described this car yet.
+          </p>
 
-      <!-- Maintained by, never owned by: possession proof gates the log, and
-           title is layer 5's evidence to hold (owner_surface §4). -->
-      <p :if={@steward} class="vs-rise mt-5 text-sm" style="color: var(--vs-dim)">
-        Maintained by <span class="vs-code ml-1" style="color: var(--vs-dial)">{@steward.name}</span>
-      </p>
+          <p :if={@spec != []} id="vehicle-spec" class="car-showpiece-spec vs-rise">
+            {Enum.join(@spec, " · ")}
+          </p>
 
-      <dl class="vs-rise mt-10 flex flex-wrap items-baseline gap-x-10 gap-y-6">
-        <div :if={@odometer}>
-          <dt class="vs-eyebrow" style="color: var(--vs-dim)">Odometer</dt>
-          <dd class="vs-figure mt-1 text-3xl font-semibold">
-            {Presenter.delimit(@odometer.miles)}
-            <span class="text-base font-normal" style="color: var(--vs-dim)">mi</span>
-          </dd>
-          <dd :if={@odometer.as_of} class="vs-code mt-1 text-xs" style="color: var(--vs-dim)">
-            read {Presenter.on_date(@odometer.as_of)}
-          </dd>
+          <!-- Maintained by, never owned by: possession proof gates the log,
+               while title is evidence for the provenance layer to hold. -->
+          <p :if={@steward} class="car-showpiece-maintainer vs-rise">
+            Maintained by <strong>@{@steward.name}</strong>
+          </p>
+
+          <dl class="car-showpiece-metrics vs-rise">
+            <div :if={@odometer}>
+              <dt>Odometer</dt>
+              <dd>
+                {Presenter.delimit(@odometer.miles)} <span>mi</span>
+              </dd>
+              <small :if={@odometer.as_of}>read {Presenter.on_date(@odometer.as_of)}</small>
+            </div>
+            <div :if={@latest}>
+              <dt>Last update</dt>
+              <dd>{Presenter.on_date(@latest.date) || "Undated"}</dd>
+              <small>{Presenter.entry_headline(@latest)}</small>
+            </div>
+          </dl>
+
+          <div class="car-showpiece-actions">
+            <.link
+              :if={@stewarding?}
+              navigate={~p"/v/#{@vehicle.public_id}/log"}
+              class="club-button club-button-primary"
+            >
+              <.icon name="hero-pencil-square" class="size-4" /> Log an update
+            </.link>
+            <.link
+              :if={@stewarding?}
+              navigate={~p"/v/#{@vehicle.public_id}/events/new"}
+              class="club-button club-button-secondary"
+            >
+              <.icon name="hero-calendar-days" class="size-4" /> Add an event
+            </.link>
+            <button
+              id="vehicle-share"
+              type="button"
+              phx-hook=".SharePage"
+              data-path={~p"/v/#{@vehicle.public_id}"}
+              data-title={Presenter.title(@vehicle)}
+              class="club-button club-button-secondary"
+            >
+              <.icon name="hero-arrow-up-on-square" class="size-4" /> Share
+            </button>
+          </div>
         </div>
-      </dl>
+
+        <div class="car-showpiece-field" aria-hidden="true">
+          <span class="car-showpiece-line"></span>
+          <span class="car-showpiece-public-id">{@vehicle.public_id}</span>
+        </div>
+      </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".SharePage">
+        export default {
+          mounted() {
+            this.el.addEventListener("click", async () => {
+              const url = new URL(this.el.dataset.path, window.location.origin).toString()
+              try {
+                if (navigator.share) {
+                  await navigator.share({title: this.el.dataset.title, url})
+                } else if (navigator.clipboard) {
+                  await navigator.clipboard.writeText(url)
+                }
+              } catch (_error) {
+                // Closing the native share sheet is not a product error.
+              }
+            })
+          }
+        }
+      </script>
     </header>
     """
   end
@@ -331,6 +494,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
   # --- the logbook ----------------------------------------------------------
 
   attr :entries, :list, required: true
+  attr :event_updates, :map, required: true
   attr :public_id, :string, required: true
 
   attr :my_handle, :string, default: nil
@@ -341,12 +505,13 @@ defmodule SantoApiWeb.VehicleLive.Show do
     ~H"""
     <section
       id="vehicle-logbook"
-      class="mx-auto max-w-3xl px-5 pb-16 sm:px-8"
+      class="car-journal"
       aria-labelledby="logbook-heading"
     >
-      <h2 id="logbook-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
-        Updates
-      </h2>
+      <header class="car-section-heading">
+        <p class="club-kicker club-kicker-paper">Living build thread</p>
+        <h2 id="logbook-heading">Journal</h2>
+      </header>
 
       <p :if={@entries == []} id="logbook-empty" class="text-base" style="color: var(--vs-dim)">
         No updates yet. A service, a fill-up, a set of wheels, or a memorable drive
@@ -359,76 +524,99 @@ defmodule SantoApiWeb.VehicleLive.Show do
           id={entry_dom_id(entry)}
           class="vs-tick relative"
           data-owner={owner_entry?(entry)}
+          data-plan={plan_entry?(entry)}
         >
-          <p class="vs-code text-xs" style="color: var(--vs-dim)">
-            {Presenter.on_date(entry.date) || "Undated"}
-          </p>
+          <%= case Map.get(@event_updates, entry.entry_ref) do %>
+            <% %{participation: participation, reply_count: reply_count} -> %>
+              <EventComponents.event_journal_card
+                participation={participation}
+                reply_count={reply_count}
+                heading_level={3}
+              />
 
-          <h3 class="mt-1.5 text-lg leading-snug">
-            <.link
-              :if={entry.entry_ref}
-              navigate={~p"/v/#{@public_id}/updates/#{entry.entry_ref}"}
-              class="underline-offset-4 hover:underline"
-            >
-              {entry.parts.headline}
-            </.link>
-            <span :if={is_nil(entry.entry_ref)}>{entry.parts.headline}</span>
-          </h3>
+              <p :if={entry.mine?} class="mt-3 text-xs">
+                <button
+                  type="button"
+                  class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                  style="color: var(--vs-dim)"
+                  phx-click="delete_entry"
+                  phx-value-entry_ref={entry.entry_ref}
+                  data-confirm="Remove this event account from the car and shared event?"
+                >
+                  Remove
+                </button>
+              </p>
+            <% nil -> %>
+              <p class="vs-code text-xs" style="color: var(--vs-dim)">
+                {Presenter.on_date(entry.date) || "Undated"}
+              </p>
 
-          <ul
-            :if={entry.parts.details != []}
-            class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
-          >
-            <li :for={detail <- entry.parts.details} style="color: var(--vs-dim)">
-              <span class="vs-eyebrow">{detail.label}</span>
-              <span class="ml-1.5">{detail.value}</span>
-            </li>
-          </ul>
+              <h3 class="mt-1.5 text-lg leading-snug">
+                <.link
+                  :if={entry.entry_ref}
+                  navigate={~p"/v/#{@public_id}/updates/#{entry.entry_ref}"}
+                  class="underline-offset-4 hover:underline"
+                >
+                  {entry.parts.headline}
+                </.link>
+                <span :if={is_nil(entry.entry_ref)}>{entry.parts.headline}</span>
+              </h3>
 
-          <p class="mt-2 text-xs" style="color: var(--vs-dim)">
-            Recorded by {entry.party}
-            <!-- Only the steward is ever handed a private entry, so this line
-                 marks their own view rather than announcing a hole to a visitor. -->
-            <span :if={entry.visibility == :private} class="vs-eyebrow ml-2">
-              Not on the public page
-            </span>
-          </p>
+              <ul
+                :if={entry.parts.details != []}
+                class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+              >
+                <li :for={detail <- entry.parts.details} style="color: var(--vs-dim)">
+                  <span class="vs-eyebrow">{detail.label}</span>
+                  <span class="ml-1.5">{detail.value}</span>
+                </li>
+              </ul>
 
-          <p :if={entry.mine?} class="mt-2 flex flex-wrap gap-x-4 text-xs">
-            <.link
-              :if={entry.correctable?}
-              navigate={~p"/v/#{@public_id}/log/#{entry.entry_ref}"}
-              class="underline underline-offset-4 transition-opacity hover:opacity-65"
-              style="color: var(--vs-dim)"
-            >
-              Edit
-            </.link>
+              <p class="mt-2 text-xs" style="color: var(--vs-dim)">
+                Recorded by {entry.party}
+                <!-- Only the steward is ever handed a private entry, so this line
+                     marks their own view rather than announcing a hole to a visitor. -->
+                <span :if={entry.visibility == :private} class="vs-eyebrow ml-2">
+                  Not on the public page
+                </span>
+              </p>
 
-            <button
-              type="button"
-              class="underline underline-offset-4 transition-opacity hover:opacity-65"
-              style="color: var(--vs-dim)"
-              phx-click="delete_entry"
-              phx-value-entry_ref={entry.entry_ref}
-              data-confirm="Remove this update from the car's history?"
-            >
-              Remove
-            </button>
-          </p>
+              <p :if={entry.mine?} class="mt-2 flex flex-wrap gap-x-4 text-xs">
+                <.link
+                  :if={entry.correctable?}
+                  navigate={~p"/v/#{@public_id}/log/#{entry.entry_ref}"}
+                  class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                  style="color: var(--vs-dim)"
+                >
+                  Edit
+                </.link>
 
-          <p :if={entry.evidence != []} class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            <a
-              :for={{evidence, index} <- Enum.with_index(entry.evidence)}
-              id={"#{entry_dom_id(entry)}-evidence-#{index}"}
-              href={evidence.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              class="underline underline-offset-4 transition-opacity hover:opacity-65"
-              aria-label={"Source evidence from #{evidence.source}"}
-            >
-              Source evidence
-            </a>
-          </p>
+                <button
+                  type="button"
+                  class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                  style="color: var(--vs-dim)"
+                  phx-click="delete_entry"
+                  phx-value-entry_ref={entry.entry_ref}
+                  data-confirm="Remove this update from the car's history?"
+                >
+                  Remove
+                </button>
+              </p>
+
+              <p :if={entry.evidence != []} class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                <a
+                  :for={{evidence, index} <- Enum.with_index(entry.evidence)}
+                  id={"#{entry_dom_id(entry)}-evidence-#{index}"}
+                  href={evidence.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                  aria-label={"Source evidence from #{evidence.source}"}
+                >
+                  Source evidence
+                </a>
+              </p>
+          <% end %>
         </li>
       </ol>
     </section>
@@ -474,6 +662,27 @@ defmodule SantoApiWeb.VehicleLive.Show do
     end
   end
 
+  def handle_event("save_story", %{"story" => params}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Stories.save_story(scope, vehicle, params) do
+      {:ok, _story} ->
+        story = Stories.get_story(vehicle)
+
+        {:noreply,
+         socket
+         |> assign(:story, story)
+         |> assign(:story_form, story_form(story, scope, vehicle, true))
+         |> put_flash(:info, "Story updated.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :story_form, to_form(changeset, as: :story))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That story is not yours to change.")}
+    end
+  end
+
   def handle_event("add_link", %{"link" => params}, socket) do
     %{current_scope: scope, vehicle: vehicle} = socket.assigns
 
@@ -504,7 +713,14 @@ defmodule SantoApiWeb.VehicleLive.Show do
   def handle_event("delete_entry", %{"entry_ref" => entry_ref}, socket) do
     %{current_scope: scope, vehicle: vehicle} = socket.assigns
 
-    case Owners.retract_entry(scope, vehicle, entry_ref) do
+    result =
+      if Map.has_key?(socket.assigns.event_updates, entry_ref) do
+        Events.retract_participation(scope, vehicle, entry_ref)
+      else
+        Owners.retract_entry(scope, vehicle, entry_ref)
+      end
+
+    case result do
       {:ok, _count} ->
         {:ok, vehicle} = Registry.fetch_vehicle(vehicle.id)
 
@@ -512,11 +728,31 @@ defmodule SantoApiWeb.VehicleLive.Show do
          socket
          |> assign(:vehicle, vehicle)
          |> assign(:timeline, Owners.timeline(scope, vehicle))
+         |> assign(:event_updates, event_updates(scope, vehicle))
          |> put_flash(:info, "Entry removed.")}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "That entry is not yours to remove.")}
     end
+  end
+
+  defp event_updates(scope, vehicle) do
+    participations = Events.participations_for_vehicle(scope, vehicle)
+
+    counts =
+      if map_size(participations) == 0 do
+        %{}
+      else
+        participations
+        |> Map.values()
+        |> Enum.map(&{vehicle, &1.entry_ref})
+        |> Social.conversation_counts()
+      end
+
+    Map.new(participations, fn {entry_ref, participation} ->
+      reply_count = counts |> Map.fetch!({vehicle.id, entry_ref}) |> Map.fetch!(:reply_count)
+      {entry_ref, %{participation: participation, reply_count: reply_count}}
+    end)
   end
 
   # What this caller may do to one entry, decided once per render rather than
@@ -542,6 +778,9 @@ defmodule SantoApiWeb.VehicleLive.Show do
   defp owner_entry?(%{party_kind: :owner}), do: "true"
   defp owner_entry?(_entry), do: "false"
 
+  defp plan_entry?(%{claims: claims}),
+    do: to_string(Enum.any?(claims, &(&1.predicate == "event.plan")))
+
   defp entry_dom_id(%{entry_ref: entry_ref}) when is_binary(entry_ref),
     do: "entry-#{entry_ref}"
 
@@ -557,15 +796,17 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
     ~H"""
     <section
-      :if={@rows != []}
-      class="mx-auto max-w-3xl px-5 pb-20 sm:px-8"
+      id="vehicle-current-state"
+      class="car-current-state"
       aria-labelledby="spec-heading"
     >
-      <h2 id="spec-heading" class="vs-eyebrow pb-6" style="color: var(--vs-dim)">
-        As it sits
-      </h2>
+      <p class="club-kicker club-kicker-paper">Useful now, quiet by design</p>
+      <h2 id="spec-heading">As it sits</h2>
 
-      <dl class="divide-y" style="border-color: var(--vs-hairline)">
+      <p :if={@rows == []} class="car-current-state-empty">
+        No durable current-state details have been logged yet.
+      </p>
+      <dl :if={@rows != []} class="divide-y" style="border-color: var(--vs-hairline)">
         <div
           :for={row <- @rows}
           class={["grid gap-1 py-4 sm:grid-cols-[11rem_1fr] sm:gap-6", row.as_built && "vs-diverged"]}
@@ -580,6 +821,9 @@ defmodule SantoApiWeb.VehicleLive.Show do
           </dd>
         </div>
       </dl>
+      <p class="car-current-state-note">
+        Event-local notes stay with that day. Only a lasting car update changes this summary.
+      </p>
     </section>
     """
   end
