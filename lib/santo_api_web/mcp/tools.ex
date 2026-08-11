@@ -36,7 +36,7 @@ defmodule SantoApiWeb.MCP.Tools do
     type: "array",
     description: """
     What happened, as one or more claims. Recognised predicates are
-    event.fuel, event.service, event.modification, event.outing, event.note,
+    event.fuel, event.service, event.modification, event.outing, event.plan, event.note,
     and observation.mileage. Anything else you pass is kept verbatim as a note
     rather than rejected, so prefer logging an imperfect match over dropping
     what the owner said.
@@ -52,7 +52,8 @@ defmodule SantoApiWeb.MCP.Tools do
               "event.fuel takes volume, unit (gal or l), total_cents (what was " <>
               "paid, in whole cents) and currency — send unit_price instead if " <>
               "the owner gave a price per gallon and it is multiplied out for " <>
-              "you. The event.* rest take an object with a text field."
+              "you. event.plan and event.note take text; service, modification, " <>
+              "and outing use their documented summary fields."
         }
       }
     }

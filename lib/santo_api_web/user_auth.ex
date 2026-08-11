@@ -272,12 +272,9 @@ defmodule SantoApiWeb.UserAuth do
   end
 
   @doc "Returns the path to redirect to after log in."
-  # the user was already logged in, redirect to settings
-  def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{user: %Accounts.User{}}}}) do
-    ~p"/users/settings"
-  end
-
-  def signed_in_path(_), do: ~p"/"
+  # The garage is the signed-in daily-use destination; settings is account
+  # plumbing, not a home screen.
+  def signed_in_path(_conn_or_socket), do: ~p"/garage"
 
   @doc """
   Plug for routes that require the user to be authenticated.

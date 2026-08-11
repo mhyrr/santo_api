@@ -46,6 +46,7 @@ defmodule SantoApi.Registry.Vocabulary do
     "event.service" => ~w(summary performer),
     "event.modification" => ~w(summary area detail sets),
     "event.note" => ~w(text),
+    "event.plan" => ~w(text area),
     "event.outing" => ~w(kind venue result summary sets)
   }
 
@@ -76,7 +77,13 @@ defmodule SantoApi.Registry.Vocabulary do
                 "event.fuel" => :event,
                 "event.modification" => :event,
                 "event.note" => :event,
+                "event.plan" => :event,
                 "event.outing" => :event,
+                # The build thread's opening post (owner_surface §7b): the one
+                # entry origination writes, carrying the sentence the owner
+                # typed. Written by the origination path only, never offered by
+                # the composer — a record starts once.
+                "event.origination" => :event,
                 "observation.mileage" => :observed
               }
               |> Map.merge(Map.new(@trait_predicates, &{&1, :observed}))
@@ -304,6 +311,14 @@ defmodule SantoApi.Registry.Vocabulary do
   end
 
   defp validate_value("event.note", %{"text" => text}) when is_binary(text), do: :ok
+
+  defp validate_value("event.plan", %{"text" => text} = value) when is_binary(text) do
+    if valid_optional_string?(Map.get(value, "area")),
+      do: :ok,
+      else: {:error, {:invalid_value, "event.plan"}}
+  end
+
+  defp validate_value("event.origination", %{"text" => text}) when is_binary(text), do: :ok
 
   defp validate_value("event.outing", %{"kind" => kind} = value) when kind in @outing_kinds do
     if valid_optional_string?(Map.get(value, "venue")) and

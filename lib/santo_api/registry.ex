@@ -49,6 +49,102 @@ defmodule SantoApi.Registry do
   end
 
   @doc """
+  Originate a car that has no identifier at all — the §7b front door.
+
+  A real registry row from minute one, keyed on a minted opaque id
+  (`asserted:<uuid>`). Deliberately a separate entry point rather than a
+  branch inside `ingest/1`: ingest stays VIN-shaped, and
+  `Santo.Identity.key/1` never returns `:asserted`. No decode, no claims,
+  no evidence requests — everything this car will say about itself arrives
+  as owner claims. Every call is a new car; asserted identities never
+  dedupe, because two people describing cars in sentences are two cars.
+
+  `input` is the sentence the owner typed — required, like every other
+  row's input, because a car nobody described is not a car anyone asked for.
+  """
+  def originate(input) when is_binary(input) and input != "" do
+    identity = {:asserted, Ecto.UUID.generate()}
+    key = IdentityKey.serialize(identity)
+
+    {:ok, vehicle} = Repo.transaction(fn -> create_vehicle(identity, key, input, nil) end)
+    {:ok, vehicle}
+  end
+
+  @doc """
+  Resolve an `:asserted` car to the VIN its owner finally produced —
+  acquiring an identity, not changing one (owner_surface §7b.2). One-way and
+  one-time: anything already resolved (or born with an identity) refuses,
+  and a bad resolution is an operator problem, not a self-serve edit.
+
+    * **Unoccupied VIN** — the row flips in place: `identity_kind` and
+      `identity_key` rewritten, decode fires and its facts arrive
+      `:admitted`, and `claim_comparison/1` audits what the owner asserted
+      at read time. `public_id` never moves and the log is untouched.
+    * **Occupied VIN** — `{:error, {:occupied, vehicle}}` with the row that
+      holds the key. Nothing here refuses the owner's assertion — the
+      caller routes them through §4's counter-claim path on that row; only
+      the key flip is deferred, pending the adjudication.
+  """
+  def resolve_asserted(%Vehicle{identity_kind: :asserted} = vehicle, input) do
+    with {:ok, identity} <- vin_identity(input) do
+      key = IdentityKey.serialize(identity)
+
+      case Repo.get_by(Vehicle, identity_key: key) do
+        %Vehicle{} = occupied -> {:error, {:occupied, occupied}}
+        nil -> flip_identity(vehicle, key, Santo.Normalize.normalize(input))
+      end
+    end
+  end
+
+  def resolve_asserted(%Vehicle{}, _input), do: {:error, :already_resolved}
+
+  defp vin_identity(input) do
+    case Santo.Identity.key(input) do
+      {:ok, {:vin, _vin} = identity} -> {:ok, identity}
+      {:ok, _other_identity} -> {:error, :vin_required}
+      {:error, %Santo.Invalid{} = invalid} -> {:error, invalid}
+    end
+  end
+
+  defp flip_identity(%Vehicle{} = vehicle, key, normalized) do
+    decode = Santo.decode(normalized)
+
+    result =
+      Repo.transaction(fn ->
+        changeset =
+          vehicle
+          |> Ecto.Changeset.change(
+            identity_kind: :vin,
+            identity_key: key,
+            input: normalized,
+            decode_snapshot: snapshot(decode),
+            santo_version: santo_version()
+          )
+          |> Ecto.Changeset.unique_constraint(:identity_key)
+
+        case Repo.update(changeset) do
+          {:ok, updated} ->
+            emit_claims(updated, decode)
+            refresh_projections(updated)
+
+          {:error, _occupied_meanwhile} ->
+            Repo.rollback(:occupied)
+        end
+      end)
+
+    case result do
+      {:ok, resolved} ->
+        {:ok, resolved}
+
+      {:error, :occupied} ->
+        # Lost a race for the key. Vehicles are never deleted, so the row
+        # that beat us is there to hand back.
+        %Vehicle{} = occupied = Repo.get_by(Vehicle, identity_key: key)
+        {:error, {:occupied, occupied}}
+    end
+  end
+
+  @doc """
   Register a trusted pre-standard chassis identity that Santo does not yet
   decode. This is deliberately atom-only: callers must choose a reviewed
   marque and era rather than turning external strings into atoms.
@@ -99,6 +195,36 @@ defmodule SantoApi.Registry do
   def list_vehicles do
     Repo.all(from(v in Vehicle, order_by: [desc: v.inserted_at]))
   end
+
+  @doc """
+  Search the car directory by the identifiers and words already on the record.
+
+  This is intentionally a registry read, not a fuzzy model call. Identity,
+  original input, factory facts, and as-it-sits state are searchable with one
+  case-insensitive query; publication filtering remains the owner context's
+  job because an unconfirmed stewardship is not registry truth.
+  """
+  def search_vehicles(query) when is_binary(query) do
+    case String.trim(query) do
+      "" ->
+        list_vehicles()
+
+      term ->
+        pattern = "%#{term}%"
+
+        Repo.all(
+          from(v in Vehicle,
+            where:
+              ilike(v.identity_key, ^pattern) or ilike(v.input, ^pattern) or
+                fragment("CAST(? AS text) ILIKE ?", v.facts, ^pattern) or
+                fragment("CAST(? AS text) ILIKE ?", v.current_state, ^pattern),
+            order_by: [desc: v.inserted_at]
+          )
+        )
+    end
+  end
+
+  def search_vehicles(_query), do: list_vehicles()
 
   @doc """
   Resolve a car by its canonical public handle — the `/v/:public_id` path.
@@ -248,7 +374,7 @@ defmodule SantoApi.Registry do
 
     case non_snapshot_artifact_by_sha(sha) do
       %Artifact{} = existing ->
-        {:ok, existing}
+        maybe_add_photo_derivatives(existing, kind, attrs[:metadata])
 
       nil ->
         storage_ref = sha <> Path.extname(filename)
@@ -269,6 +395,27 @@ defmodule SantoApi.Registry do
          })}
     end
   end
+
+  # Content deduplication may find a photo artifact created before the public
+  # image pipeline existed. Derivatives describe the same immutable bytes, so
+  # adding that one generated metadata key does not rewrite supplier, rights,
+  # entry membership, or any acquired content.
+  defp maybe_add_photo_derivatives(
+         %Artifact{kind: :photo, metadata: metadata} = artifact,
+         :photo,
+         %{"photo_derivatives" => derivatives}
+       ) do
+    if Map.has_key?(metadata, "photo_derivatives") do
+      {:ok, artifact}
+    else
+      artifact
+      |> Ecto.Changeset.change(metadata: Map.put(metadata, "photo_derivatives", derivatives))
+      |> Repo.update()
+    end
+  end
+
+  defp maybe_add_photo_derivatives(%Artifact{} = artifact, _kind, _metadata),
+    do: {:ok, artifact}
 
   @doc """
   Persist a source pointer without copying the referenced page. Reference
@@ -504,11 +651,8 @@ defmodule SantoApi.Registry do
 
     result =
       Repo.transaction(fn ->
-        case Repo.get(Claim, claim_id) do
-          nil ->
-            Repo.rollback(:not_found)
-
-          %Claim{state: :proposed} = claim ->
+        case fetch_claim_for_update(claim_id) do
+          {:ok, %Claim{state: :proposed} = claim} ->
             claim =
               claim
               |> Ecto.Changeset.change(
@@ -522,8 +666,11 @@ defmodule SantoApi.Registry do
             refresh_projections(vehicle)
             claim
 
-          %Claim{state: state} ->
+          {:ok, %Claim{state: state}} ->
             Repo.rollback({:not_proposed, state})
+
+          {:error, reason} ->
+            Repo.rollback(reason)
         end
       end)
 
@@ -764,15 +911,32 @@ defmodule SantoApi.Registry do
   (contract §3), and `visibility: :public` only. A private entry stays in the
   ledger and out of this list.
 
-  `include_private: true` is the owner's own view (owner_surface §6) — a private
-  entry has to be visible to the person who wrote it or the toggle is a trap.
-  Who may ask for it is `SantoApi.Owners.timeline/2`'s decision, not this
-  function's: the ledger reads, the owner context authorizes.
+  `include_private: true` is an unrestricted internal read. The owner surface
+  additionally passes `private_party_id:` so a later steward sees their own
+  private entries, never an earlier steward's. Who may ask is
+  `SantoApi.Owners.timeline/2`'s decision: the ledger reads, the owner context
+  authorizes.
   """
   def timeline(vehicle_id, opts \\ []) do
     include_private = Keyword.get(opts, :include_private, false)
+    private_party_id = Keyword.get(opts, :private_party_id)
 
-    Repo.all(
+    visibility_filter =
+      cond do
+        not include_private ->
+          dynamic([c], c.visibility == :public)
+
+        is_binary(private_party_id) ->
+          dynamic(
+            [c],
+            c.visibility == :public or c.asserted_by_party_id == ^private_party_id
+          )
+
+        true ->
+          dynamic(true)
+      end
+
+    query =
       from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
@@ -780,7 +944,6 @@ defmodule SantoApi.Registry do
         on: a.id == c.artifact_id,
         where:
           c.vehicle_id == ^vehicle_id and c.state == :admitted and
-            (c.visibility == :public or ^include_private) and
             c.scope_kind in [:event, :observed],
         order_by: [desc: c.scope_date, desc: c.inserted_at],
         select: %{
@@ -799,10 +962,30 @@ defmodule SantoApi.Registry do
           inserted_at: c.inserted_at
         }
       )
-    )
+
+    query
+    |> where(^visibility_filter)
+    |> Repo.all()
     |> Enum.group_by(&(&1.entry_ref || &1.claim_id))
     |> Enum.map(fn {_key, claims} -> entry(claims, include_private) end)
     |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
+  end
+
+  @doc """
+  One composed timeline entry by its stable grouping ref.
+
+  The default is deliberately public-only. Social conversation and share URLs
+  may attach only to an update the world can actually read; the owner's private
+  view opts in through the same flag as `timeline/2`.
+  """
+  def fetch_timeline_entry(vehicle_id, entry_ref, opts \\ []) do
+    with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+         entry when not is_nil(entry) <-
+           Enum.find(timeline(vehicle_id, opts), &(&1.entry_ref == ref)) do
+      {:ok, entry}
+    else
+      _absent -> {:error, :not_found}
+    end
   end
 
   defp entry([first | _rest] = claims, include_private) do

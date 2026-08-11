@@ -15,7 +15,7 @@ defmodule SantoApi.OwnersTest do
 
   describe "ensure_party/2" do
     test "mints an owner party from a handle and links it to the user" do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
 
       assert {:ok, party} = Owners.ensure_party(user, "mhyrr")
       assert party.name == "mhyrr"
@@ -24,28 +24,28 @@ defmodule SantoApi.OwnersTest do
     end
 
     test "is idempotent — a second call returns the party already linked" do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
 
       assert {:ok, party} = Owners.ensure_party(user, "mhyrr")
       assert {:ok, ^party} = Owners.ensure_party(user, "mhyrr")
     end
 
     test "refuses a rename, because the handle is hashed into every claim" do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
 
       assert {:ok, _party} = Owners.ensure_party(user, "mhyrr")
       assert {:error, :handle_immutable} = Owners.ensure_party(user, "someone-else")
     end
 
     test "normalizes case and surrounding space before it becomes permanent" do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
 
       assert {:ok, party} = Owners.ensure_party(user, "  MHyrr  ")
       assert party.name == "mhyrr"
     end
 
     test "rejects a handle that cannot be read back off a page" do
-      user = user_fixture()
+      user = legacy_user_fixture()
 
       for handle <- [
             "ab",
@@ -62,17 +62,31 @@ defmodule SantoApi.OwnersTest do
     end
 
     test "refuses a handle another owner already holds" do
-      taken = user_fixture()
-      assert {:ok, _party} = Owners.ensure_party(taken, "mhyrr")
+      # Held as a minted party by a legacy account — the parties index is
+      # what catches it.
+      assert {:ok, _party} = Owners.ensure_party(legacy_user_fixture(), "mhyrr")
 
-      assert {:error, changeset} = Owners.ensure_party(user_fixture(), "mhyrr")
+      assert {:error, changeset} = Owners.ensure_party(legacy_user_fixture(), "mhyrr")
       assert "has already been taken" in errors_on(changeset).name
     end
 
+    test "refuses a handle another user has only reserved (§9.1)" do
+      %{handle: reserved} = user_fixture()
+
+      assert {:error, :handle_taken} = Owners.ensure_party(legacy_user_fixture(), reserved)
+    end
+
     test "leaves the user unlinked when the handle is refused" do
-      user = user_fixture()
+      user = legacy_user_fixture()
 
       assert {:error, _changeset} = Owners.ensure_party(user, "ab")
+      assert Owners.party(user) == nil
+    end
+
+    test "a reserved user mints only under its reservation (§9.1)" do
+      user = user_fixture()
+
+      assert {:error, :handle_immutable} = Owners.ensure_party(user, "different-name")
       assert Owners.party(user) == nil
     end
   end
@@ -85,7 +99,7 @@ defmodule SantoApi.OwnersTest do
 
   describe "handles and the ledger" do
     test "the handle is what a claim is attributed to" do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
       {:ok, party} = Owners.ensure_party(user, "mhyrr")
       {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
 

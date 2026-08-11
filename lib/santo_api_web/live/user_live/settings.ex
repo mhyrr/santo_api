@@ -13,36 +13,40 @@ defmodule SantoApiWeb.UserLive.Settings do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="text-center">
+      <section id="settings-page" class="mx-auto max-w-3xl">
         <.header>
-          Account Settings
-          <:subtitle>Manage your account email address</:subtitle>
+          Account settings
+          <:subtitle>Manage your account email address and assistant access.</:subtitle>
         </.header>
-      </div>
 
-      <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
-        <.input
-          field={@email_form[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-        />
-        <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
-      </.form>
+        <.form
+          for={@email_form}
+          id="email_form"
+          phx-submit="update_email"
+          phx-change="validate_email"
+          class="mt-8 max-w-lg"
+        >
+          <.input
+            field={@email_form[:email]}
+            type="email"
+            label="Email"
+            autocomplete="username"
+            spellcheck="false"
+            required
+          />
+          <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
+        </.form>
 
-      <div class="mt-12">
-        <.header>
-          Assistant access
-          <:subtitle>
+        <div class="mt-16 border-t pt-10 club-rule">
+          <h2 class="club-control-title">Assistant access</h2>
+          <p class="club-muted mt-3 max-w-2xl text-sm leading-relaxed">
             A token lets an assistant you already use — Claude, ChatGPT — read and write
             the logbooks of cars you maintain, on your behalf. Entries it writes are
             attributed to you. Changing your email or password revokes every token.
-          </:subtitle>
-        </.header>
+          </p>
+        </div>
 
-        <div :if={@minted} class="mt-4 rounded-box bg-base-200 p-4">
+        <div :if={@minted} class="club-notice club-notice-success mt-6">
           <p class="text-sm font-medium">
             Copy this now — it is not shown again.
           </p>
@@ -51,7 +55,7 @@ defmodule SantoApiWeb.UserLive.Settings do
             type="text"
             readonly
             value={@minted}
-            class="input input-bordered mt-2 w-full font-mono text-xs"
+            class="club-input mt-2 font-mono text-xs"
           />
         </div>
 
@@ -59,47 +63,49 @@ defmodule SantoApiWeb.UserLive.Settings do
           for={@token_form}
           id="mcp_token_form"
           phx-submit="mint_token"
-          class="mt-4 flex items-end gap-2"
+          class="mt-6 flex flex-col gap-2 sm:flex-row sm:items-end"
         >
           <div class="grow">
             <.input field={@token_form[:name]} type="text" label="Name this token" />
           </div>
-          <.button phx-disable-with="Minting...">Mint token</.button>
+          <.button variant="secondary" phx-disable-with="Minting...">Mint token</.button>
         </.form>
 
-        <table :if={@tokens != []} class="table mt-4">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Created</th>
-              <th>Last used</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={token <- @tokens}>
-              <td>{token.name}</td>
-              <td>{Calendar.strftime(token.inserted_at, "%Y-%m-%d")}</td>
-              <td>
-                {if token.last_used_at,
-                  do: Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC"),
-                  else: "Never used"}
-              </td>
-              <td class="text-right">
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-xs"
-                  phx-click="revoke_token"
-                  phx-value-id={token.id}
-                  data-confirm="Revoke this token? Any assistant using it stops working."
-                >
-                  Revoke
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <div :if={@tokens != []} class="club-table-wrap mt-6">
+          <table class="club-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Last used</th>
+                <th><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={token <- @tokens}>
+                <td>{token.name}</td>
+                <td class="club-code">{Calendar.strftime(token.inserted_at, "%Y-%m-%d")}</td>
+                <td class="club-code">
+                  {if token.last_used_at,
+                    do: Calendar.strftime(token.last_used_at, "%Y-%m-%d %H:%M UTC"),
+                    else: "Never used"}
+                </td>
+                <td class="text-right">
+                  <button
+                    type="button"
+                    class="club-link club-code text-xs uppercase"
+                    phx-click="revoke_token"
+                    phx-value-id={token.id}
+                    data-confirm="Revoke this token? Any assistant using it stops working."
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </Layouts.app>
     """
   end

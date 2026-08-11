@@ -38,8 +38,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     "event.service" => "Service",
     "event.modification" => "Modification",
     "event.note" => "Note",
+    "event.plan" => "Plan",
     "event.outing" => "Outing",
     "event.sale" => "Sale",
+    "event.origination" => "Record started",
     "observation.mileage" => "Odometer"
   }
 
@@ -75,6 +77,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
   end
+
+  # An originated car with nothing extracted yet has no name and no
+  # identifier — "undecoded" would imply a chassis number we never had.
+  defp untitled(%Vehicle{identity_kind: :asserted}), do: "Unnamed car"
 
   defp untitled(%Vehicle{} = vehicle), do: marque(vehicle) || "Undecoded chassis"
 
@@ -123,6 +129,27 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
       %{"value" => miles} when is_integer(miles) -> %{miles: miles, as_of: as_of(vehicle)}
       _absent -> nil
     end
+  end
+
+  @doc "The complete read model used by selectable car cards."
+  def car_card(%Vehicle{} = vehicle, opts \\ []) do
+    latest = opts[:latest]
+    steward = opts[:steward]
+
+    %{
+      id: vehicle.id,
+      public_id: vehicle.public_id,
+      title: title(vehicle),
+      identity: identity_label(vehicle),
+      chassis: chassis(vehicle),
+      marque: marque(vehicle) || "Car",
+      spec: Enum.join(spec_line(vehicle), " · "),
+      odometer: odometer(vehicle),
+      entries: opts[:entries] || 0,
+      latest: latest && entry_headline(latest),
+      latest_date: latest && latest.date,
+      steward: steward && steward.name
+    }
   end
 
   defp as_of(%Vehicle{} = vehicle) do
@@ -247,9 +274,16 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   def entry_parts(entry) do
     ordered = Enum.sort_by(entry.claims, &headline_priority/1)
 
-    if Enum.all?(ordered, &trait_claim?/1),
-      do: spec_parts(ordered),
-      else: event_parts(ordered)
+    cond do
+      ordered == [] and Map.get(entry, :photos, []) != [] ->
+        %{headline: "Photo update", details: []}
+
+      Enum.all?(ordered, &trait_claim?/1) ->
+        spec_parts(ordered)
+
+      true ->
+        event_parts(ordered)
+    end
   end
 
   # An entry made only of trait claims is the spec panel's work (§2b), not an
@@ -298,8 +332,9 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # has to be no line at all — an empty labelled chip reads as a fact we are
   # withholding rather than one nobody gave us.
   defp lead_details(%{predicate: "event.fuel", value: value}), do: fuel_details(value)
-  defp lead_details(%{predicate: "event.service"} = claim), do: own_detail(claim)
-  defp lead_details(%{predicate: "event.outing"} = claim), do: own_detail(claim)
+  defp lead_details(%{predicate: "event.service"} = claim), do: detail("Performed by", claim)
+  defp lead_details(%{predicate: "event.outing"} = claim), do: detail("Place", claim)
+  defp lead_details(%{predicate: "event.plan"} = claim), do: detail("Area", claim)
   defp lead_details(_claim), do: []
 
   # What a fill-up cost. Its own label rather than the entry's, because "Total"
@@ -350,10 +385,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   defp unit_label("l"), do: "L"
   defp unit_label(unit), do: unit
 
-  defp own_detail(claim) do
+  defp detail(label, claim) do
     case claim_detail(claim) do
       nil -> []
-      value -> [%{label: entry_label(claim.predicate), value: value}]
+      value -> [%{label: label, value: value}]
     end
   end
 
@@ -367,6 +402,10 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # something is not the owner's news to publish to everyone reading the car.
   def claim_detail(%{predicate: "event.note", value: %{"text" => text}}) when is_binary(text),
     do: text
+
+  def claim_detail(%{predicate: "event.plan", value: %{"area" => area}})
+      when is_binary(area),
+      do: area
 
   def claim_detail(%{predicate: "event.service", value: %{"performer" => performer}})
       when is_binary(performer),
@@ -396,13 +435,21 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
   # an assistant may send its claims in any order, and the entry reads the same.
   # A note still leads when it is the most specific thing in the entry, which is
   # exactly the case where it is the whole entry.
+  defp headline_priority(%{predicate: "event.origination"}), do: -1
   defp headline_priority(%{predicate: "event.note"}), do: 1
   defp headline_priority(%{predicate: "observation." <> _rest}), do: 2
   defp headline_priority(_claim), do: 0
 
+  # The sentence itself lives in the claim and its artifact; the tick says
+  # what happened. The party line beneath already names who.
+  defp claim_headline(%{predicate: "event.origination"}), do: "Started this record"
+
   defp claim_headline(%{predicate: "event.service", value: %{"summary" => summary}}), do: summary
   defp claim_headline(%{predicate: "event.modification", value: %{"summary" => s}}), do: s
   defp claim_headline(%{predicate: "event.note", value: %{"text" => text}}), do: text
+
+  defp claim_headline(%{predicate: "event.plan", value: %{"text" => text}}),
+    do: "Planned: #{text}"
 
   defp claim_headline(%{predicate: "event.outing", value: value}),
     do: value["summary"] || value["result"] || outing_kind(value["kind"])
@@ -500,13 +547,18 @@ defmodule SantoApiWeb.VehicleLive.Presenter do
     end
   end
 
-  @doc "The VIN or chassis number, without the internal key prefix."
+  @doc """
+  The VIN or chassis number, without the internal key prefix. `nil` for an
+  asserted car — its minted id is plumbing, not an identifier anyone reads.
+  """
+  def chassis(%Vehicle{identity_key: "asserted:" <> _id}), do: nil
   def chassis(%Vehicle{identity_key: "vin:" <> vin}), do: vin
   def chassis(%Vehicle{identity_key: key}), do: key |> String.split(":") |> List.last()
 
   def identity_label(%Vehicle{identity_kind: :vin}), do: "VIN"
   def identity_label(%Vehicle{identity_kind: :chassis}), do: "Chassis"
   def identity_label(%Vehicle{identity_kind: :disputed}), do: "Disputed identity"
+  def identity_label(%Vehicle{identity_kind: :asserted}), do: "Owner record"
 
   defp paint_name(%Vehicle{} = vehicle) do
     case vehicle.facts["build.paint_code"] do

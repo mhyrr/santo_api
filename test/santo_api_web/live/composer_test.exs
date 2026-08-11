@@ -20,7 +20,7 @@ defmodule SantoApiWeb.ComposerTest do
 
   setup ctx do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
-    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle, handle: "mhyrr")
+    {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, vehicle)
 
     %{vehicle: vehicle, scope: Scope.for_user(ctx.user)}
   end
@@ -77,7 +77,7 @@ defmodule SantoApiWeb.ComposerTest do
       assert to == "/v/#{ctx.vehicle.public_id}"
 
       assert [entry] = Registry.timeline(ctx.vehicle.id)
-      assert entry.party == "mhyrr"
+      assert entry.party == ctx.user.handle
       assert entry.date == Date.utc_today()
 
       by_predicate = Map.new(entry.claims, &{&1.predicate, &1.value})
@@ -206,6 +206,29 @@ defmodule SantoApiWeb.ComposerTest do
       assert claim.value["text"] == "Sounds different cold. Watch it."
     end
 
+    test "a plan is dated intent and never changes current state", ctx do
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log")
+
+      view |> element("[data-mode=plan]") |> render_click()
+
+      view
+      |> form("#composer-form",
+        entry: %{text: "Try a lighter set of wheels next season", area: "Wheels & tires"}
+      )
+      |> render_submit()
+
+      assert [entry] = Registry.timeline(ctx.vehicle.id)
+      assert [claim] = entry.claims
+      assert claim.predicate == "event.plan"
+      assert claim.value["area"] == "Wheels & tires"
+
+      {:ok, vehicle} = Registry.fetch_vehicle(ctx.vehicle.id)
+      assert vehicle.current_state == %{}
+
+      {:ok, page, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      assert has_element?(page, "[data-plan=true]", "Planned:")
+    end
+
     test "an empty note says so rather than logging nothing", ctx do
       {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log")
 
@@ -214,6 +237,39 @@ defmodule SantoApiWeb.ComposerTest do
 
       assert html =~ "Nothing to log"
       assert Registry.timeline(ctx.vehicle.id) == []
+    end
+  end
+
+  describe "photo-first updates" do
+    test "a photo can be the update, with preview and public car-page delivery", ctx do
+      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/log?mode=note")
+
+      assert has_element?(view, "[data-mode=note][aria-current=true]")
+
+      upload =
+        file_input(view, "#composer-form", :photos, [
+          %{
+            name: "cayman-paddock.jpg",
+            content: File.read!("priv/demo/media/cayman-autocross-paddock.jpg"),
+            type: "image/jpeg"
+          }
+        ])
+
+      assert render_upload(upload, "cayman-paddock.jpg") =~ "cayman-paddock.jpg"
+      assert has_element?(view, "[id^=composer-photo-] img")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> form("#composer-form", entry: %{text: "", date: "2026-08-10"})
+               |> render_submit()
+
+      assert to == "/v/#{ctx.vehicle.public_id}"
+      assert [%{claims: [], photos: [_photo]}] = Owners.timeline(nil, ctx.vehicle)
+
+      {:ok, page, _html} = live(build_conn(), ~p"/v/#{ctx.vehicle.public_id}")
+      assert has_element?(page, "#vehicle-hero-photo[srcset]")
+      assert has_element?(page, "#vehicle-gallery [id^=vehicle-photo-]")
+      assert has_element?(page, "#vehicle-logbook [id*=-photo-]")
     end
   end
 
@@ -306,7 +362,7 @@ defmodule SantoApiWeb.ComposerTest do
     test "names its steward and offers the composer to them", ctx do
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
 
-      assert html =~ "mhyrr"
+      assert html =~ ctx.user.handle
       assert html =~ "Maintained by"
       assert html =~ "/log"
     end

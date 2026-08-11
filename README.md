@@ -7,6 +7,19 @@ To start your Phoenix server:
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
+## DMV review dataset
+
+For a local garage with populated car journals and shared events, run:
+
+```sh
+mix santo.demo.seed
+```
+
+The task is re-runnable and does not run from `mix ecto.setup`. Event titles,
+dates, places, and source links come from public WDCR and Katie's Cars & Coffee
+listings; every member, car account, narrative, detail, reaction, and reply is
+fictional. The task refuses to run in production.
+
 Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
 
 ## Learn more

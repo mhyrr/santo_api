@@ -226,6 +226,21 @@ defmodule SantoApiWeb.VehicleLive.PresenterTest do
       assert parts.details == [%{label: "Odometer", value: "41,660 mi"}]
     end
 
+    test "a plan is explicit about intent" do
+      parts =
+        Presenter.entry_parts(%{
+          claims: [
+            %{
+              predicate: "event.plan",
+              value: %{"text" => "Try lighter wheels", "area" => "Wheels & tires"}
+            }
+          ]
+        })
+
+      assert parts.headline == "Planned: Try lighter wheels"
+      assert parts.details == [%{label: "Area", value: "Wheels & tires"}]
+    end
+
     test "a fill-up shows what it cost" do
       parts =
         Presenter.entry_parts(%{

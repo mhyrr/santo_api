@@ -3,9 +3,10 @@ defmodule SantoApiWeb.ClaimTest do
   Claiming a car, from the owner's side (owner_surface §4).
 
   What these tests hold to: the code is shown once it exists and can be read off
-  the screen onto paper, the handle is settled here and the page says it is
-  permanent, and nothing in the flow promises the claimant anything an operator
-  has not decided yet.
+  the screen onto paper, and nothing in the flow promises the claimant anything
+  an operator has not decided yet. The handle rides the registration
+  reservation (§9.1) — the flow's handle step exists only for accounts that
+  predate it.
   """
 
   # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
@@ -38,7 +39,7 @@ defmodule SantoApiWeb.ClaimTest do
     end
 
     test "the steward of the car has nothing to claim", ctx do
-      {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, ctx.vehicle)
 
       assert {:error, {:redirect, %{to: to}}} =
                live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
@@ -48,8 +49,17 @@ defmodule SantoApiWeb.ClaimTest do
   end
 
   describe "the code" do
-    test "asks for a handle first, and says plainly that it is permanent", ctx do
+    test "the reserved handle means no handle step (§9.1)", ctx do
       {:ok, view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
+
+      refute has_element?(view, "#claim_handle")
+      assert html =~ ctx.user.handle
+    end
+
+    test "a legacy account is asked for a handle, told plainly it is permanent", ctx do
+      conn = log_in_user(build_conn(), legacy_user_fixture())
+
+      {:ok, view, html} = live(conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
 
       assert has_element?(view, "#claim_handle")
       assert html =~ "permanent"
@@ -58,46 +68,50 @@ defmodule SantoApiWeb.ClaimTest do
     test "issuing shows the code, spaced for copying onto paper", ctx do
       {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
 
-      html = view |> form("#claim-form", %{claim: %{handle: "mhyrr"}}) |> render_submit()
+      html = view |> form("#claim-form") |> render_submit()
 
       challenge = Owners.challenge(ctx.user, ctx.vehicle)
+      assert challenge.handle == ctx.user.handle
       assert html =~ Challenge.spaced(challenge.code)
       assert html =~ "72 hours"
     end
 
-    test "a handle somebody holds is refused before a code exists", ctx do
-      {:ok, _party} = Owners.ensure_party(user_fixture(), "mhyrr")
+    test "a handle somebody holds is refused before a legacy account gets a code", ctx do
+      {:ok, _party} = Owners.ensure_party(user_fixture(%{handle: "mhyrr"}), "mhyrr")
+      legacy = legacy_user_fixture()
+      conn = log_in_user(build_conn(), legacy)
 
-      {:ok, view, _html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
+      {:ok, view, _html} = live(conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
 
       html = view |> form("#claim-form", %{claim: %{handle: "mhyrr"}}) |> render_submit()
 
       assert html =~ "already taken"
-      assert Owners.challenge(ctx.user, ctx.vehicle) == nil
+      assert Owners.challenge(legacy, ctx.vehicle) == nil
     end
 
-    test "a claimant who already has a handle is not asked for one", ctx do
-      {:ok, _party} = Owners.ensure_party(ctx.user, "mhyrr")
+    test "a claimant with a minted party is not asked either", ctx do
+      {:ok, _party} = Owners.ensure_party(ctx.user, ctx.user.handle)
 
       {:ok, view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
 
       refute has_element?(view, "#claim_handle")
-      assert html =~ "mhyrr"
+      assert html =~ ctx.user.handle
     end
 
     test "a car somebody else maintains says an operator will decide it", ctx do
-      {:ok, _stewardship} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      incumbent = user_fixture()
+      {:ok, _stewardship} = Owners.grant_stewardship(incumbent, ctx.vehicle)
 
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}/claim")
 
-      assert html =~ "mhyrr"
+      assert html =~ incumbent.handle
       assert html =~ "operator"
     end
   end
 
   describe "the photo" do
     setup ctx do
-      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
       %{challenge: challenge}
     end
 
@@ -130,7 +144,7 @@ defmodule SantoApiWeb.ClaimTest do
 
   describe "the decision" do
     test "an approved claimant lands in the back-fill moment, not on a bare page", ctx do
-      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
       {:ok, submitted} = Owners.submit_proof(challenge, photo())
       {:ok, _stewardship} = Owners.approve_challenge(submitted, ctx.operator)
 
@@ -142,7 +156,7 @@ defmodule SantoApiWeb.ClaimTest do
     end
 
     test "a denied claimant is told why and can start again", ctx do
-      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle, handle: "mhyrr")
+      {:ok, challenge} = Owners.issue_challenge(ctx.user, ctx.vehicle)
       {:ok, submitted} = Owners.submit_proof(challenge, photo())
       {:ok, _denied} = Owners.deny_challenge(submitted, ctx.operator, "the code was not in frame")
 
@@ -176,11 +190,11 @@ defmodule SantoApiWeb.ClaimTest do
     end
 
     test "the steward is offered the log, not the claim", ctx do
-      {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} = Owners.grant_stewardship(ctx.user, ctx.vehicle)
 
       {:ok, _view, html} = live(ctx.conn, ~p"/v/#{ctx.vehicle.public_id}")
 
-      assert html =~ "Log an entry"
+      assert html =~ "Log an update"
       refute html =~ "This is my car"
     end
   end

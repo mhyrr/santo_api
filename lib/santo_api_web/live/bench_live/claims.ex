@@ -11,6 +11,9 @@ defmodule SantoApiWeb.BenchLive.Claims do
   What the operator is checking, in order: the VIN in the photograph matches the
   car, the challenge code is in frame and matches this row, and the plate looks
   photographed in place rather than off another photograph.
+
+  A submitted challenge against an active steward has a different decision and
+  appears only in `/bench/disputes`; one open item has one operational home.
   """
 
   use SantoApiWeb, :live_view
@@ -25,18 +28,15 @@ defmodule SantoApiWeb.BenchLive.Claims do
   end
 
   defp assign_queue(socket) do
-    assign(socket, :claims, Enum.map(Owners.list_pending_challenges(), &decorate/1))
+    assign(socket, :claims, Enum.map(Owners.list_pending_claiming_challenges(), &decorate/1))
   end
 
-  # The incumbent is the whole story of a contested claim, so it is read here
-  # rather than left for the operator to go and look up.
   defp decorate(%Challenge{} = challenge) do
     %{
       challenge: challenge,
       vehicle: challenge.vehicle,
       title: Presenter.title(challenge.vehicle),
-      chassis: Presenter.chassis(challenge.vehicle),
-      incumbent: Owners.steward(challenge.vehicle)
+      chassis: Presenter.chassis(challenge.vehicle)
     }
   end
 
@@ -74,12 +74,10 @@ defmodule SantoApiWeb.BenchLive.Claims do
 
   defp operator(socket), do: socket.assigns.current_scope.user
 
-  # §4's escalation, in one sentence: the incumbent keeps the car until somebody
-  # adjudicates the dispute, and approving over them is not the adjudication.
+  # A race can make an ordinary row contested after it loaded. Refuse the stale
+  # action; the next load will derive it into the dispute queue.
   defp refusal(:already_stewarded),
-    do:
-      "Somebody already maintains that car. Revoke the incumbent first if this claim wins — " <>
-        "approving here would not decide the dispute, it would hide it."
+    do: "Somebody now maintains that car. This claim has moved to the dispute queue."
 
   defp refusal(:not_pending), do: "That claim has already been decided."
   defp refusal(:no_proof), do: "That claim has no photo yet."
@@ -89,7 +87,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <.header>
         Claims waiting
         <:subtitle>
@@ -98,47 +96,43 @@ defmodule SantoApiWeb.BenchLive.Claims do
         </:subtitle>
       </.header>
 
-      <div :if={@error} id="claims-error" class="alert alert-error my-4">{@error}</div>
+      <div :if={@error} id="claims-error" class="club-notice club-notice-warning my-4">
+        {@error}
+      </div>
 
-      <p :if={@claims == []} class="text-base-content/70 mt-6">Nothing waiting.</p>
+      <p :if={@claims == []} class="club-muted mt-6">Nothing waiting.</p>
 
       <div
         :for={row <- @claims}
         id={"claim-#{row.challenge.id}"}
-        class="card bg-base-200 mt-6 p-5"
+        class="club-work-panel mt-6 p-5"
       >
         <div class="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <.link navigate={~p"/bench/vehicles/#{row.vehicle.id}"} class="link text-lg font-semibold">
+            <.link
+              navigate={~p"/bench/vehicles/#{row.vehicle.id}"}
+              class="club-link text-lg font-semibold"
+            >
               {row.title}
             </.link>
-            <p class="font-mono text-sm text-base-content/70">{row.chassis}</p>
+            <p class="club-code club-muted text-sm">{row.chassis}</p>
           </div>
 
           <div class="text-right">
             <p class="text-sm">
               claimed by <span class="font-mono">{row.challenge.handle}</span>
             </p>
-            <p class="text-xs text-base-content/70">{row.challenge.user.email}</p>
-            <p class="text-xs text-base-content/70">
+            <p class="club-muted text-xs">{row.challenge.user.email}</p>
+            <p class="club-muted text-xs">
               sent {Calendar.strftime(row.challenge.inserted_at, "%-d %B %Y, %H:%M UTC")}
             </p>
           </div>
         </div>
 
-        <div :if={row.incumbent} class="alert alert-warning mt-4">
-          <span>
-            <strong>Contested.</strong>
-            This car is maintained by <span class="font-mono">{row.incumbent.name}</span>. Decide the
-            dispute on evidence before anything here changes hands — both parties are owed
-            the outcome.
-          </span>
-        </div>
-
         <div class="mt-4 flex flex-wrap items-start gap-6">
           <div>
-            <p class="text-xs uppercase tracking-wide text-base-content/70">Code to find</p>
-            <p class="font-mono text-2xl tracking-[0.25em]">
+            <p class="club-kicker">Code to find</p>
+            <p class="club-code text-2xl tracking-[0.25em]">
               {Challenge.spaced(row.challenge.code)}
             </p>
           </div>
@@ -150,7 +144,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
             <img
               src={~p"/bench/artifacts/#{row.challenge.proof_artifact_id}"}
               alt="Possession proof"
-              class="max-h-64 rounded border border-base-300"
+              class="club-rule max-h-64 border"
             />
           </a>
         </div>
@@ -163,7 +157,7 @@ defmodule SantoApiWeb.BenchLive.Claims do
           <form id={"deny-#{row.challenge.id}"} phx-submit="deny" class="flex items-end gap-2">
             <input type="hidden" name="claim_id" value={row.challenge.id} />
             <.input type="text" name="reason" value="" label="Reason, if you deny it" />
-            <.button>Deny</.button>
+            <.button variant="danger">Deny</.button>
           </form>
         </div>
       </div>

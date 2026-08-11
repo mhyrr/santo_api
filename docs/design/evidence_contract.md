@@ -52,6 +52,24 @@ API response snapshot, scraped listing.
 
 A typed assertion about one vehicle.
 
+### What becomes a claim
+
+A production path must deliberately write a recognized predicate/value pair
+through the Registry for a claim to exist. Mentioning a car is not enough, and
+Vin Santo does not mine ordinary prose for every fact-shaped phrase. The
+closed vocabulary and its validators are the boundary: a composer control, an
+explicit MCP `claims` item, a scoped extraction contract, or provider
+interpretation names the predicate; deterministic code validates the value and
+writes the row. An `event.note` is a claim because the person deliberately
+submitted that text as the note assertion, not because an extractor found a
+sentence about a car.
+
+Photos and documents are artifacts. Curated links, replies, likes, event
+participations, possession challenges, and stewardships keep their own records.
+None becomes a Registry claim unless a separate production path explicitly
+emits a vocabulary-backed assertion from it. In particular, possession proves
+access to maintain a log; it does not create an ownership claim.
+
 - **subject**: vehicle id.
 - **predicate**: namespaced term — `identity.era`, `build.paint_code`,
   `build.option_package`, `observation.mileage`, `legal.title_brand`,

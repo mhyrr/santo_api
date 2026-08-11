@@ -20,13 +20,10 @@ defmodule SantoApi.OwnersStewardshipTest do
 
   describe "grant_stewardship/3" do
     test "mints the party, links the user, and records who decided", ctx do
-      user = user_fixture()
+      user = user_fixture(%{handle: "mhyrr"})
 
       assert {:ok, stewardship} =
-               Owners.grant_stewardship(user, ctx.vehicle,
-                 handle: "mhyrr",
-                 decided_by: ctx.operator
-               )
+               Owners.grant_stewardship(user, ctx.vehicle, decided_by: ctx.operator)
 
       assert stewardship.status == :active
       assert stewardship.user_id == user.id
@@ -36,11 +33,39 @@ defmodule SantoApi.OwnersStewardshipTest do
       assert Owners.party(user).name == "mhyrr"
     end
 
+    test "the party is minted with the handle reserved at registration (§9.1)", ctx do
+      user = user_fixture()
+
+      assert {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
+      assert Owners.party(user).name == user.handle
+    end
+
+    test "a reserved user cannot mint under a different name", ctx do
+      assert {:error, :handle_immutable} =
+               Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "another-name")
+
+      assert Owners.steward(ctx.vehicle) == nil
+    end
+
+    test "a legacy account still chooses its handle at the grant", ctx do
+      legacy = legacy_user_fixture()
+
+      assert {:ok, _stewardship} =
+               Owners.grant_stewardship(legacy, ctx.vehicle, handle: "legacy-owner")
+
+      assert Owners.party(legacy).name == "legacy-owner"
+    end
+
+    test "a legacy account with no handle anywhere is asked for one", ctx do
+      assert {:error, :handle_required} =
+               Owners.grant_stewardship(legacy_user_fixture(), ctx.vehicle)
+    end
+
     test "writes no claim — possession is not title", ctx do
       before = Registry.list_claims(ctx.vehicle.id) |> length()
 
       {:ok, _stewardship} =
-        Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+        Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
 
       assert Registry.list_claims(ctx.vehicle.id) |> length() == before
     end
@@ -48,21 +73,22 @@ defmodule SantoApi.OwnersStewardshipTest do
     test "is idempotent — re-granting returns the stewardship already held", ctx do
       user = user_fixture()
 
-      assert {:ok, first} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
-      assert {:ok, second} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
+      assert {:ok, first} = Owners.grant_stewardship(user, ctx.vehicle)
+      assert {:ok, second} = Owners.grant_stewardship(user, ctx.vehicle)
       assert first.id == second.id
     end
 
     test "refuses a car someone else actively stewards — §4 escalates instead", ctx do
-      {:ok, _stewardship} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} =
+        Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
 
       assert {:error, :already_stewarded} =
-               Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "someone-else")
+               Owners.grant_stewardship(user_fixture(%{handle: "someone-else"}), ctx.vehicle)
     end
 
     test "a bad handle grants nothing", ctx do
       assert {:error, changeset} =
-               Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "ab")
+               Owners.grant_stewardship(legacy_user_fixture(), ctx.vehicle, handle: "ab")
 
       refute changeset.valid?
       assert Owners.steward(ctx.vehicle) == nil
@@ -72,27 +98,24 @@ defmodule SantoApi.OwnersStewardshipTest do
       {:ok, artifact} = proof_artifact(ctx.vehicle)
 
       {:ok, stewardship} =
-        Owners.grant_stewardship(user_fixture(), ctx.vehicle,
-          handle: "mhyrr",
-          proof_artifact: artifact
-        )
+        Owners.grant_stewardship(user_fixture(), ctx.vehicle, proof_artifact: artifact)
 
       assert stewardship.proof_artifact_id == artifact.id
     end
 
-    test "a user who already has a handle keeps it", ctx do
+    test "a user who already has a party keeps its name", ctx do
       user = user_fixture()
-      {:ok, _party} = Owners.ensure_party(user, "mhyrr")
+      {:ok, party} = Owners.ensure_party(user, user.handle)
 
-      assert {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
-      assert Owners.party(user).name == "mhyrr"
+      assert {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
+      assert Owners.party(user).name == party.name
     end
   end
 
   describe "revoke_stewardship/3" do
     test "is a status flip with a reason — the row stays", ctx do
       user = user_fixture()
-      {:ok, stewardship} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
+      {:ok, stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
 
       assert {:ok, revoked} =
                Owners.revoke_stewardship(stewardship, "sold the car", ctx.operator)
@@ -105,15 +128,15 @@ defmodule SantoApi.OwnersStewardshipTest do
     end
 
     test "frees the car for the next steward", ctx do
-      {:ok, stewardship} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      {:ok, stewardship} = Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
       {:ok, _revoked} = Owners.revoke_stewardship(stewardship, "sold the car", ctx.operator)
 
       assert {:ok, _next} =
-               Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "next-one")
+               Owners.grant_stewardship(user_fixture(%{handle: "next-one"}), ctx.vehicle)
     end
 
     test "refuses to revoke twice", ctx do
-      {:ok, stewardship} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      {:ok, stewardship} = Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
       {:ok, revoked} = Owners.revoke_stewardship(stewardship, "sold the car", ctx.operator)
 
       assert {:error, :not_active} = Owners.revoke_stewardship(revoked, "again", ctx.operator)
@@ -121,7 +144,7 @@ defmodule SantoApi.OwnersStewardshipTest do
 
     test "entries made under it stay in the ledger, attributed", ctx do
       user = user_fixture()
-      {:ok, stewardship} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
+      {:ok, stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
       party = Owners.party(user)
 
       {:ok, claim} =
@@ -135,7 +158,7 @@ defmodule SantoApi.OwnersStewardshipTest do
       {:ok, _revoked} = Owners.revoke_stewardship(stewardship, "sold the car", ctx.operator)
 
       assert [entry] = Registry.timeline(ctx.vehicle.id)
-      assert entry.party == "mhyrr"
+      assert entry.party == user.handle
     end
   end
 
@@ -143,7 +166,9 @@ defmodule SantoApi.OwnersStewardshipTest do
     test "steward/1 is the handle a page says it is maintained by", ctx do
       assert Owners.steward(ctx.vehicle) == nil
 
-      {:ok, _stewardship} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} =
+        Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
+
       assert Owners.steward(ctx.vehicle).name == "mhyrr"
     end
 
@@ -151,7 +176,7 @@ defmodule SantoApi.OwnersStewardshipTest do
       user = user_fixture()
       refute Owners.stewarding?(scope(user), ctx.vehicle)
 
-      {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
       assert Owners.stewarding?(scope(user), ctx.vehicle)
     end
 
@@ -163,7 +188,7 @@ defmodule SantoApi.OwnersStewardshipTest do
       user = user_fixture()
       assert Owners.list_stewarded_vehicles(scope(user)) == []
 
-      {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle, handle: "mhyrr")
+      {:ok, _stewardship} = Owners.grant_stewardship(user, ctx.vehicle)
       assert [vehicle] = Owners.list_stewarded_vehicles(scope(user))
       assert vehicle.id == ctx.vehicle.id
     end

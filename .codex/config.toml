@@ -9,3 +9,29 @@ allow_local_binding = true
 "localhost" = "allow"
 "127.0.0.1" = "allow"
 "::1" = "allow"
+
+# Browser automation runs as an MCP server instead of a shell subprocess. This
+# keeps the normal Codex command sandbox intact while allowing Chrome to use the
+# macOS Mach services that Playwright requires.
+[mcp_servers.playwright]
+command = "npx"
+args = [
+  "-y",
+  "@playwright/mcp@0.0.79",
+  "--browser",
+  "chrome",
+  "--headless",
+  "--isolated",
+  "--allowed-origins",
+  "http://localhost:4000;http://127.0.0.1:4000;ws://localhost:4000;ws://127.0.0.1:4000",
+  "--output-dir",
+  "/private/tmp/santo-playwright"
+]
+cwd = "/Users/mhyrr/work/santo_api"
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+default_tools_approval_mode = "approve"
+enabled = true
+
+[mcp_servers.playwright.env]
+NPM_CONFIG_CACHE = "/private/tmp/santo-playwright-npm-cache"

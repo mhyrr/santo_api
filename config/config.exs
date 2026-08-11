@@ -51,12 +51,21 @@ config :santo_api, :rate_limits,
   # The agent surface, keyed per token rather than per address: the budget
   # belongs to the credential, so a runaway assistant spends only its owner's.
   # Room for a conversation that logs a season of track days in one sitting.
-  mcp: [limit: 120, window: :timer.minutes(1)]
+  mcp: [limit: 120, window: :timer.minutes(1)],
+  # Origination (owner_surface §7b.5): a second door that mints vehicle rows
+  # and spends an LLM call per try. Tight on purpose — a person describes one
+  # car, not a hundred an hour.
+  origination: [limit: 10, window: :timer.hours(1)]
 
 # Artifact storage. Local disk is fine for the operator bench; owner uploads
 # (claiming photos, documents) need object storage before the first real
 # owner — see docs/design/owner_surface.md §9.4.
 config :santo_api, :storage_adapter, SantoApi.Storage.Local
+
+# The one-box extractor (owner_surface §7b) — the project's first hosted LLM
+# call. The api_key arrives via runtime.exs (ANTHROPIC_API_KEY); without one,
+# extraction degrades to the empty read-back rather than crashing anything.
+config :santo_api, :extraction, model: "claude-opus-5"
 
 # Configure the endpoint
 config :santo_api, SantoApiWeb.Endpoint,

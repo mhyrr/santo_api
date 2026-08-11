@@ -106,10 +106,10 @@ defmodule SantoApiWeb.BenchLiveTest do
     test "renders identity and facts with status badges", %{conn: conn} do
       {:ok, vehicle} = Registry.ingest(@nine_three)
 
-      {:ok, _view, html} = live(conn, ~p"/bench/vehicles/#{vehicle.id}")
+      {:ok, view, _html} = live(conn, ~p"/bench/vehicles/#{vehicle.id}")
 
-      assert html =~ "vin:WP0ZZZ99ZTS392124"
-      assert html =~ "badge-success"
+      assert has_element?(view, "#app-main", "vin:WP0ZZZ99ZTS392124")
+      assert has_element?(view, ".club-status-verified")
     end
 
     test "ratifying a proposed claim turns its fact verified", %{conn: conn} do
@@ -120,13 +120,13 @@ defmodule SantoApiWeb.BenchLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/bench/vehicles/#{vehicle.id}")
 
-      assert has_element?(view, "tr[data-predicate='build.variant'] .badge-neutral")
+      assert has_element?(view, "tr[data-predicate='build.variant'] .club-status-private")
 
       view
       |> element("button[phx-value-id='#{claim.id}']", "Ratify")
       |> render_click()
 
-      assert has_element?(view, "tr[data-predicate='build.variant'] .badge-success")
+      assert has_element?(view, "tr[data-predicate='build.variant'] .club-status-verified")
     end
 
     test "uploading a file creates an artifact row", %{conn: conn} do

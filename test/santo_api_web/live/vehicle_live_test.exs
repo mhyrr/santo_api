@@ -73,7 +73,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
     assert has_element?(view, "#vehicle-description-gap", "Nobody has described this car yet")
-    assert has_element?(view, "#record-empty", "Nothing on file yet")
+    assert has_element?(view, "#record-empty", "Nothing here yet")
   end
 
   test "an empty logbook invites an entry rather than showing a clean record", %{conn: conn} do
@@ -81,7 +81,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
-    assert has_element?(view, "#logbook-empty", "No entries yet")
+    assert has_element?(view, "#logbook-empty", "No updates yet")
     refute has_element?(view, "#vehicle-logbook", "clean")
   end
 
@@ -175,22 +175,24 @@ defmodule SantoApiWeb.VehicleLiveTest do
 
   test "the steward sees their own private entry, marked private", %{conn: conn} do
     vehicle = car()
-    user = SantoApi.AccountsFixtures.user_fixture()
-    {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle, handle: "mhyrr")
+    user = SantoApi.AccountsFixtures.user_fixture(%{handle: "mhyrr"})
+    {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle)
 
-    claim =
-      admit(vehicle, %{
-        predicate: "event.note",
-        value: %{"text" => "kept in the second garage"},
-        scope_date: ~D[2025-06-01]
-      })
-
-    {:ok, _hidden} = Registry.set_visibility(claim, :private)
+    {:ok, entry} =
+      SantoApi.Owners.compose_entry(
+        SantoApi.Accounts.Scope.for_user(user),
+        vehicle,
+        %{
+          date: ~D[2025-06-01],
+          visibility: :private,
+          claims: [%{predicate: "event.note", value: %{"text" => "kept in the second garage"}}]
+        }
+      )
 
     {:ok, view, _html} = live(log_in_user(conn, user), ~p"/v/#{vehicle.public_id}")
 
-    assert has_element?(view, "#entry-#{claim.id}", "kept in the second garage")
-    assert has_element?(view, "#entry-#{claim.id}", "Not on the public page")
+    assert has_element?(view, "#entry-#{entry.entry_ref}", "kept in the second garage")
+    assert has_element?(view, "#entry-#{entry.entry_ref}", "Not on the public page")
   end
 
   test "a conflicted fact says sources disagree instead of picking quietly", %{conn: conn} do
@@ -286,7 +288,7 @@ defmodule SantoApiWeb.VehicleLiveTest do
     {:ok, view, _html} = live(conn, ~p"/v/#{vehicle.public_id}")
 
     assert has_element?(view, "#fact-identity-model_year", "1972")
-    assert has_element?(view, "#claim-#{claim.id}-artifact", "No public artifact")
+    assert has_element?(view, "#claim-#{claim.id}-artifact", "No source file attached")
     refute has_element?(view, ~s(a[href="#{url}"]))
   end
 
@@ -435,7 +437,9 @@ defmodule SantoApiWeb.VehicleLiveTest do
     large_queries = page_query_count(build_conn(), large)
 
     assert large_queries == small_queries
-    assert large_queries <= 16
+    # The mutable story, generic event association, and photo placement each
+    # add one constant page query; claim volume must still add none.
+    assert large_queries <= 19
   end
 
   test "an admitted unsuccessful auction event renders as a high bid, not a sale", %{conn: conn} do

@@ -11,9 +11,11 @@ defmodule SantoApiWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # :peer_data feeds the origination throttle (owner_surface §7b.5) — the
+  # LiveView keys its rate limit by address, the way the router pipelines do.
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:peer_data, session: @session_options]],
+    longpoll: [connect_info: [:peer_data, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

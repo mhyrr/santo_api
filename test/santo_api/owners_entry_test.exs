@@ -21,8 +21,8 @@ defmodule SantoApi.OwnersEntryTest do
 
   setup do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
-    user = user_fixture()
-    {:ok, _stewardship} = Owners.grant_stewardship(user, vehicle, handle: "mhyrr")
+    user = user_fixture(%{handle: "mhyrr"})
+    {:ok, _stewardship} = Owners.grant_stewardship(user, vehicle)
 
     %{vehicle: vehicle, user: user, scope: Scope.for_user(user), party: Owners.party(user)}
   end
@@ -407,7 +407,7 @@ defmodule SantoApi.OwnersEntryTest do
 
   defp photo(filename) do
     path = Path.join(System.tmp_dir!(), "#{System.unique_integer([:positive])}-#{filename}")
-    File.write!(path, "photo bytes #{System.unique_integer([:positive])}")
+    File.cp!("priv/demo/media/cayman-autocross-paddock.jpg", path)
     %{path: path, filename: filename, mime: "image/jpeg"}
   end
 end

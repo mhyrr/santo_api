@@ -58,7 +58,11 @@ defmodule SantoApiWeb.OwnerLive.Claim do
     socket
     |> assign(:page_title, "Claim — #{Presenter.title(vehicle)}")
     |> assign(:vehicle, vehicle)
-    |> assign(:handle, Owners.party(user) && Owners.party(user).name)
+    # The minted party name where one exists, else the handle reserved at
+    # registration (§9.1) — either way the flow's handle step disappears.
+    # Nil only for accounts predating the reservation, which still get the
+    # legacy input.
+    |> assign(:handle, (Owners.party(user) && Owners.party(user).name) || user.handle)
     |> assign(:incumbent, Owners.steward(vehicle))
     |> assign(:error, nil)
     |> assign_challenge(Owners.challenge(user, vehicle))

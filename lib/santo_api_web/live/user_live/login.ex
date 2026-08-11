@@ -15,7 +15,7 @@ defmodule SantoApiWeb.UserLive.Login do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm space-y-4">
+      <section id="login-page" class="club-auth-page">
         <div class="text-center">
           <.header>
             <p>Log in</p>
@@ -25,7 +25,7 @@ defmodule SantoApiWeb.UserLive.Login do
               <% else %>
                 Don't have an account? <.link
                   navigate={~p"/users/register"}
-                  class="font-semibold text-brand hover:underline"
+                  class="club-link font-semibold"
                   phx-no-format
                 >Sign up</.link> for an account now.
               <% end %>
@@ -33,26 +33,26 @@ defmodule SantoApiWeb.UserLive.Login do
           </.header>
         </div>
 
-        <div :if={local_mail_adapter?()} class="alert alert-info">
+        <div :if={local_mail_adapter?()} class="club-notice club-notice-info">
           <.icon name="hero-information-circle" class="size-6 shrink-0" />
           <div>
             <p>You are running the local mail adapter.</p>
             <p>
-              To see sent emails, visit <.link href="/dev/mailbox" class="underline">the mailbox page</.link>.
+              To see sent emails, visit <.link href="/dev/mailbox" class="club-link">the mailbox page</.link>.
             </p>
           </div>
         </div>
 
         <.form
-          :let={f}
           for={@form}
           id="login_form_magic"
           action={~p"/users/log-in"}
           phx-submit="submit_magic"
+          class="club-auth-form"
         >
           <.input
             readonly={!!@current_scope}
-            field={f[:email]}
+            field={@form[:email]}
             type="email"
             label="Email"
             autocomplete="username"
@@ -60,11 +60,11 @@ defmodule SantoApiWeb.UserLive.Login do
             required
             phx-mounted={JS.focus()}
           />
-          <.button class="btn btn-primary w-full">
+          <.button variant="primary" class="w-full">
             Log in with email <span aria-hidden="true">→</span>
           </.button>
         </.form>
-      </div>
+      </section>
     </Layouts.app>
     """
   end

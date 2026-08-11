@@ -20,7 +20,8 @@ defmodule SantoApi.Owners do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Accounts.User
-  alias SantoApi.Owners.{Challenge, Notifier, Stewardship}
+  alias SantoApi.Media
+  alias SantoApi.Owners.{Challenge, Export, Notifier, Photos, Stewardship, VehiclePhoto}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
@@ -49,7 +50,10 @@ defmodule SantoApi.Owners do
   Idempotent on the handle already held. A *different* handle is refused rather
   than applied: the name is baked into every claim's `content_hash`, so a rename
   is not an edit we can make, and silently ignoring the argument would hide that
-  from the caller.
+  from the caller. The same immutability starts at the reservation (§9.1): a
+  user who reserved a handle at registration mints with that name or not at
+  all — minting another would burn both names, one on the party and one held
+  forever by the reservation.
   """
   def ensure_party(%User{} = user, handle) when is_binary(handle) do
     case party(user) do
@@ -59,19 +63,34 @@ defmodule SantoApi.Owners do
           else: {:error, :handle_immutable}
 
       nil ->
-        create_party(user, handle)
+        if is_binary(user.handle) and normalize_handle(handle) != user.handle,
+          do: {:error, :handle_immutable},
+          else: create_party(user, handle)
     end
   end
 
+  # A name reserved by another user is spoken for even before their party
+  # exists (§9.1) — the parties unique index alone cannot see reservations,
+  # so the mint checks them here, for every caller.
   defp create_party(user, handle) do
-    Repo.transaction(fn ->
-      with {:ok, party} <- Repo.insert(Party.handle_changeset(handle)),
-           {:ok, _user} <- link_party(user, party) do
-        party
-      else
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
-    end)
+    normalized = normalize_handle(handle)
+
+    if reserved_by_someone_else?(user, normalized) do
+      {:error, :handle_taken}
+    else
+      Repo.transaction(fn ->
+        with {:ok, party} <- Repo.insert(Party.handle_changeset(handle)),
+             {:ok, _user} <- link_party(user, party) do
+          party
+        else
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+    end
+  end
+
+  defp reserved_by_someone_else?(user, normalized) do
+    Repo.exists?(from(u in User, where: u.handle == ^normalized and u.id != ^user.id))
   end
 
   defp link_party(user, party) do
@@ -95,7 +114,9 @@ defmodule SantoApi.Owners do
 
   ## Options
 
-    * `:handle` — the user's permanent public handle, required the first time
+    * `:handle` — the user's permanent public handle. Defaults to the handle
+      reserved at registration (§9.1); required only for accounts that
+      predate the reservation.
     * `:proof_artifact` — the possession proof that justified the grant (§4)
     * `:decided_by` — the operator who approved it
 
@@ -112,7 +133,8 @@ defmodule SantoApi.Owners do
         {:error, :already_stewarded}
 
       nil ->
-        with {:ok, _party} <- ensure_party(user, Keyword.fetch!(opts, :handle)) do
+        with {:ok, handle} <- stewardship_handle(user, opts),
+             {:ok, _party} <- ensure_party(user, handle) do
           {:ok,
            Repo.insert!(%Stewardship{
              user_id: user.id,
@@ -164,6 +186,21 @@ defmodule SantoApi.Owners do
     )
   end
 
+  @doc "Maintaining parties for a set of cars, keyed by vehicle id."
+  def stewards_for(vehicle_ids) when is_list(vehicle_ids) do
+    Repo.all(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        join: p in Party,
+        on: p.id == u.party_id,
+        where: s.vehicle_id in ^vehicle_ids and s.status == :active,
+        select: {s.vehicle_id, p}
+      )
+    )
+    |> Map.new()
+  end
+
   @doc """
   The caller's active stewardship of this car, or `nil`. The authorization every
   owner write goes through.
@@ -199,6 +236,17 @@ defmodule SantoApi.Owners do
 
   defp active_stewardship(%Vehicle{} = vehicle) do
     Repo.one(from(s in Stewardship, where: s.vehicle_id == ^vehicle.id and s.status == :active))
+  end
+
+  # The grant's handle: an explicit option wins (the claim flow passes the one
+  # the challenge reserved), then the registration reservation (§9.1). An
+  # account with neither predates both rules and has nothing to attribute
+  # entries to — the caller has to ask.
+  defp stewardship_handle(%User{} = user, opts) do
+    case opts[:handle] || user.handle do
+      nil -> {:error, :handle_required}
+      handle -> {:ok, handle}
+    end
   end
 
   ## Claiming — proof of possession (owner_surface §4)
@@ -296,9 +344,22 @@ defmodule SantoApi.Owners do
           else: {:error, :handle_immutable}
 
       nil ->
-        validate_available(given)
+        settle_reserved(user, given)
     end
   end
+
+  # §9.1 round 5: the user carries the reserved handle from registration, so
+  # the claim flow no longer asks. The reservation is as immutable as the
+  # party name it becomes — a different handle offered here is refused the
+  # same way it would be after minting. The validate path survives only for
+  # accounts that predate the reservation.
+  defp settle_reserved(%User{handle: reserved}, given) when is_binary(reserved) do
+    if is_nil(given) or normalize_handle(given) == reserved,
+      do: {:ok, reserved},
+      else: {:error, :handle_immutable}
+  end
+
+  defp settle_reserved(_legacy_user, given), do: validate_available(given)
 
   defp validate_available(nil), do: {:error, :handle_required}
 
@@ -312,11 +373,17 @@ defmodule SantoApi.Owners do
     end
   end
 
-  # Taken means held by a party or spoken for by a live claim. The second half
-  # matters because two claimants reserving one name would both pass here and
-  # the loser would find out at the operator's desk.
-  defp handle_taken?(name) do
+  @doc """
+  Whether a handle is spoken for anywhere: held by a minted owner party,
+  reserved by a registered user (§9.1), or riding a live possession
+  challenge. The last two matter because two people reserving one name would
+  both pass a party-only check and the loser would find out at the
+  operator's desk. Public because registration asks the same question
+  (`SantoApi.Accounts.User.registration_changeset/3`) — one function owns it.
+  """
+  def handle_taken?(name) when is_binary(name) do
     Repo.exists?(from(p in Party, where: p.name == ^name and p.kind == :owner)) or
+      Repo.exists?(from(u in User, where: u.handle == ^name)) or
       Repo.exists?(
         from(c in Challenge, where: c.handle == ^name and c.status in [:issued, :submitted])
       )
@@ -402,46 +469,51 @@ defmodule SantoApi.Owners do
   a person adjudicates the dispute.
   """
   def approve_challenge(%Challenge{} = challenge, %User{} = operator) do
-    case Repo.get(Challenge, challenge.id) do
-      %Challenge{status: :submitted, proof_artifact_id: artifact_id} = current
-      when not is_nil(artifact_id) ->
-        grant_from(current, operator)
-
-      %Challenge{status: :issued} ->
-        {:error, :no_proof}
-
-      %Challenge{} ->
-        {:error, :not_pending}
-
-      nil ->
-        {:error, :not_found}
-    end
+    grant_from(challenge.id, operator)
   end
 
-  defp grant_from(%Challenge{} = challenge, operator) do
-    user = Repo.get!(User, challenge.user_id)
-    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
-    proof = Repo.get!(Artifact, challenge.proof_artifact_id)
-
+  defp grant_from(challenge_id, operator) do
     granted =
       Repo.transaction(fn ->
-        case grant_stewardship(user, vehicle,
-               handle: challenge.handle,
-               proof_artifact: proof,
-               decided_by: operator
-             ) do
-          {:ok, stewardship} ->
-            decide!(challenge, :approved, operator, nil)
-            stewardship
+        case fetch_challenge_for_update(challenge_id) do
+          {:ok, %Challenge{status: :submitted, proof_artifact_id: artifact_id} = challenge}
+          when not is_nil(artifact_id) ->
+            user = Repo.get!(User, challenge.user_id)
+            vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+            proof = Repo.get!(Artifact, artifact_id)
+
+            case grant_stewardship(user, vehicle,
+                   handle: challenge.handle,
+                   proof_artifact: proof,
+                   decided_by: operator
+                 ) do
+              {:ok, stewardship} ->
+                decide!(challenge, :approved, operator, nil)
+                %{stewardship: stewardship, user: user, vehicle: vehicle}
+
+              {:error, reason} ->
+                Repo.rollback(reason)
+            end
+
+          {:ok, %Challenge{status: :issued}} ->
+            Repo.rollback(:no_proof)
+
+          {:ok, %Challenge{}} ->
+            Repo.rollback(:not_pending)
 
           {:error, reason} ->
             Repo.rollback(reason)
         end
       end)
 
-    with {:ok, _stewardship} <- granted, do: Notifier.claim_approved(user, vehicle)
+    case granted do
+      {:ok, %{stewardship: stewardship, user: user, vehicle: vehicle}} ->
+        Notifier.claim_approved(user, vehicle)
+        {:ok, stewardship}
 
-    granted
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -450,10 +522,22 @@ defmodule SantoApi.Owners do
   """
   def deny_challenge(%Challenge{} = challenge, %User{} = operator, reason)
       when is_binary(reason) do
-    case Repo.get(Challenge, challenge.id) do
-      %Challenge{status: status} = current when status in [:issued, :submitted] ->
-        denied = decide!(current, :denied, operator, reason)
+    denied =
+      Repo.transaction(fn ->
+        case fetch_challenge_for_update(challenge.id) do
+          {:ok, %Challenge{status: status} = current} when status in [:issued, :submitted] ->
+            decide!(current, :denied, operator, reason)
 
+          {:ok, %Challenge{}} ->
+            Repo.rollback(:not_pending)
+
+          {:error, deny_error} ->
+            Repo.rollback(deny_error)
+        end
+      end)
+
+    case denied do
+      {:ok, denied} ->
         Notifier.claim_denied(
           Repo.get!(User, denied.user_id),
           Repo.get!(Vehicle, denied.vehicle_id),
@@ -462,12 +546,168 @@ defmodule SantoApi.Owners do
 
         {:ok, denied}
 
-      %Challenge{} ->
-        {:error, :not_pending}
-
-      nil ->
-        {:error, :not_found}
+      {:error, deny_error} ->
+        {:error, deny_error}
     end
+  end
+
+  @dispute_outcomes [:keep_incumbent, :transfer_to_claimant]
+
+  @doc """
+  Resolve a contested possession challenge without inventing an ownership claim.
+
+  Stewardship is authorization, so this is an atomic disposition of the two
+  existing authorization records rather than a Registry adjudication. Keeping
+  the incumbent denies the challenge. Transferring revokes the incumbent,
+  creates the claimant's stewardship, and approves the challenge in one locked
+  transaction. Both outcomes retain the proof artifacts and record the reason,
+  deciding operator, and time on the rows that changed.
+  """
+  def resolve_dispute(challenge_id, %User{} = operator, outcome, reason)
+      when outcome in @dispute_outcomes and is_binary(reason) do
+    reason = String.trim(reason)
+
+    if reason == "" do
+      {:error, :reason_required}
+    else
+      result =
+        Repo.transaction(fn ->
+          with {:ok, challenge} <- fetch_challenge_for_update(challenge_id),
+               :ok <- validate_dispute_challenge(challenge),
+               {:ok, incumbent} <- fetch_incumbent_for_update(challenge),
+               {:ok, resolution} <-
+                 apply_dispute_outcome(challenge, incumbent, operator, outcome, reason) do
+            resolution
+          else
+            {:error, dispute_error} -> Repo.rollback(dispute_error)
+          end
+        end)
+
+      case result do
+        {:ok, resolution} ->
+          notify_dispute_resolution(resolution)
+          {:ok, resolution}
+
+        {:error, dispute_error} ->
+          {:error, dispute_error}
+      end
+    end
+  end
+
+  def resolve_dispute(_challenge_id, %User{}, _outcome, _reason),
+    do: {:error, :invalid_dispute_decision}
+
+  defp fetch_challenge_for_update(challenge_id) do
+    with {:ok, id} <- Ecto.UUID.cast(challenge_id),
+         %Challenge{} = challenge <-
+           Repo.one(from(c in Challenge, where: c.id == ^id, lock: "FOR UPDATE")) do
+      {:ok, challenge}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  defp validate_dispute_challenge(%Challenge{status: :submitted, proof_artifact_id: artifact_id})
+       when not is_nil(artifact_id),
+       do: :ok
+
+  defp validate_dispute_challenge(%Challenge{status: :issued}), do: {:error, :no_proof}
+
+  defp validate_dispute_challenge(%Challenge{status: status}),
+    do: {:error, {:not_pending, status}}
+
+  defp fetch_incumbent_for_update(challenge) do
+    incumbent =
+      Repo.one(
+        from(s in Stewardship,
+          where: s.vehicle_id == ^challenge.vehicle_id and s.status == :active,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    case incumbent do
+      %Stewardship{user_id: user_id} when user_id != challenge.user_id ->
+        {:ok, incumbent}
+
+      _not_contested ->
+        {:error, :not_contested}
+    end
+  end
+
+  defp apply_dispute_outcome(challenge, incumbent, operator, :keep_incumbent, reason) do
+    denied = decide!(challenge, :denied, operator, reason)
+
+    {:ok,
+     dispute_resolution(
+       :keep_incumbent,
+       denied,
+       incumbent,
+       incumbent,
+       operator,
+       reason
+     )}
+  end
+
+  defp apply_dispute_outcome(challenge, incumbent, operator, :transfer_to_claimant, reason) do
+    claimant = Repo.get!(User, challenge.user_id)
+    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+    proof = Repo.get!(Artifact, challenge.proof_artifact_id)
+
+    with {:ok, revoked} <- revoke_stewardship(incumbent, reason, operator),
+         {:ok, granted} <-
+           grant_stewardship(claimant, vehicle,
+             handle: challenge.handle,
+             proof_artifact: proof,
+             decided_by: operator
+           ) do
+      approved = decide!(challenge, :approved, operator, reason)
+
+      {:ok,
+       dispute_resolution(
+         :transfer_to_claimant,
+         approved,
+         revoked,
+         granted,
+         operator,
+         reason
+       )}
+    end
+  end
+
+  defp dispute_resolution(outcome, challenge, incumbent, resulting_stewardship, operator, reason) do
+    %{
+      outcome: outcome,
+      challenge: challenge,
+      claimant: Repo.get!(User, challenge.user_id),
+      incumbent: incumbent,
+      incumbent_user: Repo.get!(User, incumbent.user_id),
+      resulting_stewardship: resulting_stewardship,
+      vehicle: Repo.get!(Vehicle, challenge.vehicle_id),
+      operator: operator,
+      reason: reason
+    }
+  end
+
+  defp notify_dispute_resolution(%{outcome: :keep_incumbent} = resolution) do
+    Notifier.claim_denied(resolution.claimant, resolution.vehicle, resolution.reason)
+
+    Notifier.dispute_kept(
+      resolution.incumbent_user,
+      resolution.vehicle,
+      resolution.claimant.handle,
+      resolution.reason
+    )
+  end
+
+  defp notify_dispute_resolution(%{outcome: :transfer_to_claimant} = resolution) do
+    Notifier.claim_approved(resolution.claimant, resolution.vehicle)
+
+    Notifier.dispute_transferred(
+      resolution.incumbent_user,
+      resolution.vehicle,
+      resolution.claimant.handle,
+      resolution.reason
+    )
   end
 
   defp decide!(challenge, status, operator, reason) do
@@ -523,22 +763,254 @@ defmodule SantoApi.Owners do
     )
   end
 
+  @doc "Submitted possession claims that do not contest an active steward."
+  def list_pending_claiming_challenges do
+    {uncontested, _disputes} = partition_pending_challenges()
+    uncontested
+  end
+
+  @doc "Submitted possession challenges contesting a different active steward."
+  def list_pending_disputes do
+    {_uncontested, disputes} = partition_pending_challenges()
+    disputes
+  end
+
+  @doc "Count submitted possession challenges facing a different active steward."
+  def pending_dispute_count do
+    Repo.aggregate(
+      from(c in Challenge,
+        join: s in Stewardship,
+        on: s.vehicle_id == c.vehicle_id,
+        where: c.status == :submitted and s.status == :active and s.user_id != c.user_id
+      ),
+      :count
+    )
+  end
+
+  defp partition_pending_challenges do
+    challenges = list_pending_challenges()
+    vehicle_ids = Enum.map(challenges, & &1.vehicle_id)
+
+    incumbents_by_vehicle =
+      Repo.all(
+        from(s in Stewardship,
+          where: s.vehicle_id in ^vehicle_ids and s.status == :active,
+          preload: [:proof_artifact, user: :party]
+        )
+      )
+      |> Map.new(&{&1.vehicle_id, &1})
+
+    {uncontested, disputes} =
+      Enum.reduce(challenges, {[], []}, fn challenge, {uncontested, disputes} ->
+        case Map.get(incumbents_by_vehicle, challenge.vehicle_id) do
+          %Stewardship{user_id: user_id} = incumbent when user_id != challenge.user_id ->
+            {uncontested, [%{challenge: challenge, incumbent: incumbent} | disputes]}
+
+          _no_other_steward ->
+            {[challenge | uncontested], disputes}
+        end
+      end)
+
+    {Enum.reverse(uncontested), Enum.reverse(disputes)}
+  end
+
   defp artifact_id(%Artifact{id: id}), do: id
   defp artifact_id(nil), do: nil
 
   defp user_id(%User{id: id}), do: id
   defp user_id(nil), do: nil
 
+  ## Publishing — the magic-link click publishes (owner_surface §7b.1 d.6)
+
+  @doc """
+  Whether this car's page renders publicly.
+
+  Origination creates the user, the car, and the stewardship before any
+  email is confirmed, and the magic-link click publishes rather than
+  unlocks: public rendering gates on `user.confirmed_at` through the
+  stewardship join — one join, zero ledger writes, no visibility flipping
+  on claims after the fact. A car with no steward at all (seeded by VIN
+  lookup, corpus, bench) was never anyone's unconfirmed word and is public
+  as it always was.
+  """
+  def published?(%Vehicle{} = vehicle) do
+    not Repo.exists?(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        where: s.vehicle_id == ^vehicle.id and s.status == :active and is_nil(u.confirmed_at)
+      )
+    )
+  end
+
+  @doc """
+  The vehicles the registry index must not list: stewarded by an account
+  that never confirmed. One query for the whole index, same join as
+  `published?/1`.
+  """
+  def unpublished_vehicle_ids do
+    Repo.all(
+      from(s in Stewardship,
+        join: u in User,
+        on: u.id == s.user_id,
+        where: s.status == :active and is_nil(u.confirmed_at),
+        select: s.vehicle_id
+      )
+    )
+    |> MapSet.new()
+  end
+
+  ## Resolution — an asserted car acquires its VIN (owner_surface §7b.2)
+
+  @doc """
+  Resolve the caller's `:asserted` car to a VIN. One-way, one-time, and
+  never refused.
+
+    * The VIN is unoccupied — `{:ok, :resolved, vehicle}`. The row flipped
+      in place, the decode's facts arrived `:admitted`, and the page's
+      comparison audits everything the owner asserted.
+    * The VIN is occupied — `{:ok, :counter_claim, occupied, challenge}`.
+      The assertion is still recorded (Greg, 2026-08-04: the ledger gates
+      nothing at submission time, anywhere): the owner becomes a claimant on
+      the occupied row through §4's counter-claim path, an operator
+      adjudicates, and the entries stay on the asserted row meanwhile. Only
+      the key flip is deferred, never the claim.
+
+  Steward-only: acquiring the identity is the biggest write the owner
+  surface has, and it belongs to the person maintaining the log.
+  """
+  def resolve_asserted(scope, %Vehicle{} = vehicle, vin) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle) do
+      case Registry.resolve_asserted(vehicle, vin) do
+        {:ok, resolved} ->
+          {:ok, :resolved, resolved}
+
+        {:error, {:occupied, occupied}} ->
+          user = Repo.get!(User, stewardship.user_id)
+
+          with {:ok, challenge} <- issue_challenge(user, occupied) do
+            {:ok, :counter_claim, occupied, challenge}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
   @doc """
   The logbook as this caller may read it (owner_surface §6).
 
-  The steward of a car sees their private entries; everybody else sees the
-  public page. This is the read half of the privacy toggle, and it has to exist
-  wherever the toggle does — an entry only its author can hide and nobody at all
-  can see is a hole, not a feature.
+  An entry's author sees their private entries while they steward the car;
+  everybody else sees the public page. This is the read half of the privacy
+  toggle, and it has to exist wherever the toggle does — an entry only its
+  author can hide and nobody at all can see is a hole, not a feature.
   """
   def timeline(scope, %Vehicle{} = vehicle) do
-    Registry.timeline(vehicle.id, include_private: stewarding?(scope, vehicle))
+    {timeline_opts, photo_opts} = private_timeline_opts(scope, vehicle)
+    entries = Registry.timeline(vehicle.id, timeline_opts)
+    photos = Photos.list_photos(vehicle, photo_opts)
+    photo_groups = Enum.group_by(photos, & &1.entry_ref)
+
+    claim_entries =
+      Enum.map(entries, fn entry ->
+        Map.put(entry, :photos, Map.get(photo_groups, entry.entry_ref, []))
+      end)
+
+    claim_refs = MapSet.new(entries, & &1.entry_ref)
+
+    photo_entries =
+      photo_groups
+      |> Enum.reject(fn {entry_ref, _photos} -> MapSet.member?(claim_refs, entry_ref) end)
+      |> Enum.map(fn {_entry_ref, entry_photos} -> photo_entry(entry_photos) end)
+
+    (claim_entries ++ photo_entries)
+    |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
+  end
+
+  defp private_timeline_opts(%Scope{user: %User{} = user} = scope, vehicle) do
+    case stewardship(scope, vehicle) do
+      %Stewardship{} ->
+        case party(user) do
+          %Party{id: party_id} ->
+            {
+              [include_private: true, private_party_id: party_id],
+              [include_private: true, private_author_user_id: user.id]
+            }
+
+          nil ->
+            {[], []}
+        end
+
+      nil ->
+        {[], []}
+    end
+  end
+
+  defp private_timeline_opts(_scope, _vehicle), do: {[], []}
+
+  @doc "Public journal-entry counts, including photo-first entries with no claim row."
+  def public_entry_counts([]), do: %{}
+
+  def public_entry_counts(vehicle_ids) when is_list(vehicle_ids) do
+    claim_refs =
+      Repo.all(
+        from(claim in Claim,
+          where:
+            claim.vehicle_id in ^vehicle_ids and claim.state == :admitted and
+              claim.visibility == :public and claim.scope_kind in [:event, :observed],
+          select: {claim.vehicle_id, claim.entry_ref, claim.id}
+        )
+      )
+      |> Enum.map(fn {vehicle_id, entry_ref, claim_id} ->
+        {vehicle_id, entry_ref || claim_id}
+      end)
+
+    photo_refs =
+      Repo.all(
+        from(photo in VehiclePhoto,
+          where: photo.vehicle_id in ^vehicle_ids and photo.visibility == :public,
+          select: {photo.vehicle_id, photo.entry_ref}
+        )
+      )
+
+    (claim_refs ++ photo_refs)
+    |> Enum.uniq()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {vehicle_id, refs} -> {vehicle_id, length(refs)} end)
+  end
+
+  @doc "One timeline entry with its visible owner photos."
+  def fetch_timeline_entry(scope, %Vehicle{} = vehicle, entry_ref) do
+    with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+         entry when not is_nil(entry) <-
+           Enum.find(timeline(scope, vehicle), &(&1.entry_ref == ref)) do
+      {:ok, entry}
+    else
+      _absent -> {:error, :not_found}
+    end
+  end
+
+  @doc "Downloadable car record for the active steward, including their private data and originals."
+  def export_record(scope, %Vehicle{} = vehicle), do: Export.build(scope, vehicle)
+
+  defp photo_entry([%VehiclePhoto{} = first | _rest] = photos) do
+    %{
+      entry_ref: first.entry_ref,
+      date: first.entry_date,
+      party: first.author_user.handle,
+      party_kind: :owner,
+      method: :human,
+      visibility: photo_entry_visibility(photos),
+      recorded_at: Enum.max_by(photos, & &1.inserted_at, DateTime).inserted_at,
+      evidence: [],
+      claims: [],
+      photos: photos
+    }
+  end
+
+  defp photo_entry_visibility(photos) do
+    if Enum.any?(photos, &(&1.visibility == :private)), do: :private, else: :public
   end
 
   ## Entries — the composer's write path
@@ -567,8 +1039,12 @@ defmodule SantoApi.Owners do
 
     * `:date` — required. The timeline orders by it and the fold reads recency
       off it, so an owner entry is never undated.
-    * `:claims` — `[%{predicate: ..., value: ...}]`, at least one.
-    * `:photos` — `[%{path:, filename:, mime:}]`, owner-supplied artifacts.
+    * `:claims` — `[%{predicate: ..., value: ...}]`. May be empty only when
+      the entry contains a photo; a photo-first update is still an update.
+    * `:photos` — `[%{path:, filename:, mime:}]`, owner-supplied photo artifacts.
+    * `:attachments` — `[%{path:, filename:, mime:, kind:}]`, generic event
+      files. `:photo` remains a photo artifact; other kinds are stored as
+      documents. Event labels and ordering live outside the ledger.
     * `:visibility` — `:public` (default) or `:private`. Presentation only: a
       private claim is still admitted, still counts, and still folds into
       current state.
@@ -576,10 +1052,96 @@ defmodule SantoApi.Owners do
   def compose_entry(scope, %Vehicle{} = vehicle, attrs) do
     with {:ok, stewardship} <- authorize_entry(scope, vehicle),
          {:ok, date} <- entry_date(attrs),
-         {:ok, claim_attrs} <- entry_claims(attrs) do
+         {:ok, claim_attrs} <- composed_claims(attrs) do
       party = party(%User{id: stewardship.user_id})
-      write_entry(vehicle, party, date, claim_attrs, attrs)
+      write_entry(scope, vehicle, party, date, claim_attrs, attrs)
     end
+  end
+
+  @doc """
+  Add owner-supplied photos to an existing authored entry.
+
+  Event participation seeding and future day-two editing use this narrow door
+  so an event can reuse the car update's photo placements rather than creating
+  a second media record. Date and visibility are inherited from the entry's
+  live claims; this function cannot turn event-local media into durable state.
+  """
+  def attach_photos(scope, %Vehicle{} = vehicle, entry_ref, uploads) when is_list(uploads) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, claims} <- fetch_own_entry(vehicle, party, entry_ref),
+         [%Claim{scope_date: date} | _rest] <- claims,
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      visibility = entry_visibility(claims)
+
+      case Repo.transaction(fn ->
+             results =
+               Enum.map(
+                 uploads,
+                 &write_photo!(scope, vehicle, party, ref, date, visibility, &1)
+               )
+
+             %{
+               artifacts: Enum.map(results, &elem(&1, 0)),
+               photos: Enum.map(results, &elem(&1, 1))
+             }
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      [] -> {:error, :entry_not_found}
+      other -> other
+    end
+  end
+
+  def attach_photos(_scope, %Vehicle{}, _entry_ref, _uploads),
+    do: {:error, :authentication_required}
+
+  @doc """
+  Add generic owner-supplied event attachments to an existing authored entry.
+
+  Unlike `attach_photos/4`, this accepts the event composer's full upload set:
+  photos receive ordinary car-gallery placements, while video and document
+  artifacts remain attached only through the event presentation. Every upload
+  inherits the entry's date and visibility and keeps the existing `entry_ref`.
+  """
+  def attach_attachments(scope, %Vehicle{} = vehicle, entry_ref, uploads)
+      when is_list(uploads) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, claims} <- fetch_own_entry(vehicle, party, entry_ref),
+         [%Claim{scope_date: date} | _rest] <- claims,
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      visibility = entry_visibility(claims)
+
+      case Repo.transaction(fn ->
+             results =
+               Enum.map(
+                 uploads,
+                 &write_attachment!(scope, vehicle, party, ref, date, visibility, &1)
+               )
+
+             %{
+               artifacts: Enum.map(results, &elem(&1, 0)),
+               photos: results |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
+             }
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      [] -> {:error, :entry_not_found}
+      other -> other
+    end
+  end
+
+  def attach_attachments(_scope, %Vehicle{}, _entry_ref, _uploads),
+    do: {:error, :authentication_required}
+
+  @doc "Remove selected photo placements from one authored entry, retaining artifact bytes."
+  def remove_entry_photo_artifacts(scope, %Vehicle{} = vehicle, entry_ref, artifact_ids) do
+    Photos.remove_entry_artifacts(scope, vehicle, entry_ref, artifact_ids)
   end
 
   defp authorize_entry(scope, vehicle) do
@@ -603,22 +1165,59 @@ defmodule SantoApi.Owners do
   defp entry_claims(%{claims: [_first | _rest] = claims}), do: {:ok, claims}
   defp entry_claims(_attrs), do: {:error, :empty_entry}
 
-  defp write_entry(vehicle, party, date, claim_attrs, attrs) do
+  defp composed_claims(attrs) do
+    claims = Map.get(attrs, :claims, [])
+
+    cond do
+      not is_list(claims) -> {:error, :empty_entry}
+      claims != [] -> {:ok, claims}
+      photo_upload?(Map.get(attrs, :photos, [])) -> {:ok, []}
+      photo_attachment?(Map.get(attrs, :attachments, [])) -> {:ok, []}
+      true -> {:error, :empty_entry}
+    end
+  end
+
+  defp photo_upload?([_photo | _rest]), do: true
+  defp photo_upload?(_photos), do: false
+
+  defp photo_attachment?(attachments) when is_list(attachments),
+    do: Enum.any?(attachments, &(Map.get(&1, :kind) in [:photo, "photo"]))
+
+  defp photo_attachment?(_attachments), do: false
+
+  defp write_entry(scope, vehicle, party, date, claim_attrs, attrs) do
     entry_ref = Registry.new_entry_ref()
-    visibility = Map.get(attrs, :visibility, :public)
+    visibility = entry_visibility_value(Map.get(attrs, :visibility, :public))
     opts = basis_opts(attrs)
 
     result =
       Repo.transaction(fn ->
         claims = Enum.map(claim_attrs, &write_claim!(vehicle, party, date, entry_ref, &1, opts))
 
-        artifacts =
-          Enum.map(Map.get(attrs, :photos, []), &write_photo!(vehicle, party, entry_ref, &1))
+        photo_results =
+          Enum.map(
+            Map.get(attrs, :photos, []),
+            &write_photo!(scope, vehicle, party, entry_ref, date, visibility, &1)
+          )
+
+        attachment_results =
+          Enum.map(
+            Map.get(attrs, :attachments, []),
+            &write_attachment!(scope, vehicle, party, entry_ref, date, visibility, &1)
+          )
+
+        artifacts = Enum.map(photo_results ++ attachment_results, &elem(&1, 0))
+
+        photos =
+          (photo_results ++ attachment_results)
+          |> Enum.map(&elem(&1, 1))
+          |> Enum.reject(&is_nil/1)
 
         %{
           entry_ref: entry_ref,
           claims: Enum.map(claims, &apply_visibility!(&1, visibility)),
-          artifacts: Enum.map(artifacts, &apply_visibility!(&1, visibility))
+          artifacts: Enum.map(artifacts, &apply_visibility!(&1, visibility)),
+          photos: photos
         }
       end)
 
@@ -719,23 +1318,91 @@ defmodule SantoApi.Owners do
 
   defp maybe_self_ratify!(%Claim{} = claim, _party), do: claim
 
-  # Raises rather than returning an error, which rolls the entry back with the
-  # original exception — a photo that cannot be read or stored is not a case the
-  # composer can helpfully explain away.
-  defp write_photo!(vehicle, party, entry_ref, %{path: path, filename: filename} = photo) do
+  # A failed photo preparation rolls the enclosing entry transaction back. The
+  # reason survives so the composer can explain an unreadable or oversized file.
+  defp write_photo!(
+         scope,
+         vehicle,
+         party,
+         entry_ref,
+         date,
+         visibility,
+         %{path: path, filename: filename} = photo
+       ) do
+    with {:ok, derivatives} <- Media.prepare_photo(path),
+         {:ok, artifact} <-
+           Registry.create_upload_artifact(%{
+             vehicle_id: vehicle.id,
+             path: path,
+             filename: filename,
+             mime: photo[:mime],
+             kind: :photo,
+             entry_ref: entry_ref,
+             source_party: party,
+             metadata: %{"photo_derivatives" => derivatives}
+           }),
+         {:ok, placement} <-
+           Photos.attach(scope, vehicle, artifact, %{
+             entry_ref: entry_ref,
+             entry_date: date,
+             alt_text: photo[:alt_text],
+             visibility: visibility
+           }) do
+      {artifact, placement}
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp write_attachment!(
+         scope,
+         vehicle,
+         party,
+         entry_ref,
+         date,
+         visibility,
+         %{path: path, filename: filename} = attachment
+       ) do
+    kind = if attachment[:kind] in [:photo, "photo"], do: :photo, else: :document
+
+    derivatives =
+      if kind == :photo do
+        case Media.prepare_photo(path) do
+          {:ok, derivatives} -> derivatives
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+
     {:ok, artifact} =
       Registry.create_upload_artifact(%{
         vehicle_id: vehicle.id,
         path: path,
         filename: filename,
-        mime: photo[:mime],
-        kind: :photo,
+        mime: attachment[:mime],
+        kind: kind,
         entry_ref: entry_ref,
-        source_party: party
+        source_party: party,
+        metadata: if(derivatives, do: %{"photo_derivatives" => derivatives}, else: %{})
       })
 
-    artifact
+    placement =
+      if kind == :photo do
+        case Photos.attach(scope, vehicle, artifact, %{
+               entry_ref: entry_ref,
+               entry_date: date,
+               alt_text: attachment[:label],
+               visibility: visibility
+             }) do
+          {:ok, placement} -> placement
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+
+    {artifact, placement}
   end
+
+  defp entry_visibility_value(value) when value in [:private, "private"], do: :private
+  defp entry_visibility_value(_value), do: :public
 
   # Public is the default on both tables, so only a private entry writes here.
   defp apply_visibility!(row, :public), do: row
@@ -746,6 +1413,92 @@ defmodule SantoApi.Owners do
       {:error, reason} -> Repo.rollback(reason)
     end
   end
+
+  ## Privacy — mutable presentation over an immutable record
+
+  @doc """
+  Put one authored entry on or off the public page.
+
+  Stewardship is necessary but not sufficient: the entry must also belong to
+  the caller's permanent party (or contain one of their photo placements). A
+  later steward can read the public record but cannot hide the previous
+  steward's work. Claims and photo placements move together; immutable,
+  content-deduplicated artifact bytes do not.
+  """
+  def set_entry_visibility(scope, %Vehicle{} = vehicle, entry_ref, visibility)
+      when visibility in [:public, :private] do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      claims = own_live_claims(vehicle, party, ref)
+      photos? = own_photos?(vehicle, stewardship.user_id, ref)
+
+      if claims == [] and not photos? do
+        {:error, :entry_not_found}
+      else
+        case Repo.transaction(fn ->
+               {claim_count, _rows} =
+                 Repo.update_all(
+                   from(claim in Claim,
+                     where:
+                       claim.vehicle_id == ^vehicle.id and claim.entry_ref == ^ref and
+                         claim.asserted_by_party_id == ^party.id and
+                         claim.state in [:proposed, :admitted]
+                   ),
+                   set: [visibility: visibility, updated_at: DateTime.utc_now()]
+                 )
+
+               photo_count =
+                 case Photos.set_entry_visibility(scope, vehicle, ref, visibility) do
+                   {:ok, count} -> count
+                   {:error, reason} -> Repo.rollback(reason)
+                 end
+
+               %{claims: claim_count, photos: photo_count, visibility: visibility}
+             end) do
+          {:ok, result} -> {:ok, result}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end
+  end
+
+  def set_entry_visibility(_scope, %Vehicle{}, _entry_ref, _visibility),
+    do: {:error, :authentication_required}
+
+  @doc "Change the visibility of every live contribution authored by this steward on one car."
+  def set_all_entry_visibility(scope, %Vehicle{} = vehicle, visibility)
+      when visibility in [:public, :private] do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}) do
+      case Repo.transaction(fn ->
+             {claim_count, _rows} =
+               Repo.update_all(
+                 from(claim in Claim,
+                   where:
+                     claim.vehicle_id == ^vehicle.id and
+                       claim.asserted_by_party_id == ^party.id and
+                       claim.state in [:proposed, :admitted]
+                 ),
+                 set: [visibility: visibility, updated_at: DateTime.utc_now()]
+               )
+
+             photo_count =
+               case Photos.set_all_visibility(scope, vehicle, visibility) do
+                 {:ok, count} -> count
+                 {:error, reason} -> Repo.rollback(reason)
+               end
+
+             %{claims: claim_count, photos: photo_count, visibility: visibility}
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def set_all_entry_visibility(_scope, %Vehicle{}, _visibility),
+    do: {:error, :authentication_required}
 
   ## Corrections — the owner's own data, revised (owner_surface §8)
 
@@ -821,20 +1574,30 @@ defmodule SantoApi.Owners do
   end
 
   @doc """
-  Withdraw an entry the caller logged, whole. Returns how many claims went.
+  Withdraw an entry the caller logged, whole. Returns how many authored records went.
 
-  Deleting a logbook line is retracting the claims it was made of — the rows
-  stay, their state flips, and the entry leaves every projection because both
-  of them read `:admitted` only.
+  Ledger claims remain as retractions; mutable photo placements are removed
+  from presentation while their immutable artifacts remain retained. This also
+  handles a photo-first entry with no claim rows.
   """
   def retract_entry(scope, %Vehicle{} = vehicle, entry_ref) do
     with {:ok, stewardship} <- authorize_entry(scope, vehicle),
          party = party(%User{id: stewardship.user_id}),
-         {:ok, existing} <- fetch_own_entry(vehicle, party, entry_ref) do
-      Repo.transaction(fn ->
-        Enum.each(existing, &retract!(&1, party))
-        length(existing)
-      end)
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      claims = own_live_claims(vehicle, party, ref)
+
+      if claims == [] and not own_photos?(vehicle, stewardship.user_id, ref) do
+        {:error, :entry_not_found}
+      else
+        Repo.transaction(fn ->
+          Enum.each(claims, &retract!(&1, party))
+
+          case Photos.remove_entry(scope, vehicle, ref) do
+            {:ok, photo_count} -> length(claims) + photo_count
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+      end
     end
   end
 
@@ -857,23 +1620,44 @@ defmodule SantoApi.Owners do
   # rather than refused, so an owner amending their fill-up never discovers
   # they cannot because a third party wrote alongside them.
   defp fetch_own_entry(vehicle, party, entry_ref) do
-    case Ecto.UUID.cast(entry_ref) do
+    case cast_entry_ref(entry_ref) do
       {:ok, ref} ->
-        Repo.all(
-          from(c in Claim,
-            where:
-              c.vehicle_id == ^vehicle.id and c.entry_ref == ^ref and
-                c.asserted_by_party_id == ^party.id and c.state in [:proposed, :admitted]
-          )
-        )
+        own_live_claims(vehicle, party, ref)
         |> case do
           [] -> {:error, :entry_not_found}
           claims -> {:ok, claims}
         end
 
-      :error ->
+      {:error, :entry_not_found} ->
         {:error, :entry_not_found}
     end
+  end
+
+  defp cast_entry_ref(entry_ref) do
+    case Ecto.UUID.cast(entry_ref) do
+      {:ok, ref} -> {:ok, ref}
+      :error -> {:error, :entry_not_found}
+    end
+  end
+
+  defp own_live_claims(vehicle, party, ref) do
+    Repo.all(
+      from(c in Claim,
+        where:
+          c.vehicle_id == ^vehicle.id and c.entry_ref == ^ref and
+            c.asserted_by_party_id == ^party.id and c.state in [:proposed, :admitted]
+      )
+    )
+  end
+
+  defp own_photos?(vehicle, user_id, ref) do
+    Repo.exists?(
+      from(photo in VehiclePhoto,
+        where:
+          photo.vehicle_id == ^vehicle.id and photo.entry_ref == ^ref and
+            photo.author_user_id == ^user_id
+      )
+    )
   end
 
   # An entry is private if any part of it is (the same rule `Registry.timeline/2`

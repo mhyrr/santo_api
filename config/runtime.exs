@@ -23,6 +23,16 @@ end
 config :santo_api, SantoApiWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# The extraction key, read at runtime in every environment except test (test
+# stubs the transport and configures its own fake key). get_env, not
+# fetch_env!: a missing key must not stop boot — extraction degrades to the
+# empty read-back (owner_surface §7b.1 decision 4), it never blocks the app.
+if config_env() != :test do
+  config :santo_api, :extraction,
+    model: "claude-opus-5",
+    api_key: System.get_env("ANTHROPIC_API_KEY")
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :santo_api, SantoApiWeb.Endpoint,

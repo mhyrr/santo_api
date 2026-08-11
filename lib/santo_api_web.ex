@@ -86,6 +86,7 @@ defmodule SantoApiWeb do
       import Phoenix.HTML
       # Core UI components
       import SantoApiWeb.CoreComponents
+      import SantoApiWeb.VehicleComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

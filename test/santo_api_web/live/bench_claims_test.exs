@@ -86,18 +86,18 @@ defmodule SantoApiWeb.BenchClaimsTest do
       assert Owners.challenge(claimant(claim), ctx.vehicle).status == :submitted
     end
 
-    test "a contested claim is flagged, and approving it refuses rather than swapping", ctx do
-      {:ok, _incumbent} = Owners.grant_stewardship(user_fixture(), ctx.vehicle, handle: "mhyrr")
+    test "a contested claim moves to the dispute queue instead of appearing twice", ctx do
+      {:ok, _incumbent} = Owners.grant_stewardship(user_fixture(%{handle: "mhyrr"}), ctx.vehicle)
       claim = submitted_claim(ctx.vehicle, "someone-else")
 
-      {:ok, view, html} = live(ctx.conn, ~p"/bench/claims")
+      {:ok, claims, _html} = live(ctx.conn, ~p"/bench/claims")
+      refute has_element?(claims, "#claim-#{claim.id}")
 
-      assert html =~ "Contested"
-      assert html =~ "mhyrr"
+      {:ok, disputes, _html} = live(ctx.conn, ~p"/bench/disputes")
+      render_async(disputes)
 
-      html = view |> element("button[phx-value-id='#{claim.id}']", "Approve") |> render_click()
-
-      assert html =~ "already maintains"
+      assert has_element?(disputes, "#dispute-#{claim.id}")
+      assert has_element?(disputes, "#dispute-incumbent-#{claim.id}", "mhyrr")
       assert Owners.steward(ctx.vehicle).name == "mhyrr"
     end
 
@@ -146,8 +146,8 @@ defmodule SantoApiWeb.BenchClaimsTest do
   end
 
   defp submitted_claim(vehicle, handle) do
-    user = user_fixture()
-    {:ok, challenge} = Owners.issue_challenge(user, vehicle, handle: handle)
+    user = user_fixture(%{handle: handle})
+    {:ok, challenge} = Owners.issue_challenge(user, vehicle)
 
     path = Path.join(System.tmp_dir!(), "proof-#{System.unique_integer([:positive])}.jpg")
     File.write!(path, "a vin plate and a code")

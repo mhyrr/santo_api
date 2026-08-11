@@ -46,13 +46,34 @@ defmodule SantoApiWeb.Router do
     post "/builds", VehicleBuildController, :create
     get "/vin/:vin", VehiclePageController, :resolve
 
+    # Media delivery stays in the optional-auth public browser pipeline. An
+    # anonymous visitor may see a published public placement; the same route
+    # can read the mounted session to let a steward see private media without
+    # inventing a second signed-in URL or exposing the original upload.
+    get "/events/:public_id/attachments/:id", EventAttachmentController, :show
+    get "/events/:public_id/attachments/:id/:variant", EventAttachmentController, :show
+    get "/v/:public_id/photos/:id/:variant", VehiclePhotoController, :show
+    get "/v/:public_id/updates/:entry_ref/share-card.jpg", DistributionController, :share_card
+    get "/v/:public_id/badge.svg", DistributionController, :badge
+
     # Anonymous is the normal case here, so the scope is mounted but never
     # required — it only decides whether the page admits you are signed in.
+    # /start is anonymous by design: origination registers the account
+    # (owner_surface §7b), so it lives with the public pages, and its own
+    # throttle (the :origination bucket) is checked inside the LiveView
+    # because the expensive submit never crosses the router.
     live_session :public,
       layout: {SantoApiWeb.Layouts, :public},
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
-      live "/", VehicleLive.Index
+      live "/", HomeLive
+      live "/cars", VehicleLive.Index
+      live "/start", OriginationLive
       live "/v/:public_id", VehicleLive.Show
+      live "/v/:public_id/updates/:entry_ref", VehicleLive.Update
+      # A shared event is a public coordinate. Optional auth stays mounted so
+      # the same page can render the real signed-in shell without making a
+      # visitor register merely to see what happened.
+      live "/events/:public_id", EventLive.Show
     end
   end
 
@@ -63,10 +84,16 @@ defmodule SantoApiWeb.Router do
   # stranger back to the public page.
   #
   # Its own live_session rather than joining `:require_authenticated_user`,
-  # because these pages wear the public record's layout: an owner arriving to log
-  # a fill-up should stay on the car, not cross into the generator's chrome.
+  # because these pages wear the public record's car-first layout: an owner
+  # arriving to log a fill-up should stay on the car, not cross into the dense
+  # operator workbench.
   scope "/", SantoApiWeb do
     pipe_through [:browser, :public_chrome, :require_authenticated_user]
+
+    # A controller because this response is a ZIP download, not a live page.
+    # It shares the authenticated owner pipeline and car-first shell posture;
+    # `Owners.export_record/2` still rechecks active stewardship for the car.
+    get "/v/:public_id/export", VehicleExportController, :show
 
     live_session :owner,
       layout: {SantoApiWeb.Layouts, :public},
@@ -76,6 +103,9 @@ defmodule SantoApiWeb.Router do
       # Correcting an entry is the same surface with the entry already in it —
       # one composer, two entry points (owner_surface §8).
       live "/v/:public_id/log/:entry_ref", OwnerLive.Composer
+      # Creating a participation writes both event data and an ordinary car
+      # update. Login is the router gate; stewardship is rechecked in Events.
+      live "/v/:public_id/events/new", OwnerLive.EventComposer
       live "/v/:public_id/spec", OwnerLive.Spec
     end
   end
@@ -97,6 +127,9 @@ defmodule SantoApiWeb.Router do
       ] do
       live "/bench", BenchLive.Index
       live "/bench/claims", BenchLive.Claims
+      live "/bench/ratifications", BenchLive.Ratifications
+      live "/bench/disputes", BenchLive.Disputes
+      live "/bench/comments", BenchLive.Comments
       live "/bench/vehicles/:id", BenchLive.Show
     end
   end
@@ -142,6 +175,10 @@ defmodule SantoApiWeb.Router do
 
     live_session :require_authenticated_user,
       on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do
+      # The garage is the authenticated daily-use home. It lives here because
+      # the list and intake are account-scoped; each save still rechecks the
+      # selected car's stewardship in the owner context.
+      live "/garage", GarageLive
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
@@ -152,6 +189,7 @@ defmodule SantoApiWeb.Router do
 
     live_session :current_user,
       on_mount: [{SantoApiWeb.UserAuth, :mount_current_scope}] do
+      live "/theme", ThemeLive
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new
