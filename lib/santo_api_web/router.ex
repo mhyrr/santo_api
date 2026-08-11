@@ -90,6 +90,11 @@ defmodule SantoApiWeb.Router do
   scope "/", SantoApiWeb do
     pipe_through [:browser, :public_chrome, :require_authenticated_user]
 
+    # A controller because this response is a ZIP download, not a live page.
+    # It shares the authenticated owner pipeline and car-first shell posture;
+    # `Owners.export_record/2` still rechecks active stewardship for the car.
+    get "/v/:public_id/export", VehicleExportController, :show
+
     live_session :owner,
       layout: {SantoApiWeb.Layouts, :public},
       on_mount: [{SantoApiWeb.UserAuth, :require_authenticated}] do

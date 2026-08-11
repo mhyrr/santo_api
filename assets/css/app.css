@@ -1736,9 +1736,20 @@ textarea.vs-field { resize: vertical; }
 .car-current-state dl { margin-top: 0.9rem; }
 .car-current-state-empty { margin-top: 1.3rem; color: #625d54; font-size: 0.82rem; line-height: 1.55; }
 .car-current-state-note { margin-top: 1rem; border-top: 1px solid var(--club-rule-paper); padding-top: 0.8rem; color: #625d54; font-size: 0.7rem; line-height: 1.5; }
+.car-data-controls { display: grid; min-width: 0; max-width: 48rem; margin-inline: auto; gap: 1.5rem; border-top: 0.25rem solid var(--club-petrol); padding: 1.25rem 1.25rem var(--club-space-section); }
+.car-data-controls h2 { margin-top: 0.4rem; font-family: var(--club-display); font-size: var(--club-type-section); font-style: italic; font-weight: 800; letter-spacing: -0.025em; line-height: 0.98; text-transform: uppercase; text-wrap: balance; }
+.car-data-controls h3 { font-family: var(--club-code); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.car-data-controls p { max-width: 34rem; margin-top: 0.75rem; color: #625d54; font-size: 0.82rem; line-height: 1.6; }
+.car-data-controls .club-button { margin-top: 1rem; gap: 0.45rem; }
+.car-data-privacy { min-width: 0; border-top: 1px solid var(--club-rule-paper); padding-top: 1rem; }
+.car-data-privacy > div { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+.car-data-privacy .vs-quiet { padding: 0.7rem 0.85rem; font-size: 0.62rem; letter-spacing: 0.07em; transition: color 150ms ease, border-color 150ms ease, background 150ms ease; }
+.car-data-privacy .vs-quiet:hover { background: rgb(20 23 22 / 0.04); }
 
 @media (min-width: 48rem) {
   .car-owner-story { grid-template-columns: minmax(0, 1.4fr) minmax(17rem, 0.6fr); align-items: start; }
+  .car-data-controls { grid-template-columns: minmax(0, 1.2fr) minmax(16rem, 0.8fr); padding-inline: 2rem; }
+  .car-data-privacy { border-top: 0; border-left: 1px solid var(--club-rule-paper); padding-top: 0; padding-left: 1.5rem; }
 }
 
 @media (min-width: 64rem) {
@@ -1755,11 +1766,14 @@ textarea.vs-field { resize: vertical; }
   .car-showpiece-actions { display: grid; }
   .car-showpiece-actions .club-button { width: 100%; }
   .car-showpiece-field { min-height: 15rem; }
+  .car-data-privacy > div { display: grid; }
+  .car-data-privacy .vs-quiet { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .car-page-nav a { transition: none; }
   .car-showpiece-actions .club-button:hover { transform: none; }
+  .car-data-privacy .vs-quiet { transition: none; }
 }
 
 /* A public update should leave the site cleanly: image for social, text for

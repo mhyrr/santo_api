@@ -39,7 +39,9 @@ defmodule SantoApiWeb.EntryDeleteTest do
 
     html =
       lv
-      |> element(~s{button[phx-value-entry_ref="#{ctx.entry.entry_ref}"]})
+      |> element(
+        ~s{button[phx-click="delete_entry"][phx-value-entry_ref="#{ctx.entry.entry_ref}"]}
+      )
       |> render_click()
 
     refute html =~ "41,660"
@@ -55,11 +57,12 @@ defmodule SantoApiWeb.EntryDeleteTest do
 
   test "santo's own decode entries carry no control for anyone", ctx do
     conn = log_in_user(build_conn(), ctx.user)
-    {:ok, _lv, html} = live(conn, ~p"/v/#{ctx.vehicle.public_id}")
+    {:ok, lv, _html} = live(conn, ~p"/v/#{ctx.vehicle.public_id}")
 
     # The registry's own claims are not the owner's to remove — the line is the
     # asserting party, and santo is not them.
-    controls = Regex.scan(~r/phx-value-entry_ref="([^"]+)"/, html)
-    assert length(controls) == 1
+    assert lv
+           |> element("button[phx-click=delete_entry]")
+           |> render() =~ ctx.entry.entry_ref
   end
 end

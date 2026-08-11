@@ -21,7 +21,7 @@ defmodule SantoApi.Owners do
   alias SantoApi.Accounts.Scope
   alias SantoApi.Accounts.User
   alias SantoApi.Media
-  alias SantoApi.Owners.{Challenge, Notifier, Photos, Stewardship, VehiclePhoto}
+  alias SantoApi.Owners.{Challenge, Export, Notifier, Photos, Stewardship, VehiclePhoto}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
@@ -677,15 +677,15 @@ defmodule SantoApi.Owners do
   @doc """
   The logbook as this caller may read it (owner_surface §6).
 
-  The steward of a car sees their private entries; everybody else sees the
-  public page. This is the read half of the privacy toggle, and it has to exist
-  wherever the toggle does — an entry only its author can hide and nobody at all
-  can see is a hole, not a feature.
+  An entry's author sees their private entries while they steward the car;
+  everybody else sees the public page. This is the read half of the privacy
+  toggle, and it has to exist wherever the toggle does — an entry only its
+  author can hide and nobody at all can see is a hole, not a feature.
   """
   def timeline(scope, %Vehicle{} = vehicle) do
-    include_private = stewarding?(scope, vehicle)
-    entries = Registry.timeline(vehicle.id, include_private: include_private)
-    photos = Photos.list_photos(vehicle, include_private: include_private)
+    {timeline_opts, photo_opts} = private_timeline_opts(scope, vehicle)
+    entries = Registry.timeline(vehicle.id, timeline_opts)
+    photos = Photos.list_photos(vehicle, photo_opts)
     photo_groups = Enum.group_by(photos, & &1.entry_ref)
 
     claim_entries =
@@ -703,6 +703,27 @@ defmodule SantoApi.Owners do
     (claim_entries ++ photo_entries)
     |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)
   end
+
+  defp private_timeline_opts(%Scope{user: %User{} = user} = scope, vehicle) do
+    case stewardship(scope, vehicle) do
+      %Stewardship{} ->
+        case party(user) do
+          %Party{id: party_id} ->
+            {
+              [include_private: true, private_party_id: party_id],
+              [include_private: true, private_author_user_id: user.id]
+            }
+
+          nil ->
+            {[], []}
+        end
+
+      nil ->
+        {[], []}
+    end
+  end
+
+  defp private_timeline_opts(_scope, _vehicle), do: {[], []}
 
   @doc "Public journal-entry counts, including photo-first entries with no claim row."
   def public_entry_counts([]), do: %{}
@@ -745,6 +766,9 @@ defmodule SantoApi.Owners do
       _absent -> {:error, :not_found}
     end
   end
+
+  @doc "Downloadable car record for the active steward, including their private data and originals."
+  def export_record(scope, %Vehicle{} = vehicle), do: Export.build(scope, vehicle)
 
   defp photo_entry([%VehiclePhoto{} = first | _rest] = photos) do
     %{
@@ -1119,6 +1143,92 @@ defmodule SantoApi.Owners do
       {:error, reason} -> Repo.rollback(reason)
     end
   end
+
+  ## Privacy — mutable presentation over an immutable record
+
+  @doc """
+  Put one authored entry on or off the public page.
+
+  Stewardship is necessary but not sufficient: the entry must also belong to
+  the caller's permanent party (or contain one of their photo placements). A
+  later steward can read the public record but cannot hide the previous
+  steward's work. Claims and photo placements move together; immutable,
+  content-deduplicated artifact bytes do not.
+  """
+  def set_entry_visibility(scope, %Vehicle{} = vehicle, entry_ref, visibility)
+      when visibility in [:public, :private] do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      claims = own_live_claims(vehicle, party, ref)
+      photos? = own_photos?(vehicle, stewardship.user_id, ref)
+
+      if claims == [] and not photos? do
+        {:error, :entry_not_found}
+      else
+        case Repo.transaction(fn ->
+               {claim_count, _rows} =
+                 Repo.update_all(
+                   from(claim in Claim,
+                     where:
+                       claim.vehicle_id == ^vehicle.id and claim.entry_ref == ^ref and
+                         claim.asserted_by_party_id == ^party.id and
+                         claim.state in [:proposed, :admitted]
+                   ),
+                   set: [visibility: visibility, updated_at: DateTime.utc_now()]
+                 )
+
+               photo_count =
+                 case Photos.set_entry_visibility(scope, vehicle, ref, visibility) do
+                   {:ok, count} -> count
+                   {:error, reason} -> Repo.rollback(reason)
+                 end
+
+               %{claims: claim_count, photos: photo_count, visibility: visibility}
+             end) do
+          {:ok, result} -> {:ok, result}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end
+  end
+
+  def set_entry_visibility(_scope, %Vehicle{}, _entry_ref, _visibility),
+    do: {:error, :authentication_required}
+
+  @doc "Change the visibility of every live contribution authored by this steward on one car."
+  def set_all_entry_visibility(scope, %Vehicle{} = vehicle, visibility)
+      when visibility in [:public, :private] do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}) do
+      case Repo.transaction(fn ->
+             {claim_count, _rows} =
+               Repo.update_all(
+                 from(claim in Claim,
+                   where:
+                     claim.vehicle_id == ^vehicle.id and
+                       claim.asserted_by_party_id == ^party.id and
+                       claim.state in [:proposed, :admitted]
+                 ),
+                 set: [visibility: visibility, updated_at: DateTime.utc_now()]
+               )
+
+             photo_count =
+               case Photos.set_all_visibility(scope, vehicle, visibility) do
+                 {:ok, count} -> count
+                 {:error, reason} -> Repo.rollback(reason)
+               end
+
+             %{claims: claim_count, photos: photo_count, visibility: visibility}
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  def set_all_entry_visibility(_scope, %Vehicle{}, _visibility),
+    do: {:error, :authentication_required}
 
   ## Corrections — the owner's own data, revised (owner_surface §8)
 

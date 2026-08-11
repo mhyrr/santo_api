@@ -911,15 +911,32 @@ defmodule SantoApi.Registry do
   (contract §3), and `visibility: :public` only. A private entry stays in the
   ledger and out of this list.
 
-  `include_private: true` is the owner's own view (owner_surface §6) — a private
-  entry has to be visible to the person who wrote it or the toggle is a trap.
-  Who may ask for it is `SantoApi.Owners.timeline/2`'s decision, not this
-  function's: the ledger reads, the owner context authorizes.
+  `include_private: true` is an unrestricted internal read. The owner surface
+  additionally passes `private_party_id:` so a later steward sees their own
+  private entries, never an earlier steward's. Who may ask is
+  `SantoApi.Owners.timeline/2`'s decision: the ledger reads, the owner context
+  authorizes.
   """
   def timeline(vehicle_id, opts \\ []) do
     include_private = Keyword.get(opts, :include_private, false)
+    private_party_id = Keyword.get(opts, :private_party_id)
 
-    Repo.all(
+    visibility_filter =
+      cond do
+        not include_private ->
+          dynamic([c], c.visibility == :public)
+
+        is_binary(private_party_id) ->
+          dynamic(
+            [c],
+            c.visibility == :public or c.asserted_by_party_id == ^private_party_id
+          )
+
+        true ->
+          dynamic(true)
+      end
+
+    query =
       from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
@@ -927,7 +944,6 @@ defmodule SantoApi.Registry do
         on: a.id == c.artifact_id,
         where:
           c.vehicle_id == ^vehicle_id and c.state == :admitted and
-            (c.visibility == :public or ^include_private) and
             c.scope_kind in [:event, :observed],
         order_by: [desc: c.scope_date, desc: c.inserted_at],
         select: %{
@@ -946,7 +962,10 @@ defmodule SantoApi.Registry do
           inserted_at: c.inserted_at
         }
       )
-    )
+
+    query
+    |> where(^visibility_filter)
+    |> Repo.all()
     |> Enum.group_by(&(&1.entry_ref || &1.claim_id))
     |> Enum.map(fn {_key, claims} -> entry(claims, include_private) end)
     |> Enum.sort_by(&{&1.date && Date.to_erl(&1.date), &1.recorded_at}, :desc)

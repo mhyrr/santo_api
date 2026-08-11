@@ -1,10 +1,10 @@
 # Public car page — working design
 
-*Status: approved 2026-08-09; production hierarchy, first-party photos, and the
-first distribution slice implemented 2026-08-10. `/theme` remains the review
-lab, while the production car page and generic event surfaces use the accepted
-hierarchy. Cars without a public owner photo keep the deliberate typographic
-fallback.*
+*Status: approved 2026-08-09; production hierarchy, first-party photos,
+distribution, privacy controls, and record export implemented 2026-08-10.
+`/theme` remains the review lab, while the production car page and generic
+event surfaces use the accepted hierarchy. Cars without a public owner photo
+keep the deliberate typographic fallback.*
 
 ## The job
 
@@ -84,6 +84,9 @@ Car page (/v/:public_id)
 ├── Gallery and elsewhere
 │   ├── Public owner photos
 │   └── Forum / Instagram / YouTube / gallery links
+├── Owner data controls (steward only)
+│   ├── Full-record ZIP export
+│   └── Bulk journal privacy
 └── History & provenance
     ├── Factory facts and disagreements
     ├── Sources and public evidence
@@ -169,8 +172,8 @@ The server validates the image and writes metadata-stripped JPEG derivatives
 at responsive widths. Public pages use `srcset`; the car-photo route resolves a
 named derivative through the placement and never serves the original upload.
 Anonymous delivery requires both a public placement and a published car. The
-steward's optional-auth session may resolve private placements with
-`private, no-store` caching.
+author's optional-auth steward session may resolve their private placements
+with `private, no-store` caching. A later steward does not inherit that view.
 
 A photo may stand alone as a journal update without manufacturing an empty
 `event.note` claim. It receives the same stable update permalink, reactions,
@@ -181,6 +184,22 @@ of that media, not a second upload.
 
 Marketplace photos are never copied into this gallery. External listings stay
 links or evidence pointers according to their rights profile.
+
+## Privacy and portability
+
+The privacy action lives on the journal item it changes. **Hide this update**
+takes the entire authored update—claims, photo placements, and an event
+participation when present—off public pages in one transaction. **Put on the
+public page** does the reverse with explicit confirmation. The steward-only
+**Your copy** panel provides bulk hide/publish controls, scoped to the
+requesting author's party, and a full-record download. Factory history and
+other people's entries do not move.
+
+The download is a versioned ZIP: `record.json`, a short format README, and the
+requesting steward's original uploads under `originals/`. Public source records
+remain in the manifest, but third-party acquired files are not copied into the
+archive. This is a portability surface for the owner's data, not a way to
+bypass evidence rights or another contributor's privacy.
 
 ## Event-centered journal
 
@@ -382,6 +401,9 @@ Ratified with the `/theme` prototype on 2026-08-09:
    “date,” “backed by,” “verified,” and “under review”; `claim`, `asserted`,
    `proposed`, `admitted`, and “live disagreement” remain operator or design
    language. Empty story and gallery prompts ask one ordinary question and stop.
+9. **Privacy ownership:** a private contribution follows its author, not the
+   current steward role. A later steward may maintain the car without seeing or
+   republishing an earlier steward's private journal.
 
 ### First production slice
 

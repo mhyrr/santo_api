@@ -651,6 +651,17 @@ histories taught this community to distrust startups with their records, and
 the club-partnership memo demands an exit path. Export costs little and is
 the standing answer to "why would I pour ten years of history into you."
 
+**Implemented 2026-08-10 (TK-016).** The active steward downloads a versioned
+ZIP from the car page. `record.json` uses
+`vin_santo.vehicle_record`, version 1, and contains the car, story, links,
+grouped entries, underlying claims, photo placements, event accounts, and
+artifact metadata. `README.txt` documents the archive, and `originals/`
+contains the original bytes supplied by the requesting steward. Their private
+and retracted claims are included. Public admitted registry claims remain in
+the manifest; third-party acquired files remain source metadata and pointers
+rather than being silently relicensed into the ZIP. A later steward never
+receives an earlier steward's private contributions.
+
 **Privacy controls.** The split that keeps this coherent: **registry facts are
 public; owner contributions are the owner's.**
 
@@ -662,19 +673,26 @@ public; owner contributions are the owner's.**
   visibility toggle (`public` / `private`), default **public** — the product
   thesis is show-off-your-car; private-by-default would strangle the network
   effect at birth. One tap to make any entry private at composition or later.
-  `GREG'S CALL` — this default is a product-values call and reasonable people
-  land both ways; the research memo's club-partnership posture
-  ("private-by-default owner vaults") argues the other side for *contributed
-  documents*, which suggests a middle line: entries default public, uploaded
-  *documents* (titles, invoices with addresses) default private.
-- Visibility is presentation state, not ledger state: a mutable `visibility`
-  column on claims/artifacts, excluded from `content_hash`, no effect on
-  admission or tier. A private entry still exists in the ledger and appears in
-  the owner's own view and in any full dossier the owner chooses to share at
-  sale time (the HistoVec pattern: owner-generated report, owner-controlled
-  disclosure). Public tier-composition stats compute over public entries only,
-  so the stat never leaks the existence of hidden history — the public page
-  shows a *floor*, and sale-time disclosure can only improve on it.
+  This default was settled 2026-08-02. A separate uploaded-document default was
+  rejected because it would make the owner draw a distinction the ten-second
+  composer does not otherwise need.
+- Visibility is presentation state, not ledger state: mutable `visibility`
+  on claims and on each photo/event presentation row, excluded from
+  `content_hash`, with no effect on admission or tier. Artifact bytes stay
+  immutable and content-deduplicated; changing one entry never flips the shared
+  artifact row and therefore cannot change another use of the same upload. A
+  private entry still exists in the ledger and appears only in its author's
+  steward view and export. Public tier-composition stats compute over public
+  entries only, so the stat never leaks the existence of hidden history — the
+  public page shows a *floor*, and sale-time disclosure can only improve on it.
+
+**Implemented 2026-08-10 (TK-016).** Every authored journal item now offers
+one privacy action after the fact. Claim rows, photo placements, and an event
+participation move in one transaction; event occurrence metadata remains the
+shared public coordinate. The owner panel also offers bulk hide/publish actions
+scoped to the requesting party. Registry-authored lines and earlier stewards'
+contributions do not move. Hiding the selected hero demotes it and promotes the
+next public photo.
 
 **Integrity caveat, stated honestly:** a buyer reading the public page sees
 what the owner chose to show plus what the registry independently holds.
@@ -1358,7 +1376,7 @@ instead of only operator-fed auction documents.
 | D | Public vehicle page: `/v/:public_id`, VIN resolver, §6 hierarchy (hero from `current_state`, timeline-centered, record as foundation layer), lookup + create-on-first-lookup, rate limit | B, M | Read-only; ships before claiming exists (unclaimed pages are the bait). |
 | E | Claiming: challenge codes, proof upload, /bench approval queue, stewardships | A, B | Shipped 2026-08-03 (TK-015) — without the vision pre-check, struck below. |
 | F | Entry composer: segmented modes, photos, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. Shipped 2026-08-02 (TK-014) without links — the table moved to N. Plan mode arrives with O. |
-| G | Privacy controls (flipping visibility after the fact) + full-record export | F | TK-016. The own-view slice shipped 2026-08-03; `vehicle_links` moved to N in round 5. |
+| G | Privacy controls (flipping visibility after the fact) + full-record export | F | Shipped 2026-08-10 (TK-016). The own-view slice shipped 2026-08-03; `vehicle_links` moved to N in round 5. |
 | H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below, `attach_link` waits on N's table. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Shipped 2026-08-10 (TK-018). Entries travel to existing audiences; page remains canonical. |
 | J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
@@ -1368,10 +1386,10 @@ instead of only operator-fed auction documents.
 | O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first update, mutable hero/gallery presentation | C, F | Shipped 2026-08-10 (TK-025). External-gallery links reuse N's `vehicle_links`. |
 
 **Status, 2026-08-10.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
-(TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), H (TK-017), J
-(TK-006), I (TK-018), O (TK-025), plus G's own-view slice and the composer edit
-mode ticket H's correction rule exposed (TK-021, open). Open: G (TK-016, minus
-links), K (TK-019), L (TK-020), N (TK-024).
+(TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), G (TK-016), H
+(TK-017), J (TK-006), I (TK-018), O (TK-025), plus the composer edit mode
+ticket H's correction rule exposed (TK-021, open). Open: K (TK-019), L
+(TK-020), N (TK-024).
 
 **Build order (Greg, round 3): infra first.** J, A, B open the build — no
 design dependencies, and they gate everything downstream (email gates A's
@@ -1432,8 +1450,10 @@ not deferred to a second walk.
 - §6 the owner's own view: a private entry is visible to the steward of the car
   and marked *not on the public page*. `Registry.timeline/2` takes the option
   and `Owners.timeline/2` decides who may pass it — the ledger reads, the owner
-  context authorizes. This was the hole ticket F opened and it is closed; the
-  rest of ticket G (flipping visibility after the fact, links, export) is not.
+  context authorizes. Ticket G completed the boundary on 2026-08-10: private
+  entries are filtered to the requesting author's party, visibility can change
+  after the fact, and the private full-record export is live. Links moved to N
+  and shipped there.
 
 ### Decided 2026-08-03, during ticket H
 

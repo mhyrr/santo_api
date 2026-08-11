@@ -178,19 +178,21 @@ defmodule SantoApiWeb.VehicleLiveTest do
     user = SantoApi.AccountsFixtures.user_fixture(%{handle: "mhyrr"})
     {:ok, _stewardship} = SantoApi.Owners.grant_stewardship(user, vehicle)
 
-    claim =
-      admit(vehicle, %{
-        predicate: "event.note",
-        value: %{"text" => "kept in the second garage"},
-        scope_date: ~D[2025-06-01]
-      })
-
-    {:ok, _hidden} = Registry.set_visibility(claim, :private)
+    {:ok, entry} =
+      SantoApi.Owners.compose_entry(
+        SantoApi.Accounts.Scope.for_user(user),
+        vehicle,
+        %{
+          date: ~D[2025-06-01],
+          visibility: :private,
+          claims: [%{predicate: "event.note", value: %{"text" => "kept in the second garage"}}]
+        }
+      )
 
     {:ok, view, _html} = live(log_in_user(conn, user), ~p"/v/#{vehicle.public_id}")
 
-    assert has_element?(view, "#entry-#{claim.id}", "kept in the second garage")
-    assert has_element?(view, "#entry-#{claim.id}", "Not on the public page")
+    assert has_element?(view, "#entry-#{entry.entry_ref}", "kept in the second garage")
+    assert has_element?(view, "#entry-#{entry.entry_ref}", "Not on the public page")
   end
 
   test "a conflicted fact says sources disagree instead of picking quietly", %{conn: conn} do

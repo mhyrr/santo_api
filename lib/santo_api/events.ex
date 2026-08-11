@@ -341,6 +341,28 @@ defmodule SantoApi.Events do
     |> Map.new(&{&1.entry_ref, &1})
   end
 
+  @doc "Public event accounts for a car plus every private account authored by this steward."
+  def record_participations(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle
+      ) do
+    if Owners.stewarding?(scope, vehicle) do
+      Repo.all(
+        from(participation in EventParticipation,
+          where:
+            participation.vehicle_id == ^vehicle.id and
+              (participation.visibility == :public or participation.user_id == ^user_id),
+          order_by: [asc: participation.inserted_at],
+          preload: [:event, :user, :vehicle, attachments: :artifact]
+        )
+      )
+    else
+      []
+    end
+  end
+
+  def record_participations(_scope, %Vehicle{}), do: []
+
   @doc "One visible participation by the ordinary update it extends."
   def participation_for_entry(scope, %Vehicle{} = vehicle, entry_ref) do
     with {:ok, ref} <- Ecto.UUID.cast(entry_ref) do
@@ -360,6 +382,80 @@ defmodule SantoApi.Events do
       :error -> {:error, :not_found}
     end
   end
+
+  @doc "Change one owner's event account and its ordinary car update together."
+  def set_participation_visibility(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        entry_ref,
+        visibility
+      )
+      when visibility in [:public, :private] do
+    with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+         %EventParticipation{} = participation <-
+           Repo.get_by(EventParticipation,
+             vehicle_id: vehicle.id,
+             entry_ref: ref,
+             user_id: user_id
+           ) do
+      case Repo.transaction(fn ->
+             case Owners.set_entry_visibility(scope, vehicle, ref, visibility) do
+               {:ok, _counts} -> :ok
+               {:error, reason} -> Repo.rollback(reason)
+             end
+
+             participation
+             |> EventParticipation.changeset(%{visibility: visibility})
+             |> Repo.update!()
+           end) do
+        {:ok, updated} -> {:ok, updated}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      _absent -> {:error, :not_found}
+    end
+  end
+
+  def set_participation_visibility(_scope, %Vehicle{}, _entry_ref, _visibility),
+    do: {:error, :authentication_required}
+
+  @doc "Change all event accounts and ordinary updates authored by this steward on one car."
+  def set_all_contribution_visibility(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        visibility
+      )
+      when visibility in [:public, :private] do
+    if Owners.stewarding?(scope, vehicle) do
+      case Repo.transaction(fn ->
+             entry_counts =
+               case Owners.set_all_entry_visibility(scope, vehicle, visibility) do
+                 {:ok, counts} -> counts
+                 {:error, reason} -> Repo.rollback(reason)
+               end
+
+             {participation_count, _rows} =
+               Repo.update_all(
+                 from(participation in EventParticipation,
+                   where:
+                     participation.vehicle_id == ^vehicle.id and
+                       participation.user_id == ^user_id
+                 ),
+                 set: [visibility: visibility, updated_at: DateTime.utc_now()]
+               )
+
+             Map.put(entry_counts, :participations, participation_count)
+           end) do
+        {:ok, counts} -> {:ok, counts}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:error, :not_stewarded}
+    end
+  end
+
+  def set_all_contribution_visibility(_scope, %Vehicle{}, _visibility),
+    do: {:error, :authentication_required}
 
   @doc "Withdraw an owner's event account and its linked logbook update together."
   def retract_participation(

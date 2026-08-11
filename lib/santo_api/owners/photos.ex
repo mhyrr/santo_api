@@ -20,20 +20,37 @@ defmodule SantoApi.Owners.Photos do
   @doc "Photos visible to a public visitor or, when authorized, the steward."
   def list_photos(%Vehicle{} = vehicle, opts \\ []) do
     include_private = Keyword.get(opts, :include_private, false)
+    private_author_user_id = Keyword.get(opts, :private_author_user_id)
 
-    Repo.all(
+    visibility_filter =
+      cond do
+        not include_private ->
+          dynamic([photo], photo.visibility == :public)
+
+        is_binary(private_author_user_id) ->
+          dynamic(
+            [photo],
+            photo.visibility == :public or photo.author_user_id == ^private_author_user_id
+          )
+
+        true ->
+          dynamic(true)
+      end
+
+    query =
       from(photo in VehiclePhoto,
         join: artifact in Artifact,
         on: artifact.id == photo.artifact_id,
         join: author in User,
         on: author.id == photo.author_user_id,
-        where:
-          photo.vehicle_id == ^vehicle.id and
-            (photo.visibility == :public or ^include_private),
+        where: photo.vehicle_id == ^vehicle.id,
         order_by: [asc: photo.position, asc: photo.inserted_at],
         preload: [artifact: artifact, author_user: author]
       )
-    )
+
+    query
+    |> where(^visibility_filter)
+    |> Repo.all()
   end
 
   @doc "The selected hero visible to this viewer, if the car has one."
@@ -172,6 +189,53 @@ defmodule SantoApi.Owners.Photos do
 
   def remove_entry(_scope, %Vehicle{}, _entry_ref), do: {:error, :authentication_required}
 
+  @doc "Change every photo placement in one authored entry without touching shared artifact bytes."
+  def set_entry_visibility(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        entry_ref,
+        visibility
+      )
+      when visibility in [:public, :private] do
+    with {:ok, _stewardship} <- authorize(scope, vehicle),
+         {:ok, ref} <- Ecto.UUID.cast(entry_ref) do
+      query =
+        from(photo in VehiclePhoto,
+          where:
+            photo.vehicle_id == ^vehicle.id and photo.entry_ref == ^ref and
+              photo.author_user_id == ^user_id
+        )
+
+      update_visibility(query, vehicle, visibility)
+    else
+      :error -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def set_entry_visibility(_scope, %Vehicle{}, _entry_ref, _visibility),
+    do: {:error, :authentication_required}
+
+  @doc "Change every photo placement the current steward authored on this car."
+  def set_all_visibility(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        visibility
+      )
+      when visibility in [:public, :private] do
+    with {:ok, _stewardship} <- authorize(scope, vehicle) do
+      query =
+        from(photo in VehiclePhoto,
+          where: photo.vehicle_id == ^vehicle.id and photo.author_user_id == ^user_id
+        )
+
+      update_visibility(query, vehicle, visibility)
+    end
+  end
+
+  def set_all_visibility(_scope, %Vehicle{}, _visibility),
+    do: {:error, :authentication_required}
+
   @doc "Resolve a visible photo through the public car id and optional owner scope."
   def fetch_visible(scope, public_id, photo_id) do
     with {:ok, id} <- Ecto.UUID.cast(photo_id),
@@ -266,6 +330,28 @@ defmodule SantoApi.Owners.Photos do
         nil ->
           :ok
       end
+    end
+  end
+
+  # Privacy belongs to this use of the upload, not to its content-deduplicated
+  # artifact. Hiding one placement must never hide the same bytes in another
+  # owner's entry. A hidden hero is demoted in the same update; the next public
+  # photo is promoted so the page never points its hero at private media.
+  defp update_visibility(query, vehicle, visibility) do
+    case Repo.transaction(fn ->
+           updates =
+             if visibility == :private do
+               [visibility: :private, hero: false, updated_at: DateTime.utc_now()]
+             else
+               [visibility: :public, updated_at: DateTime.utc_now()]
+             end
+
+           {count, _rows} = Repo.update_all(query, set: updates)
+           promote_first_public(vehicle)
+           count
+         end) do
+      {:ok, count} -> {:ok, count}
+      {:error, reason} -> {:error, reason}
     end
   end
 

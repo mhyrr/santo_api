@@ -124,6 +124,11 @@ defmodule SantoApiWeb.VehicleLive.Show do
         <.current_spec vehicle={@vehicle} />
       </div>
       <.links_section links={@links} stewarding?={@stewarding?} />
+      <.owner_data_controls
+        :if={@stewarding?}
+        public_id={@vehicle.public_id}
+        handle={@my_handle}
+      />
       <%= if @vehicle.identity_kind == :asserted do %>
         <.your_word stewarding?={@stewarding?} resolve_error={@resolve_error} />
       <% else %>
@@ -268,6 +273,65 @@ defmodule SantoApiWeb.VehicleLive.Show do
           <button type="submit" class="vs-quiet">Add a link</button>
         </div>
       </form>
+    </section>
+    """
+  end
+
+  attr :public_id, :string, required: true
+  attr :handle, :string, default: nil
+
+  defp owner_data_controls(assigns) do
+    ~H"""
+    <section
+      id="vehicle-data-controls"
+      class="car-data-controls"
+      aria-labelledby="vehicle-data-heading"
+    >
+      <div>
+        <p class="club-kicker club-kicker-paper">Your copy</p>
+        <h2 id="vehicle-data-heading">Take the record with you</h2>
+        <p>
+          Download this car’s record as JSON with every original file you added.
+          Your private updates are included.
+        </p>
+        <a
+          id="vehicle-record-export"
+          href={~p"/v/#{@public_id}/export"}
+          class="club-button club-button-primary"
+        >
+          <.icon name="hero-arrow-down-tray" class="size-4" /> Download full record
+        </a>
+      </div>
+
+      <div class="car-data-privacy">
+        <h3>Journal privacy</h3>
+        <p>
+          Change every update written by @{@handle || "you"}. Factory history and
+          other people’s entries stay as they are.
+        </p>
+        <div>
+          <button
+            id="all-entries-private"
+            type="button"
+            class="vs-quiet"
+            phx-click="all_entry_visibility"
+            phx-value-visibility="private"
+            data-confirm="Hide every update you wrote on this car from the public page?"
+          >
+            Hide all my updates
+          </button>
+          <button
+            id="all-entries-public"
+            type="button"
+            class="vs-quiet"
+            phx-click="all_entry_visibility"
+            phx-value-visibility="public"
+            data-confirm="Put every update you wrote on this car, including its photos, on the public page?"
+          >
+            Publish all my updates
+          </button>
+        </div>
+      </div>
     </section>
     """
   end
@@ -696,6 +760,21 @@ defmodule SantoApiWeb.VehicleLive.Show do
               />
 
               <p :if={entry.mine?} class="mt-3 text-xs">
+                <span :if={participation.visibility == :private} class="vs-eyebrow mr-3">
+                  Not on the public page
+                </span>
+                <button
+                  id={"entry-visibility-#{entry.entry_ref}"}
+                  type="button"
+                  class="mr-3 underline underline-offset-4 transition-opacity hover:opacity-65"
+                  style="color: var(--vs-dim)"
+                  phx-click="entry_visibility"
+                  phx-value-entry_ref={entry.entry_ref}
+                  phx-value-visibility={opposite_visibility(participation.visibility)}
+                  data-confirm={visibility_confirmation(participation.visibility)}
+                >
+                  {visibility_label(participation.visibility)}
+                </button>
                 <button
                   type="button"
                   class="underline underline-offset-4 transition-opacity hover:opacity-65"
@@ -758,6 +837,19 @@ defmodule SantoApiWeb.VehicleLive.Show do
               </p>
 
               <p :if={entry.mine?} class="mt-2 flex flex-wrap gap-x-4 text-xs">
+                <button
+                  id={"entry-visibility-#{entry.entry_ref}"}
+                  type="button"
+                  class="underline underline-offset-4 transition-opacity hover:opacity-65"
+                  style="color: var(--vs-dim)"
+                  phx-click="entry_visibility"
+                  phx-value-entry_ref={entry.entry_ref}
+                  phx-value-visibility={opposite_visibility(entry.visibility)}
+                  data-confirm={visibility_confirmation(entry.visibility)}
+                >
+                  {visibility_label(entry.visibility)}
+                </button>
+
                 <.link
                   :if={entry.correctable?}
                   navigate={~p"/v/#{@public_id}/log/#{entry.entry_ref}"}
@@ -938,6 +1030,43 @@ defmodule SantoApiWeb.VehicleLive.Show do
     end
   end
 
+  def handle_event(
+        "entry_visibility",
+        %{"entry_ref" => entry_ref, "visibility" => visibility_value},
+        socket
+      ) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    with {:ok, visibility} <- visibility_from_param(visibility_value),
+         {:ok, _result} <- set_entry_visibility(socket, scope, vehicle, entry_ref, visibility) do
+      {:noreply,
+       socket
+       |> assign(:event_updates, event_updates(scope, vehicle))
+       |> reload_media()
+       |> put_flash(:info, visibility_flash(visibility))}
+    else
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That update's privacy could not be changed.")}
+    end
+  end
+
+  def handle_event("all_entry_visibility", %{"visibility" => visibility_value}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    with {:ok, visibility} <- visibility_from_param(visibility_value),
+         {:ok, _counts} <-
+           Events.set_all_contribution_visibility(scope, vehicle, visibility) do
+      {:noreply,
+       socket
+       |> assign(:event_updates, event_updates(scope, vehicle))
+       |> reload_media()
+       |> put_flash(:info, all_visibility_flash(visibility))}
+    else
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Your journal privacy could not be changed.")}
+    end
+  end
+
   def handle_event("delete_entry", %{"entry_ref" => entry_ref}, socket) do
     %{current_scope: scope, vehicle: vehicle} = socket.assigns
 
@@ -994,6 +1123,35 @@ defmodule SantoApiWeb.VehicleLive.Show do
     |> assign(:hero_photo, Enum.find(photos, & &1.hero))
     |> assign(:timeline, timeline)
   end
+
+  defp set_entry_visibility(socket, scope, vehicle, entry_ref, visibility) do
+    if Map.has_key?(socket.assigns.event_updates, entry_ref) do
+      Events.set_participation_visibility(scope, vehicle, entry_ref, visibility)
+    else
+      Owners.set_entry_visibility(scope, vehicle, entry_ref, visibility)
+    end
+  end
+
+  defp visibility_from_param("public"), do: {:ok, :public}
+  defp visibility_from_param("private"), do: {:ok, :private}
+  defp visibility_from_param(_value), do: {:error, :invalid_visibility}
+
+  defp opposite_visibility(:private), do: "public"
+  defp opposite_visibility(_public), do: "private"
+
+  defp visibility_label(:private), do: "Put on the public page"
+  defp visibility_label(_public), do: "Hide this update"
+
+  defp visibility_confirmation(:private),
+    do: "Put this entire update, including its photos, on the public page?"
+
+  defp visibility_confirmation(_public), do: nil
+
+  defp visibility_flash(:private), do: "Update is now private."
+  defp visibility_flash(:public), do: "Update is back on the public page."
+
+  defp all_visibility_flash(:private), do: "All of your updates are now private."
+  defp all_visibility_flash(:public), do: "All of your updates are back on the public page."
 
   defp timeline_photos(timeline) do
     timeline

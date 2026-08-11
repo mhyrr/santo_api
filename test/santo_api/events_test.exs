@@ -11,8 +11,10 @@ defmodule SantoApi.EventsTest do
 
   alias SantoApi.Accounts.Scope
   alias SantoApi.Events
+  alias SantoApi.Events.EventParticipation
   alias SantoApi.Owners
   alias SantoApi.Registry
+  alias SantoApi.Repo
 
   setup do
     {:ok, vehicle} = Registry.ingest("WP0AB29827U782968")
@@ -122,6 +124,47 @@ defmodule SantoApi.EventsTest do
              )
 
     assert mine.visibility == :private
+  end
+
+  test "changing an event account's privacy also changes its ordinary car update", ctx do
+    assert {:ok, result} = Events.create_participation(ctx.scope, ctx.vehicle, event_attrs())
+
+    assert {:ok, %{visibility: :private}} =
+             Events.set_participation_visibility(
+               ctx.scope,
+               ctx.vehicle,
+               result.participation.entry_ref,
+               :private
+             )
+
+    assert Owners.timeline(nil, ctx.vehicle) == []
+    assert [%{visibility: :private}] = Owners.timeline(ctx.scope, ctx.vehicle)
+    assert {:ok, event} = Events.fetch_public_event(result.event.public_id)
+    assert event.participations == []
+
+    assert {:ok, %{visibility: :public}} =
+             Events.set_participation_visibility(
+               ctx.scope,
+               ctx.vehicle,
+               result.participation.entry_ref,
+               :public
+             )
+
+    assert [%{visibility: :public}] = Owners.timeline(nil, ctx.vehicle)
+    assert {:ok, event} = Events.fetch_public_event(result.event.public_id)
+    assert length(event.participations) == 1
+  end
+
+  test "bulk privacy includes event accounts without changing the shared occurrence", ctx do
+    assert {:ok, result} = Events.create_participation(ctx.scope, ctx.vehicle, event_attrs())
+
+    assert {:ok, %{claims: 1, participations: 1, visibility: :private}} =
+             Events.set_all_contribution_visibility(ctx.scope, ctx.vehicle, :private)
+
+    assert Repo.get!(EventParticipation, result.participation.id).visibility == :private
+    assert {:ok, event} = Events.fetch_public_event(result.event.public_id)
+    assert event.title == "WDCR 2026 Event 2"
+    assert event.participations == []
   end
 
   test "a second participation by the same car is rejected without adding another update", ctx do
