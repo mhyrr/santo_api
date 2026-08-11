@@ -6,9 +6,12 @@ the output of use; verification tiers are the sale-time payoff. This doc amends
 the evidence contract's §11 roadmap: owner surface before document extraction
 (TK-004 moves downstream).*
 
-*Status: draft for Greg's section-by-section walk. Nothing here is ratified;
-decisions flagged `GREG'S CALL` are his, not pre-resolved. No implementation
-until the walk completes.*
+*Status: implemented owner-surface baseline, 2026-08-11. The original design
+walk is complete wherever this document records a dated decision or shipped
+slice. `GREG'S CALL` still marks the few product-policy decisions that remain
+open; it no longer means the tranche as a whole is waiting to build. The
+current production references for page hierarchy and visual language are
+`docs/design/car_page.md` and `docs/design/theme_system.md`.*
 
 *Revised 2026-08-01 after walk feedback, round 1: audience is the payoff, not
 a badge (§0, §6); the agent entry surface — voice through the owner's own
@@ -35,7 +38,14 @@ photos-after-setup). §6b's doctrine calls taken (owners don't moderate, no
 promote-to-claim in v1, likes cosmetic, comments after distribution). Handle
 timing unified at registration (§9.1). §10 brought current with the decisions
 that had superseded its text, shipped statuses recorded, tickets N and O cut
-(TK-024, TK-025).*
+(TK-024, TK-025).
+Round 6 (2026-08-11): synchronized the design with the landed owner-surface
+stack. Origination, Garage, natural-language intake, the narrative and generic
+event layers, distribution, privacy/export, update replies and reactions,
+comment reports, ratification, and contested-stewardship queues are built.
+What remains is narrowed in §9–§10: production email/object storage and legal
+policy, the rest of operator administration, optional platform metadata, and
+the explicitly queued product decisions.*
 
 ## The product shape
 
@@ -165,7 +175,7 @@ by an LLM, or both?
    until the confirm step was struck — ticket H decisions.) One tap
    from the vehicle page: a segmented composer with
    **Fill-up | Service | Mod | Plan | Note** modes (Plan added round 5 — §6c;
-   lands with ticket O).
+   shipped with ticket O).
 
 - *Fill-up*: odometer, volume, total price (optional: grade, station, partial
   flag). Three fields, numeric keyboards, last-entry defaults. Produces an
@@ -199,8 +209,9 @@ from entries logged before it existed.
 
 **Delivery: responsive LiveView, installable as a PWA.** No native app. The
 entry moment is "standing at the gas pump / in the garage with greasy hands" —
-mobile web must be genuinely first-class, not a shrunk bench. `GREG'S CALL` if
-he disagrees that mobile-web-only clears the bar for v1.
+mobile web must be genuinely first-class, not a shrunk bench. This is the
+implemented v1 baseline; a native app now needs usage evidence that the PWA
+fails the entry moment.
 
 **Caveat.** The reframe says entry friction decides whether anyone logs; the
 landscape says something sharper — friction is necessary but *payoff* is what
@@ -230,7 +241,16 @@ fill-up case: fuel is three numbers, and a structured form is *faster* than
 speaking a sentence. The interesting version is not "voice instead of the
 composer" but voice as the **Note and Service** path, where the text is the
 value and there is no form to be faster than. Undesigned, and it needs its own
-pass. `GREG'S CALL` before any of it gets built.
+pass. `GREG'S CALL` before changing the fill-up default.
+
+**Implemented baseline, 2026-08-09.** `/garage` is the authenticated daily-use
+surface and opens with one natural-language question. Typed text and browser
+dictation share the same input; fixed-schema extraction produces an editable
+draft, deterministic `EntryDraft` code parses numbers and computes money, and
+nothing reaches the ledger until the owner reviews and saves. Extraction
+failure preserves the complete utterance as a note. The segmented composer and
+MCP path remain available. This settles the shared text/voice plumbing without
+pre-resolving the narrower question of whether a fill-up should open mic-first.
 
 ---
 
@@ -287,8 +307,9 @@ together (a claim's single `artifact_id` can't carry three photos).
 **Caveat:** putting `entry_ref` in the event hash means re-proposing "the same"
 event from a different entry creates a second claim rather than deduping. For
 events that is correct — occurrence identity *is* entry identity — but it's a
-semantic narrowing of the hash worth stating out loud. `GREG'S CALL` to ratify
-the hash change; it touches the attestation seam (load-bearing, per CLAUDE.md).
+semantic narrowing of the hash worth stating out loud. **Ratified 2026-08-01
+and shipped in TK-008**; it touches the attestation seam (load-bearing, per
+CLAUDE.md).
 
 ### Links are curation, not evidence
 
@@ -300,12 +321,13 @@ layer, no ledger contact). "Artifacts-in-waiting" stays literal: a later
 acquisition can snapshot a link target into a real artifact through the
 provider machinery, with rights handled then.
 
-**Not built.** Ticket F shipped the composer without links — the table does not
-exist and Note mode takes text and photos only. Nothing in the ledger wants it,
-so it moved to ticket G rather than riding along — and then moved again in
-round 5: §7b makes links the last step of onboarding (screen 5), so the table
-lands with the origination ticket (N, TK-024) rather than trailing on
-privacy and export.
+**Implemented with TK-024.** `vehicle_links` is a stewardship-gated,
+presentation-only table with ordered URL/label rows and one named build-thread
+destination per car. It has no ledger contact. Origination exposes links as its
+last optional onboarding step; the car page renders YouTube URLs as embeds and
+other providers as honest link cards. Update distribution reuses the stored
+build-thread URL for its copy-and-open flow. Persisted oEmbed metadata and
+Discourse posting remain ticket L (TK-020), not part of this table's contract.
 
 ---
 
@@ -395,11 +417,9 @@ carries it.
   transaction** — `Registry.propose_claim/3` with the owner's party, then the
   flip, owner recorded as ratifier. The gate's *shape* is preserved (every
   claim passes through `:proposed`, every admission has a who/when); only the
-  latency collapses. For agent-mediated entries (§8) the two
-  steps genuinely separate: the assistant's tool call lands `:proposed`; the
-  owner's confirmation — a word in the chat, a tap in the queue — *is* the
-  ratification. Same machinery, same audit trail, and a model mishearing
-  "13.1" as "31" never enters the record silently.
+  latency collapses. Agent-mediated entries (§8) use the same transaction: the
+  tool call is the owner's assertive act. The assistant reads the entry back,
+  while amend/delete provide the correction path if it misheard.
 - **Factory- and provenance-scope claims from owners** ("my paint code is
   226") enter `:proposed` and wait for the operator gate or corroborating
   evidence — unchanged. These touch `facts` and the verified display; owner
@@ -410,15 +430,14 @@ This amends the doctrine sentence from "external evidence enters `:proposed`
 (operator ratifies)" to: *external evidence enters `:proposed`; who may ratify
 depends on scope — owners self-ratify event/observed claims on cars they
 steward; factory/provenance claims ratify only at the operator gate or by
-evidence.* `GREG'S CALL` — this is a contract invariant amendment, the doc's
-most consequential ask.
+evidence.* This was the design's most consequential contract amendment.
 
-**Machinery gap this exposes:** `ratify_claim/1` (`registry.ex:149`) records
-no who or when — the contract's "who and when attached" was never built,
-because the only ratifier was the bench. Owner self-ratification makes it
-mandatory: add `ratified_by_party_id` + `ratified_at` to `claims`, stamped in
-`flip_claim`, backfilled as Vin Santo/insertion-time for the corpus. Same for
-`reject_claim`.
+**Ratified 2026-08-01 and shipped.** Owner event/observed claims self-ratify;
+owner factory/provenance claims remain proposed for `/bench/ratifications`.
+
+**Machinery shipped in TK-008:** claims record `ratified_by_party_id` +
+`ratified_at` (and the matching rejection fields), stamped through the one
+transition path and backfilled for the corpus.
 
 **Caveat.** Self-ratification means a malicious steward can pump self-reported
 events into a page unsupervised (they can already say anything on Instagram;
@@ -573,9 +592,8 @@ survive identity correction. So the canonical URL keys the *row*, not the VIN:
 (`/vin/WP0AB29827U782968`) are resolvers that 302 to canonical — good for
 lookup, sharing, and search engines, but never the identity the page hangs on.
 VINs are not secrets (windshield-visible, printed on every listing), so VIN
-visibility on the page is fine. `GREG'S CALL` only if he wants vanity slugs
-(`/v/linden-green-touring`) in v1; recommendation is no — vanity is ornament,
-add it when owners ask.
+visibility on the page is fine. Vanity slugs (`/v/linden-green-touring`) are
+deferred; the stable opaque public id is shipped and survives identity changes.
 
 **Hierarchy (Greg, round 3): the living car leads; provenance is the
 foundation, not the headline.** The page is the owner's love for the car —
@@ -704,11 +722,10 @@ with disclosure the seller commits to, not the public page.
 
 ## 6b. Response — comments and likes
 
-*Opened 2026-08-04 (Greg): "Things we'll need to think about in the future are
-comments and likes on the log or on the public page." Stated, not designed —
-the point of writing it down now is that the doctrinal edge is easy to get
-wrong later. Round 5, same day: the doctrine calls below were taken; the
-surface itself stays undesigned and sequenced behind the distribution kit.*
+*Opened 2026-08-04; update-scoped replies, reactions, reports, and the operator
+report queue shipped 2026-08-09. The implementation follows the round-5
+doctrine below: discourse stays outside the ledger, owners cannot moderate
+skeptical replies, and reactions never affect verification.*
 
 **The reason this matters more here than on a normal social product.** §0's
 finding is that build threads are the highest-credibility self-reported logs in
@@ -756,10 +773,17 @@ pass:**
   out. Response mechanics before distribution is a stage before there's
   anyone in the seats.
 
-**Still open for the design pass:** notification and email volume (where
-§9.4's transactional bill stops being one magic link per session), the report
-queue's remedy for speech (§9.2 was written for claims), and the abuse posture
-for the first user-to-user content in the product.
+**Implemented shape.** Conversation belongs to the stable public update URL,
+not to the car or a fact row. Signed-in members may react, reply, withdraw only
+their own words, or report another reply. `/bench/comments` derives the open
+report queue; an operator may hide the reply (resolving every open report
+against it) or dismiss one report. The moderation trail stays retained, while
+hidden speech leaves the public conversation. No owner moderation and no
+promote-to-claim shortcut exist.
+
+**Still open:** reply notifications and their email-volume policy. Broader
+car/update reporting outside replies remains part of ticket K; the speech
+remedy itself is built.
 
 ---
 
@@ -873,6 +897,14 @@ rather than a mode the visitor had to choose.
 ---
 
 ## 7b. Origination — the front door
+
+**Implemented with TK-024, 2026-08-07.** `/start` serves anonymous and
+signed-in owners through the same one-box flow. The stack includes the
+`:asserted` identity kind, extraction/read-back, transactional creation of the
+account, party, car, claims, and stewardship, registration-time handles,
+confirmation-gated publication, `vehicle_links`, one-way VIN resolution, and
+the origination rate limit. The occupied-VIN absorb path remains deliberately
+deferred until the first collision requires it.
 
 **The gap this closes.** Every section above assumes the car already exists:
 §4 claims a row, §3 writes against it, §6 renders it, §7 creates it from a VIN.
@@ -1105,9 +1137,9 @@ new surface over existing plumbing.
 - **Unconfirmed orphans.** A registration never confirmed leaves a car with a
   log and a steward that nobody can see. Greg, 2026-08-04: *"who cares? that's
   fine."* Recorded as accepted, not as unresolved.
-- **Origination throttle.** Asserted origination is a second door that mints
-  vehicle rows, now bounded by email-address rather than by nothing. Needs a
-  ceiling of the same shape as §7's lookup limit.
+- **Origination throttle.** Implemented as a per-address fixed-window bucket:
+  10 attempts per hour. It fails closed through the same `RateLimit` machinery
+  as public lookup and auth.
 
 ---
 
@@ -1139,8 +1171,8 @@ tranche 7, the credibility unlock).
   2026-08-03). Retract-and-relog under the same `entry_ref`; the withdrawn
   values stay in the ledger.
 - `attach_link(vehicle, url, label?)` — link curation (§2). *Not built in
-  ticket H:* it needs `vehicle_links`, which round 5 moved to the origination
-  ticket (N, TK-024).
+  ticket H and still absent from MCP:* `vehicle_links` now exists through
+  TK-024, so this is an optional tool extension rather than a data dependency.
 - `get_timeline(vehicle)` — read-back, so the assistant can answer "when did
   I last change the oil?" — retrieval is half the reason to keep a log, and
   it makes the assistant a *reader* of the record, not just a scribe.
@@ -1213,6 +1245,12 @@ integration seams.
 §5 settles credentials (magic link) and the User↔Party split. The rest of an
 account:
 
+**Implemented baseline.** Registration reserves the immutable handle, magic
+links authenticate, `/garage` is the signed-in home, and account settings own
+MCP-token mint/revoke. Garage lists stewarded cars, leads with natural-language
+intake, and makes `/start` the add-a-car action. The unresolved account work is
+the deletion policy and its legal copy, not another personal dashboard.
+
 - **Handle.** The public identity — "maintained by @handle" on the page,
   attribution on every entry. **Party name = the handle, immutable** (decided
   2026-08-02); a separate mutable display name is presentation-only. The
@@ -1230,7 +1268,7 @@ account:
   is untouched. Only the reservation moved earlier. The claim flow's handle
   step goes away (one less screen), commenters (§6b) get an identity for
   free, and the migration is trivial because existing users are seed and
-  test accounts. Lands with ticket N (TK-024).
+  test accounts. Shipped with ticket N (TK-024).
 - **MCP tokens.** Mint/revoke in account settings (§8): scoped to the user's
   stewardships, shown once, revocable individually. Token last-used display
   so a leaked token is noticeable.
@@ -1282,12 +1320,13 @@ a per-vehicle workbench into workbench + queues:
   repeated, and opposite concurrent decisions are inert after the first result.
   Both people receive the same recorded outcome after commit. No migration or
   dispute table was required.
-- **Report queue**: the public page gets a report affordance (abuse, doxxing,
-  fraud); reports land here. Remedy is a visibility flip plus a note — the
-  ledger is never edited, even for moderation.
-- **User admin**: suspend account, revoke stewardship — both status flips
-  with reasons, nothing deleted.
-- **Metrics strip**: active stewards, entry mix (MCP vs composer — the §8
+- **Report queue**: update-reply reports and `/bench/comments` are shipped.
+  Operators hide reported speech or dismiss the report without ledger contact.
+  Broader car/update reporting for abuse, doxxing, or fraud remains open; its
+  remedy is a visibility flip plus a note, never a ledger edit.
+- **User admin (open)**: suspend account, revoke stewardship — both status
+  flips with reasons, nothing deleted.
+- **Metrics strip (open)**: active stewards, entry mix (MCP vs composer — the §8
   30-day check), correction rates (amend/delete, the confirm step's
   replacement signal), claims/day. Read-only, computed, no new tables.
 
@@ -1303,36 +1342,38 @@ metadata only.** No scraping, no credential puppeteering, anywhere.
 
 | Platform | Inbound (on the page) | Outbound (distribution) | v1? |
 |---|---|---|---|
-| YouTube | Link → oEmbed (open endpoint, no key): title, author, thumbnail; iframe embed on the page | Nothing needed — owners post there natively, link back | **Yes** |
-| Instagram | Link → bare link card in v1. IG oEmbed requires a Meta developer app + "oEmbed Read" review — do that dance later if embed-rich pages earn it | Share card image via the phone share sheet (§6). No API posting: IG's Content Publishing API covers business/creator accounts only | **Yes (bare)** |
-| phpBB / vBulletin forums (Rennlist et al.) | Thread URL stored per vehicle (§2 links) | **Snippet copy-paste is the integration** — no official REST API exists for either. "Post to my thread" = open thread URL + snippet on clipboard, one paste. Store the thread URL once so every entry knows where it goes | **Yes** |
+| YouTube | URL-derived iframe embed is shipped; oEmbed title/author/thumbnail persistence remains open | Nothing needed — owners post there natively, link back | **Partial** |
+| Instagram | Bare link card shipped. IG oEmbed requires a Meta developer app + "oEmbed Read" review — do that dance later if embed-rich pages earn it | Share card image via the phone share sheet (§6). No API posting: IG's Content Publishing API covers business/creator accounts only | **Yes (bare)** |
+| phpBB / vBulletin forums (Rennlist et al.) | Thread URL stored per vehicle (§2 links) | **Snippet copy-paste is the integration** — Markdown/BBCode, copy, and open the saved thread URL are shipped. No forum credentials or API theater | **Yes** |
 | Discourse forums | Link + oEmbed/onebox both directions work naturally | Real REST API with per-user API keys — the one platform where true one-tap crosspost is clean. Add when a target community warrants | Later |
 
-We store URLs and oEmbed metadata (title/author/thumbnail URL), never media
-files from platforms. Owner-uploaded photos are the only media we host.
+We store URLs today, never media files from platforms. Ticket L (TK-020) owns
+optional oEmbed metadata (title/author/thumbnail URL) and Discourse posting.
+Owner-uploaded photos are the only platform media we host.
 
 ### 9.4 Platform plumbing
 
-- **Transactional email** — launch blocker; magic links depend on it. Swoosh
-  (in-box) + one adapter (Postmark or SES — pick at build time, it's config).
-- **Object storage.** Uploads move from local `uploads_dir` to S3-compatible
-  storage (Tigris on Fly). The existing convention — `storage_ref` is
-  basename-only — was designed for exactly this: the move is configuration
-  and a file sync, not a migration. Claiming photos and owner documents are
-  user data; local disk stops being acceptable the day the first real owner
-  uploads.
-- **Image pipeline.** Share cards render from an SVG template, rasterized
-  server-side (vips) because IG wants pixels; gallery thumbnails likewise.
-  No general image service — two named transforms.
-- **Rate limiting.** Unauthenticated lookup (§7), auth endpoints, MCP calls.
-  Plug-level ETS bucket, hand-rolled or `hammer` — minimal-deps rule applies.
-- **Legal pages.** ToS + privacy policy — first personal data in the system.
+- **Transactional email — production configuration open.** Swoosh and every
+  application call path are built; production still needs a selected adapter
+  (Postmark or SES), sending account, and DNS. Magic links make this an
+  external-pilot blocker.
+- **Object storage — production adapter open.** The `SantoApi.Storage`
+  behaviour and local adapter are built. Owner uploads still use local disk;
+  an S3-compatible adapter, bucket, migration sync, and versioning remain
+  required before the first external owner upload. `storage_ref` remains a
+  basename, so no database migration is needed.
+- **Image pipeline — shipped.** Share cards and gallery derivatives are the
+  two named transforms; public delivery never serves original owner uploads.
+- **Rate limiting — shipped.** Fixed-window ETS buckets cover public lookup,
+  origination, auth/login email, API, and MCP entry points.
+- **Legal pages — open.** ToS + privacy policy are required with the first
+  personal data in the system.
   The deletion posture (9.1) and moderation remedy (9.2) get written down
   there, in the same plain register as the product copy: the ledger keeps
   history; here's exactly what that means for you.
-- **Backups.** Postgres is covered Fly-side; the artifact store gets
-  versioning/replication turned on — owner documents are the one thing we
-  cannot re-acquire.
+- **Backups — production configuration open.** Postgres remains host-managed;
+  the artifact store needs versioning/replication when the S3-compatible bucket
+  is provisioned. Owner documents are the one thing we cannot re-acquire.
 
 ## 10. Roadmap amendment and ticket decomposition
 
@@ -1400,23 +1441,24 @@ instead of only operator-fed auction documents.
 | E | Claiming: challenge codes, proof upload, /bench approval queue, stewardships | A, B | Shipped 2026-08-03 (TK-015) — without the vision pre-check, struck below. |
 | F | Entry composer: segmented modes, photos, scope-split self-ratification path, current-spec panel (§2b cold start) | A, B, C, M | The make-or-break ticket; §1 is its spec. Shipped 2026-08-02 (TK-014) without links — the table moved to N. Plan mode arrives with O. |
 | G | Privacy controls (flipping visibility after the fact) + full-record export | F | Shipped 2026-08-10 (TK-016). The own-view slice shipped 2026-08-03; `vehicle_links` moved to N in round 5. |
-| H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below, `attach_link` waits on N's table. |
+| H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below. `attach_link` remains an optional MCP extension now that N's table exists. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Shipped 2026-08-10 (TK-018). Entries travel to existing audiences; page remains canonical. |
-| J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
-| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. Ratification and stewardship-dispute queues shipped 2026-08-11; the other controls remain open. |
-| L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
-| N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | TK-024. Load-bearing at the identity key — main-thread work, not delegated. |
+| J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Application foundations shipped in TK-006; image transforms shipped with I/O. Production mail, S3-compatible storage, legal pages, and artifact-store backup policy remain external-pilot blockers (§9.4). |
+| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Claiming, ratification, contested stewardship, and comment-report queues shipped. Broader reporting, user suspension, general stewardship revocation, and metrics remain open (TK-019). |
+| L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | URL-derived YouTube embeds, IG/general link cards, and legacy-forum distribution shipped. Persisted oEmbed metadata and Discourse posting remain optional (TK-020). |
+| N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | Shipped 2026-08-07 (TK-024). Load-bearing identity path, one transaction, rate-limited; occupied-VIN absorb remains a named deferred seam. |
 | O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first update, mutable hero/gallery presentation | C, F | Shipped 2026-08-10 (TK-025). External-gallery links reuse N's `vehicle_links`. |
 
-**Status, 2026-08-11.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
-(TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), G (TK-016), H
-(TK-017), J (TK-006), I (TK-018), O (TK-025), plus the composer correction
-rule exposed for ordinary updates and generic event participations (TK-021).
-K's ratification and stewardship-dispute slices shipped; K remains open for
-its other controls. Open: K (TK-019), L
-(TK-020), N (TK-024).
+**Status, 2026-08-11.** The owner-surface baseline is implemented. Shipped: A
+(TK-007), B (TK-008), C (TK-009), M (TK-010), D (TK-013), E (TK-015), F
+(TK-014), G (TK-016), H (TK-017), I (TK-018), N (TK-024), O (TK-025), the
+owner correction rule (TK-021), Garage/natural-language intake (TK-026's
+production scope), generic events and day-two editing, update replies and
+reactions, and comment moderation. J's application plumbing is built, with the
+production services and legal policy still unconfigured. K remains open for
+its remaining safety/admin controls; L remains optional platform depth.
 
-**Build order (Greg, round 3): infra first.** J, A, B open the build — no
+**Historical build order (Greg, round 3): infra first.** J, A, B open the build — no
 design dependencies, and they gate everything downstream (email gates A's
 magic links, storage gates E's proof photos, B is the ledger seam every
 other ticket touches). C and M follow immediately; then D ships value
@@ -1426,10 +1468,15 @@ entry. F and H land together conceptually — the same self-ratifying write
 path, two doors — but commit separately. K, I, L trail
 the critical path and can land incrementally after first owners exist. Round
 5's addendum to the order: N is the new front of the funnel and I is upstream
-of comments (§6b) — so the remaining sequence is N → O → I → G/K/L, with
-§6b's build unscheduled behind I. The
+of comments (§6b), producing the sequence N → O → I → G/K/L. Comments then
+shipped behind I as intended. The
 §9.1 walk decisions (handles, deletion posture) get taken as they block A/B,
 not deferred to a second walk.
+
+**Remaining order, round 6:** land and validate the integrated owner flow;
+finish K's safety/admin controls; configure production mail, object storage,
+backups, and legal policy before an external pilot. L and TK-004 follow usage
+evidence rather than the calendar.
 
 ### Decided 2026-08-01, round 3 (Greg)
 
@@ -1548,8 +1595,9 @@ Prompted by Greg walking his own first-run case — a 2024 Lexus GX 550, green,
   edge (a comment is not a claim; the promote-to-claim seam is the real
   decision) rather than designed.
 - **§1 amended** — the entry-UI question Greg raised (*"click a button and start
-  talking"*) is recorded as undesigned and `GREG'S CALL`, with §1's own analysis
-  noted as cutting against voice for the fill-up case specifically.
+  talking"*) was recorded as undesigned, with §1's own analysis cutting against
+  voice for the fill-up case specifically. Round 6 shipped the shared
+  text/dictation extraction path; mic-first Fill-up remains open.
 
 ### Decided 2026-08-04, round 5 (Greg, reviewing against the build-thread use case)
 
@@ -1574,7 +1622,8 @@ the doc had formalized only the events. The calls:
   (report-to-operator only — witnessed credibility is the product); no
   promote-to-claim in v1; likes cosmetic, never a tier input; handles
   required; comments sequenced after the distribution kit (I). The surface
-  itself remains undesigned and unscheduled.
+  was then undesigned; round 6 shipped update-scoped replies/reactions and the
+  operator report remedy without changing these calls.
 - **§9.1 handle timing unified**: chosen at registration for every account,
   reserved on the user, party minted with it at the first assertive act.
   Supersedes chosen-at-grant (2026-08-02) and chosen-at-issue (ticket E).
@@ -1584,20 +1633,24 @@ the doc had formalized only the events. The calls:
   still describing the struck confirm step and vision pre-check corrected;
   shipped statuses recorded; N and O cut as TK-024/TK-025.
 
-### Decisions still queued for the walk, in order
+### Product decisions still open
 
-5. §9.1 — the deletion posture: credentials delete, party + claims persist.
-   The ledger-integrity vs right-to-erasure line, in Greg's words. Not yet
-   blocking: nothing deletes an account today.
-6. §1 — mobile-web-only v1 (no native app).
-7. §10 — the §11 rewrite text and ticket cut A–L.
-8. §7b — links as evidence or curation. Holding §2's curation position costs
-   nothing today, because promoting links to evidence is a claim-writing change
-   rather than a layout one. Greg has build-thread links still to supply that
-   may argue the other way.
-9. §1 — the entry surface for a fill-up, in Greg's words: "click a button and
-   start talking." Needs its own pass; §7b's extraction endpoint changes what it
-   costs to build.
-10. §6b — the comments surface itself: schema, rendering, report handling for
-    speech, email volume. The doctrine calls are taken (round 5); what remains
-    is the design pass and its scheduling, behind ticket I.
+1. **Account deletion (§9.1).** Credentials delete; party + claims persist.
+   The ledger-integrity vs right-to-erasure line still needs Greg's sentence
+   before the deletion flow and legal pages ship.
+2. **Roadmap text (§10).** The proposed evidence-contract §11 rewrite remains
+   drafted here but unapplied. The implementation order is now fact; the exact
+   contract wording still needs ratification.
+3. **Links as evidence (§7b).** They remain curation. Promoting a dated link to
+   evidence is a claim-writing and artifact-acquisition change, so holding the
+   line costs nothing today.
+4. **Mic-first fill-ups (§1).** Browser dictation and natural-language draft
+   extraction are built. Whether tapping Fill-up should start the microphone
+   instead of opening the three-number form remains a usage question.
+5. **Reply notifications (§6b).** The schema, rendering, reaction/reply path,
+   report handling, and operator remedy are built. Notification recipients,
+   frequency, and unsubscribe behavior remain undesigned.
+
+Mobile-web-only is the implemented v1 baseline. A native app is no longer a
+pending tranche decision; it requires evidence that the PWA fails the entry
+moment.
