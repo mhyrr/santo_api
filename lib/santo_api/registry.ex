@@ -651,11 +651,8 @@ defmodule SantoApi.Registry do
 
     result =
       Repo.transaction(fn ->
-        case Repo.get(Claim, claim_id) do
-          nil ->
-            Repo.rollback(:not_found)
-
-          %Claim{state: :proposed} = claim ->
+        case fetch_claim_for_update(claim_id) do
+          {:ok, %Claim{state: :proposed} = claim} ->
             claim =
               claim
               |> Ecto.Changeset.change(
@@ -669,8 +666,11 @@ defmodule SantoApi.Registry do
             refresh_projections(vehicle)
             claim
 
-          %Claim{state: state} ->
+          {:ok, %Claim{state: state}} ->
             Repo.rollback({:not_proposed, state})
+
+          {:error, reason} ->
+            Repo.rollback(reason)
         end
       end)
 

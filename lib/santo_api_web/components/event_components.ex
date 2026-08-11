@@ -20,6 +20,7 @@ defmodule SantoApiWeb.EventComponents do
   attr :reply_count, :integer, default: 0
   attr :heading_level, :integer, default: 3
   attr :show_our_day, :boolean, default: true
+  attr :show_edit, :boolean, default: false
 
   def event_journal_card(assigns) do
     assigns =
@@ -81,6 +82,14 @@ defmodule SantoApiWeb.EventComponents do
           <span><strong>{@reply_count}</strong> replies</span>
         </div>
         <div class="theme-event-card-actions">
+          <.link
+            :if={@show_edit}
+            id={"event-edit-#{@participation.id}"}
+            navigate={~p"/v/#{@vehicle.public_id}/events/new?entry_ref=#{@participation.entry_ref}"}
+            class="club-button club-button-secondary"
+          >
+            Edit our day
+          </.link>
           <.link
             :if={@show_our_day}
             navigate={~p"/v/#{@vehicle.public_id}/updates/#{@participation.entry_ref}"}

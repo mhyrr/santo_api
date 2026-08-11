@@ -469,46 +469,51 @@ defmodule SantoApi.Owners do
   a person adjudicates the dispute.
   """
   def approve_challenge(%Challenge{} = challenge, %User{} = operator) do
-    case Repo.get(Challenge, challenge.id) do
-      %Challenge{status: :submitted, proof_artifact_id: artifact_id} = current
-      when not is_nil(artifact_id) ->
-        grant_from(current, operator)
-
-      %Challenge{status: :issued} ->
-        {:error, :no_proof}
-
-      %Challenge{} ->
-        {:error, :not_pending}
-
-      nil ->
-        {:error, :not_found}
-    end
+    grant_from(challenge.id, operator)
   end
 
-  defp grant_from(%Challenge{} = challenge, operator) do
-    user = Repo.get!(User, challenge.user_id)
-    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
-    proof = Repo.get!(Artifact, challenge.proof_artifact_id)
-
+  defp grant_from(challenge_id, operator) do
     granted =
       Repo.transaction(fn ->
-        case grant_stewardship(user, vehicle,
-               handle: challenge.handle,
-               proof_artifact: proof,
-               decided_by: operator
-             ) do
-          {:ok, stewardship} ->
-            decide!(challenge, :approved, operator, nil)
-            stewardship
+        case fetch_challenge_for_update(challenge_id) do
+          {:ok, %Challenge{status: :submitted, proof_artifact_id: artifact_id} = challenge}
+          when not is_nil(artifact_id) ->
+            user = Repo.get!(User, challenge.user_id)
+            vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+            proof = Repo.get!(Artifact, artifact_id)
+
+            case grant_stewardship(user, vehicle,
+                   handle: challenge.handle,
+                   proof_artifact: proof,
+                   decided_by: operator
+                 ) do
+              {:ok, stewardship} ->
+                decide!(challenge, :approved, operator, nil)
+                %{stewardship: stewardship, user: user, vehicle: vehicle}
+
+              {:error, reason} ->
+                Repo.rollback(reason)
+            end
+
+          {:ok, %Challenge{status: :issued}} ->
+            Repo.rollback(:no_proof)
+
+          {:ok, %Challenge{}} ->
+            Repo.rollback(:not_pending)
 
           {:error, reason} ->
             Repo.rollback(reason)
         end
       end)
 
-    with {:ok, _stewardship} <- granted, do: Notifier.claim_approved(user, vehicle)
+    case granted do
+      {:ok, %{stewardship: stewardship, user: user, vehicle: vehicle}} ->
+        Notifier.claim_approved(user, vehicle)
+        {:ok, stewardship}
 
-    granted
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -517,10 +522,22 @@ defmodule SantoApi.Owners do
   """
   def deny_challenge(%Challenge{} = challenge, %User{} = operator, reason)
       when is_binary(reason) do
-    case Repo.get(Challenge, challenge.id) do
-      %Challenge{status: status} = current when status in [:issued, :submitted] ->
-        denied = decide!(current, :denied, operator, reason)
+    denied =
+      Repo.transaction(fn ->
+        case fetch_challenge_for_update(challenge.id) do
+          {:ok, %Challenge{status: status} = current} when status in [:issued, :submitted] ->
+            decide!(current, :denied, operator, reason)
 
+          {:ok, %Challenge{}} ->
+            Repo.rollback(:not_pending)
+
+          {:error, deny_error} ->
+            Repo.rollback(deny_error)
+        end
+      end)
+
+    case denied do
+      {:ok, denied} ->
         Notifier.claim_denied(
           Repo.get!(User, denied.user_id),
           Repo.get!(Vehicle, denied.vehicle_id),
@@ -529,12 +546,168 @@ defmodule SantoApi.Owners do
 
         {:ok, denied}
 
-      %Challenge{} ->
-        {:error, :not_pending}
-
-      nil ->
-        {:error, :not_found}
+      {:error, deny_error} ->
+        {:error, deny_error}
     end
+  end
+
+  @dispute_outcomes [:keep_incumbent, :transfer_to_claimant]
+
+  @doc """
+  Resolve a contested possession challenge without inventing an ownership claim.
+
+  Stewardship is authorization, so this is an atomic disposition of the two
+  existing authorization records rather than a Registry adjudication. Keeping
+  the incumbent denies the challenge. Transferring revokes the incumbent,
+  creates the claimant's stewardship, and approves the challenge in one locked
+  transaction. Both outcomes retain the proof artifacts and record the reason,
+  deciding operator, and time on the rows that changed.
+  """
+  def resolve_dispute(challenge_id, %User{} = operator, outcome, reason)
+      when outcome in @dispute_outcomes and is_binary(reason) do
+    reason = String.trim(reason)
+
+    if reason == "" do
+      {:error, :reason_required}
+    else
+      result =
+        Repo.transaction(fn ->
+          with {:ok, challenge} <- fetch_challenge_for_update(challenge_id),
+               :ok <- validate_dispute_challenge(challenge),
+               {:ok, incumbent} <- fetch_incumbent_for_update(challenge),
+               {:ok, resolution} <-
+                 apply_dispute_outcome(challenge, incumbent, operator, outcome, reason) do
+            resolution
+          else
+            {:error, dispute_error} -> Repo.rollback(dispute_error)
+          end
+        end)
+
+      case result do
+        {:ok, resolution} ->
+          notify_dispute_resolution(resolution)
+          {:ok, resolution}
+
+        {:error, dispute_error} ->
+          {:error, dispute_error}
+      end
+    end
+  end
+
+  def resolve_dispute(_challenge_id, %User{}, _outcome, _reason),
+    do: {:error, :invalid_dispute_decision}
+
+  defp fetch_challenge_for_update(challenge_id) do
+    with {:ok, id} <- Ecto.UUID.cast(challenge_id),
+         %Challenge{} = challenge <-
+           Repo.one(from(c in Challenge, where: c.id == ^id, lock: "FOR UPDATE")) do
+      {:ok, challenge}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  defp validate_dispute_challenge(%Challenge{status: :submitted, proof_artifact_id: artifact_id})
+       when not is_nil(artifact_id),
+       do: :ok
+
+  defp validate_dispute_challenge(%Challenge{status: :issued}), do: {:error, :no_proof}
+
+  defp validate_dispute_challenge(%Challenge{status: status}),
+    do: {:error, {:not_pending, status}}
+
+  defp fetch_incumbent_for_update(challenge) do
+    incumbent =
+      Repo.one(
+        from(s in Stewardship,
+          where: s.vehicle_id == ^challenge.vehicle_id and s.status == :active,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    case incumbent do
+      %Stewardship{user_id: user_id} when user_id != challenge.user_id ->
+        {:ok, incumbent}
+
+      _not_contested ->
+        {:error, :not_contested}
+    end
+  end
+
+  defp apply_dispute_outcome(challenge, incumbent, operator, :keep_incumbent, reason) do
+    denied = decide!(challenge, :denied, operator, reason)
+
+    {:ok,
+     dispute_resolution(
+       :keep_incumbent,
+       denied,
+       incumbent,
+       incumbent,
+       operator,
+       reason
+     )}
+  end
+
+  defp apply_dispute_outcome(challenge, incumbent, operator, :transfer_to_claimant, reason) do
+    claimant = Repo.get!(User, challenge.user_id)
+    vehicle = Repo.get!(Vehicle, challenge.vehicle_id)
+    proof = Repo.get!(Artifact, challenge.proof_artifact_id)
+
+    with {:ok, revoked} <- revoke_stewardship(incumbent, reason, operator),
+         {:ok, granted} <-
+           grant_stewardship(claimant, vehicle,
+             handle: challenge.handle,
+             proof_artifact: proof,
+             decided_by: operator
+           ) do
+      approved = decide!(challenge, :approved, operator, reason)
+
+      {:ok,
+       dispute_resolution(
+         :transfer_to_claimant,
+         approved,
+         revoked,
+         granted,
+         operator,
+         reason
+       )}
+    end
+  end
+
+  defp dispute_resolution(outcome, challenge, incumbent, resulting_stewardship, operator, reason) do
+    %{
+      outcome: outcome,
+      challenge: challenge,
+      claimant: Repo.get!(User, challenge.user_id),
+      incumbent: incumbent,
+      incumbent_user: Repo.get!(User, incumbent.user_id),
+      resulting_stewardship: resulting_stewardship,
+      vehicle: Repo.get!(Vehicle, challenge.vehicle_id),
+      operator: operator,
+      reason: reason
+    }
+  end
+
+  defp notify_dispute_resolution(%{outcome: :keep_incumbent} = resolution) do
+    Notifier.claim_denied(resolution.claimant, resolution.vehicle, resolution.reason)
+
+    Notifier.dispute_kept(
+      resolution.incumbent_user,
+      resolution.vehicle,
+      resolution.claimant.handle,
+      resolution.reason
+    )
+  end
+
+  defp notify_dispute_resolution(%{outcome: :transfer_to_claimant} = resolution) do
+    Notifier.claim_approved(resolution.claimant, resolution.vehicle)
+
+    Notifier.dispute_transferred(
+      resolution.incumbent_user,
+      resolution.vehicle,
+      resolution.claimant.handle,
+      resolution.reason
+    )
   end
 
   defp decide!(challenge, status, operator, reason) do
@@ -588,6 +761,57 @@ defmodule SantoApi.Owners do
         preload: [:user, :vehicle, :proof_artifact]
       )
     )
+  end
+
+  @doc "Submitted possession claims that do not contest an active steward."
+  def list_pending_claiming_challenges do
+    {uncontested, _disputes} = partition_pending_challenges()
+    uncontested
+  end
+
+  @doc "Submitted possession challenges contesting a different active steward."
+  def list_pending_disputes do
+    {_uncontested, disputes} = partition_pending_challenges()
+    disputes
+  end
+
+  @doc "Count submitted possession challenges facing a different active steward."
+  def pending_dispute_count do
+    Repo.aggregate(
+      from(c in Challenge,
+        join: s in Stewardship,
+        on: s.vehicle_id == c.vehicle_id,
+        where: c.status == :submitted and s.status == :active and s.user_id != c.user_id
+      ),
+      :count
+    )
+  end
+
+  defp partition_pending_challenges do
+    challenges = list_pending_challenges()
+    vehicle_ids = Enum.map(challenges, & &1.vehicle_id)
+
+    incumbents_by_vehicle =
+      Repo.all(
+        from(s in Stewardship,
+          where: s.vehicle_id in ^vehicle_ids and s.status == :active,
+          preload: [:proof_artifact, user: :party]
+        )
+      )
+      |> Map.new(&{&1.vehicle_id, &1})
+
+    {uncontested, disputes} =
+      Enum.reduce(challenges, {[], []}, fn challenge, {uncontested, disputes} ->
+        case Map.get(incumbents_by_vehicle, challenge.vehicle_id) do
+          %Stewardship{user_id: user_id} = incumbent when user_id != challenge.user_id ->
+            {uncontested, [%{challenge: challenge, incumbent: incumbent} | disputes]}
+
+          _no_other_steward ->
+            {[challenge | uncontested], disputes}
+        end
+      end)
+
+    {Enum.reverse(uncontested), Enum.reverse(disputes)}
   end
 
   defp artifact_id(%Artifact{id: id}), do: id
@@ -873,6 +1097,52 @@ defmodule SantoApi.Owners do
 
   def attach_photos(_scope, %Vehicle{}, _entry_ref, _uploads),
     do: {:error, :authentication_required}
+
+  @doc """
+  Add generic owner-supplied event attachments to an existing authored entry.
+
+  Unlike `attach_photos/4`, this accepts the event composer's full upload set:
+  photos receive ordinary car-gallery placements, while video and document
+  artifacts remain attached only through the event presentation. Every upload
+  inherits the entry's date and visibility and keeps the existing `entry_ref`.
+  """
+  def attach_attachments(scope, %Vehicle{} = vehicle, entry_ref, uploads)
+      when is_list(uploads) do
+    with {:ok, stewardship} <- authorize_entry(scope, vehicle),
+         party = party(%User{id: stewardship.user_id}),
+         {:ok, claims} <- fetch_own_entry(vehicle, party, entry_ref),
+         [%Claim{scope_date: date} | _rest] <- claims,
+         {:ok, ref} <- cast_entry_ref(entry_ref) do
+      visibility = entry_visibility(claims)
+
+      case Repo.transaction(fn ->
+             results =
+               Enum.map(
+                 uploads,
+                 &write_attachment!(scope, vehicle, party, ref, date, visibility, &1)
+               )
+
+             %{
+               artifacts: Enum.map(results, &elem(&1, 0)),
+               photos: results |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
+             }
+           end) do
+        {:ok, result} -> {:ok, result}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      [] -> {:error, :entry_not_found}
+      other -> other
+    end
+  end
+
+  def attach_attachments(_scope, %Vehicle{}, _entry_ref, _uploads),
+    do: {:error, :authentication_required}
+
+  @doc "Remove selected photo placements from one authored entry, retaining artifact bytes."
+  def remove_entry_photo_artifacts(scope, %Vehicle{} = vehicle, entry_ref, artifact_ids) do
+    Photos.remove_entry_artifacts(scope, vehicle, entry_ref, artifact_ids)
+  end
 
   defp authorize_entry(scope, vehicle) do
     case stewardship(scope, vehicle) do

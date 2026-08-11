@@ -1,7 +1,7 @@
 defmodule SantoApiWeb.EventAttachmentController do
   @moduledoc """
-  Serves an owner upload only when it is attached to a public participation in
-  the public event named by the route.
+  Serves an owner upload when it is attached to a public participation in the
+  named event, or to the signed-in author's private participation.
 
   That join is the authorization boundary. A raw artifact id is never enough,
   and private entries remain available only through the owner surfaces.
@@ -14,12 +14,17 @@ defmodule SantoApiWeb.EventAttachmentController do
   alias SantoApi.Storage
 
   def show(conn, %{"public_id" => event_public_id, "id" => attachment_id} = params) do
-    with {:ok, attachment} <- Events.fetch_public_attachment(event_public_id, attachment_id),
+    with {:ok, attachment} <-
+           Events.fetch_visible_attachment(
+             conn.assigns.current_scope,
+             event_public_id,
+             attachment_id
+           ),
          {:ok, delivery} <- delivery(attachment, params["variant"]),
          {:ok, bytes} <- Storage.fetch(delivery.storage_ref) do
       conn
       |> put_resp_content_type(delivery.mime, nil)
-      |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
+      |> put_resp_header("cache-control", cache_control(attachment.participation.visibility))
       |> maybe_download(attachment.kind)
       |> send_resp(200, bytes)
     else
@@ -37,4 +42,7 @@ defmodule SantoApiWeb.EventAttachmentController do
 
   defp maybe_download(conn, kind) when kind in [:photo, :video], do: conn
   defp maybe_download(conn, _kind), do: put_resp_header(conn, "content-disposition", "attachment")
+
+  defp cache_control(:public), do: "public, max-age=31536000, immutable"
+  defp cache_control(:private), do: "private, no-store"
 end

@@ -11,6 +11,9 @@ defmodule SantoApiWeb.BenchLive.Claims do
   What the operator is checking, in order: the VIN in the photograph matches the
   car, the challenge code is in frame and matches this row, and the plate looks
   photographed in place rather than off another photograph.
+
+  A submitted challenge against an active steward has a different decision and
+  appears only in `/bench/disputes`; one open item has one operational home.
   """
 
   use SantoApiWeb, :live_view
@@ -25,18 +28,15 @@ defmodule SantoApiWeb.BenchLive.Claims do
   end
 
   defp assign_queue(socket) do
-    assign(socket, :claims, Enum.map(Owners.list_pending_challenges(), &decorate/1))
+    assign(socket, :claims, Enum.map(Owners.list_pending_claiming_challenges(), &decorate/1))
   end
 
-  # The incumbent is the whole story of a contested claim, so it is read here
-  # rather than left for the operator to go and look up.
   defp decorate(%Challenge{} = challenge) do
     %{
       challenge: challenge,
       vehicle: challenge.vehicle,
       title: Presenter.title(challenge.vehicle),
-      chassis: Presenter.chassis(challenge.vehicle),
-      incumbent: Owners.steward(challenge.vehicle)
+      chassis: Presenter.chassis(challenge.vehicle)
     }
   end
 
@@ -74,12 +74,10 @@ defmodule SantoApiWeb.BenchLive.Claims do
 
   defp operator(socket), do: socket.assigns.current_scope.user
 
-  # §4's escalation, in one sentence: the incumbent keeps the car until somebody
-  # adjudicates the dispute, and approving over them is not the adjudication.
+  # A race can make an ordinary row contested after it loaded. Refuse the stale
+  # action; the next load will derive it into the dispute queue.
   defp refusal(:already_stewarded),
-    do:
-      "Somebody already maintains that car. Revoke the incumbent first if this claim wins — " <>
-        "approving here would not decide the dispute, it would hide it."
+    do: "Somebody now maintains that car. This claim has moved to the dispute queue."
 
   defp refusal(:not_pending), do: "That claim has already been decided."
   defp refusal(:no_proof), do: "That claim has no photo yet."
@@ -129,15 +127,6 @@ defmodule SantoApiWeb.BenchLive.Claims do
               sent {Calendar.strftime(row.challenge.inserted_at, "%-d %B %Y, %H:%M UTC")}
             </p>
           </div>
-        </div>
-
-        <div :if={row.incumbent} class="club-notice club-notice-warning mt-4">
-          <span>
-            <strong>Contested.</strong>
-            This car is maintained by <span class="font-mono">{row.incumbent.name}</span>. Decide the
-            dispute on evidence before anything here changes hands — both parties are owed
-            the outcome.
-          </span>
         </div>
 
         <div class="mt-4 flex flex-wrap items-start gap-6">

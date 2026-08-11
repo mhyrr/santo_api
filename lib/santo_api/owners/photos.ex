@@ -189,6 +189,38 @@ defmodule SantoApi.Owners.Photos do
 
   def remove_entry(_scope, %Vehicle{}, _entry_ref), do: {:error, :authentication_required}
 
+  @doc "Remove selected photo placements from one authored entry by immutable artifact id."
+  def remove_entry_artifacts(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        entry_ref,
+        artifact_ids
+      )
+      when is_list(artifact_ids) do
+    with {:ok, _stewardship} <- authorize(scope, vehicle),
+         {:ok, ref} <- Ecto.UUID.cast(entry_ref) do
+      ids = Enum.uniq(artifact_ids)
+
+      {count, _rows} =
+        Repo.delete_all(
+          from(photo in VehiclePhoto,
+            where:
+              photo.vehicle_id == ^vehicle.id and photo.entry_ref == ^ref and
+                photo.author_user_id == ^user_id and photo.artifact_id in ^ids
+          )
+        )
+
+      promote_first_public(vehicle)
+      {:ok, count}
+    else
+      :error -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def remove_entry_artifacts(_scope, %Vehicle{}, _entry_ref, _artifact_ids),
+    do: {:error, :authentication_required}
+
   @doc "Change every photo placement in one authored entry without touching shared artifact bytes."
   def set_entry_visibility(
         %Scope{user: %User{id: user_id}} = scope,
@@ -251,7 +283,7 @@ defmodule SantoApi.Owners.Photos do
            ),
          true <-
            (photo.visibility == :public and Owners.published?(vehicle)) or
-             Owners.stewarding?(scope, vehicle) do
+             authored_by?(scope, photo) do
       {:ok, photo}
     else
       _absent -> {:error, :not_found}
@@ -262,6 +294,11 @@ defmodule SantoApi.Owners.Photos do
 
   def alt(%VehiclePhoto{alt_text: text}, _fallback) when is_binary(text), do: text
   def alt(%VehiclePhoto{}, fallback), do: "Photo of #{fallback}"
+
+  defp authored_by?(%Scope{user: %User{id: user_id}}, %VehiclePhoto{author_user_id: user_id}),
+    do: true
+
+  defp authored_by?(_scope, %VehiclePhoto{}), do: false
 
   defp authorize(%Scope{} = scope, vehicle) do
     case Owners.stewardship(scope, vehicle) do

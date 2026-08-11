@@ -124,7 +124,8 @@ distinction.
 - `/v/:public_id/log` — the structured review/editor for a new update. It may
   be opened with natural language from the garage.
 - `/v/:public_id/events/new` — the authenticated generic event composer for a
-  car the member maintains.
+  car the member maintains. **Edit our day** reopens this same surface with the
+  participation `entry_ref`; shared event fields become read-only.
 - `/events/:public_id` — the public shared occurrence, aggregating public
   participation accounts without an event-wide comment river or scoreboard.
 

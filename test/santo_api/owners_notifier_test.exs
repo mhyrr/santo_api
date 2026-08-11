@@ -83,6 +83,62 @@ defmodule SantoApi.OwnersNotifierTest do
     end)
   end
 
+  test "keeping the incumbent reports the same reason to both people", ctx do
+    incumbent = user_fixture(%{handle: unique_user_handle()})
+    {:ok, incumbent_stewardship} = claim_and_approve(incumbent, ctx.vehicle, ctx.operator)
+    {:ok, submitted} = submit_claim(ctx.user, ctx.vehicle)
+    drain()
+
+    assert {:ok, %{outcome: :keep_incumbent}} =
+             Owners.resolve_dispute(
+               submitted.id,
+               ctx.operator,
+               :keep_incumbent,
+               "The incumbent supplied the current registration."
+             )
+
+    assert incumbent_stewardship.status == :active
+
+    assert_email_sent(fn email ->
+      assert Enum.any?(email.to, fn {_name, address} -> address == ctx.user.email end)
+      assert email.subject =~ "not approved"
+      assert email.text_body =~ "current registration"
+    end)
+
+    assert_email_sent(fn email ->
+      assert Enum.any?(email.to, fn {_name, address} -> address == incumbent.email end)
+      assert email.subject =~ "remain"
+      assert email.text_body =~ "current registration"
+    end)
+  end
+
+  test "a transfer tells the claimant and the former steward what changed", ctx do
+    incumbent = user_fixture(%{handle: unique_user_handle()})
+    {:ok, _incumbent_stewardship} = claim_and_approve(incumbent, ctx.vehicle, ctx.operator)
+    {:ok, submitted} = submit_claim(ctx.user, ctx.vehicle)
+    drain()
+
+    assert {:ok, %{outcome: :transfer_to_claimant}} =
+             Owners.resolve_dispute(
+               submitted.id,
+               ctx.operator,
+               :transfer_to_claimant,
+               "The claimant supplied the signed transfer bill."
+             )
+
+    assert_email_sent(fn email ->
+      assert Enum.any?(email.to, fn {_name, address} -> address == ctx.user.email end)
+      assert email.subject =~ "yours to maintain"
+    end)
+
+    assert_email_sent(fn email ->
+      assert Enum.any?(email.to, fn {_name, address} -> address == incumbent.email end)
+      assert email.subject =~ "transferred"
+      assert email.text_body =~ "prior entries remain"
+      assert email.text_body =~ "signed transfer bill"
+    end)
+  end
+
   defp drain do
     receive do
       {:email, _email} -> drain()
@@ -95,5 +151,17 @@ defmodule SantoApi.OwnersNotifierTest do
     path = Path.join(System.tmp_dir!(), "proof-#{System.unique_integer([:positive])}.jpg")
     File.write!(path, "vin plate #{System.unique_integer()}")
     %{path: path, filename: Path.basename(path), mime: "image/jpeg"}
+  end
+
+  defp claim_and_approve(user, vehicle, operator) do
+    with {:ok, submitted} <- submit_claim(user, vehicle) do
+      Owners.approve_challenge(submitted, operator)
+    end
+  end
+
+  defp submit_claim(user, vehicle) do
+    with {:ok, challenge} <- Owners.issue_challenge(user, vehicle) do
+      Owners.submit_proof(challenge, photo())
+    end
   end
 end

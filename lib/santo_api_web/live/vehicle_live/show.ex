@@ -757,6 +757,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
                 participation={participation}
                 reply_count={reply_count}
                 heading_level={3}
+                show_edit={entry.mine?}
               />
 
               <p :if={entry.mine?} class="mt-3 text-xs">

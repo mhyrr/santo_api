@@ -3,8 +3,9 @@ defmodule SantoApiWeb.VehiclePhotoController do
   Serves metadata-stripped car-photo derivatives through a vehicle placement.
 
   Anonymous callers may resolve public photos only after the car is published.
-  A steward may also view their private placements, with a non-cacheable
-  response. Original upload bytes never cross this public route.
+  An upload's author may also view their private placements, with a
+  non-cacheable response. A later steward does not inherit that access.
+  Original upload bytes never cross this public route.
   """
 
   use SantoApiWeb, :controller

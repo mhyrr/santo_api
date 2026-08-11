@@ -479,12 +479,13 @@ Carrera GT's VIN plate at a show and claims a $4.5M car:
   under their own attributed identity. Not identity edits, not facts, not
   anything verified. The blast radius is graffiti, not forgery — and
   append-only graffiti under the vandal's own name.
-- Counter-claim: a second user claiming an actively-stewarded vehicle
-  triggers escalation — both parties notified, operator adjudicates, and the
-  tiebreaker is stronger evidence (registration/title fragment, service
-  records in their name), pulling forward a *narrow* slice of title-proof
-  only for contested cases. Contested stewardship is rare and worth an
-  operator's minutes.
+- Contested possession challenge: a second user claiming an actively-stewarded
+  vehicle triggers escalation — both parties are notified, an operator decides,
+  and the tiebreaker is stronger evidence (registration/title fragment, service
+  records in their name), pulling forward a *narrow* slice of title-proof only
+  for contested cases. Contested stewardship is rare and worth an operator's
+  minutes. This is not a Registry claim conflict: stewardship is authorization
+  to maintain the log and deliberately asserts no ownership fact.
 - Flag list: vehicles above a value/notability threshold (all three corpus
   cars qualify) get a mandatory closer look at step 4 regardless of vision
   confidence.
@@ -514,13 +515,12 @@ blocked on a rights call.
 - **Expiry governs the window between the code and the photograph only.** Once
   proof is in, a slow operator cannot cost the claimant their claim. A code that
   lapses before a photo is retired and replaced.
-- **A counter-claim issues a code and refuses at approval.** Refusing the second
-  claimant up front leaves them nothing to escalate; refusing at approval leaves
-  the claim in the queue with the incumbent intact — which is the escalation
-  this section asks for. The incumbent is emailed when the claim is *made*, not
-  when it is decided: they hold the evidence that settles it. Resolving the
-  dispute is still ticket K's queue; today the operator revokes the incumbent by
-  hand and then approves.
+- **A contested challenge issues a code and refuses at ordinary approval.**
+  Refusing the second claimant up front leaves them nothing to escalate;
+  refusing at approval leaves the claim in the queue with the incumbent intact
+  — which is the escalation this section asks for. The incumbent is emailed
+  when the claim is *made*, not when it is decided: they hold the evidence that
+  settles it. Resolving the dispute is ticket K's queue.
 
 **What an unclaimed page shows:** identity, facts with tier display, the
 registry-sourced timeline (sale events, service events from documents), links
@@ -1257,8 +1257,31 @@ a per-vehicle workbench into workbench + queues:
   proposal when volume forces auto-approve, not before.
 - **Ratification queue**: owner-proposed factory/provenance claims waiting on
   the gate (§3) — the operator half of the scope split.
-- **Dispute queue**: counter-claims on stewarded vehicles (§4); resolution
-  uses the existing adjudication machinery, never a side door.
+  **Shipped 2026-08-11 (TK-019 first slice).** `/bench/ratifications` derives
+  its open work directly from the ledger: `:proposed` claims whose asserting
+  party is an owner and whose vocabulary scope is `:factory`. That is the
+  deliberately narrow core-car record — identity, build, and delivery
+  provenance — not use, condition, or event history. The row carries its
+  source entry, method, artifacts, and live claims for the same predicate.
+  Ratify/reject calls the existing claim transitions with the Vin Santo party
+  as decider; both outcomes retain the assertion and attribution. There is no
+  queue row, decision-note field, or new migration.
+- **Dispute queue**: contested possession challenges on stewarded vehicles
+  (§4). The ticket's old “counter-claim” noun was wrong in code terms: there is
+  no Registry claim pair to pass to `adjudicate_claims`. The operator either
+  keeps the incumbent by denying the challenge, or atomically revokes the
+  incumbent stewardship and approves the claimant. Both outcomes require a
+  reason and retain the two proof artifacts, challenge, stewardship history,
+  deciding user, and timestamps. Actual fact conflicts continue through
+  `Registry.adjudicate_claims/4` on the per-vehicle bench.
+  **Shipped 2026-08-11 (TK-019 second slice).** `/bench/disputes` derives these
+  rows from submitted possession challenges with a different active steward;
+  contested rows leave `/bench/claims`, so one item has one operational home.
+  The transfer path locks the challenge and incumbent stewardship before any
+  status change, then revokes/grants/approves in one transaction. Stale,
+  repeated, and opposite concurrent decisions are inert after the first result.
+  Both people receive the same recorded outcome after commit. No migration or
+  dispute table was required.
 - **Report queue**: the public page gets a report affordance (abuse, doxxing,
   fraud); reports land here. Remedy is a visibility flip plus a note — the
   ledger is never edited, even for moderation.
@@ -1380,15 +1403,17 @@ instead of only operator-fed auction documents.
 | H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below, `attach_link` waits on N's table. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Shipped 2026-08-10 (TK-018). Entries travel to existing audiences; page remains canonical. |
 | J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Launch blocker; parallelizes with A–D. Email before A ships (magic links), storage before E ships (proof photos). |
-| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. |
+| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Greg's daily surface; §9.2 is its spec. Ratification and stewardship-dispute queues shipped 2026-08-11; the other controls remain open. |
 | L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | Phased per the §9.3 honesty table. |
 | N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | TK-024. Load-bearing at the identity key — main-thread work, not delegated. |
 | O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first update, mutable hero/gallery presentation | C, F | Shipped 2026-08-10 (TK-025). External-gallery links reuse N's `vehicle_links`. |
 
-**Status, 2026-08-10.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
+**Status, 2026-08-11.** Shipped: A (TK-007), B (TK-008), C (TK-009), M
 (TK-010), D (TK-013), E (TK-015), F (TK-014, sans links), G (TK-016), H
-(TK-017), J (TK-006), I (TK-018), O (TK-025), plus the composer edit mode
-ticket H's correction rule exposed (TK-021, open). Open: K (TK-019), L
+(TK-017), J (TK-006), I (TK-018), O (TK-025), plus the composer correction
+rule exposed for ordinary updates and generic event participations (TK-021).
+K's ratification and stewardship-dispute slices shipped; K remains open for
+its other controls. Open: K (TK-019), L
 (TK-020), N (TK-024).
 
 **Build order (Greg, round 3): infra first.** J, A, B open the build — no

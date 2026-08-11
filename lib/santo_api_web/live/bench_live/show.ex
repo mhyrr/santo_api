@@ -505,7 +505,7 @@ defmodule SantoApiWeb.BenchLive.Show do
         </table>
       </div>
 
-      <h2 class="club-bench-heading">Claims</h2>
+      <h2 id="vehicle-claims" class="club-bench-heading">Claims</h2>
       <div class="club-table-wrap mt-3">
         <table class="club-table">
           <thead>

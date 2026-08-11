@@ -424,9 +424,26 @@ The 2026-08-10 implementation keeps the universal model literal:
   composer. It never changes `current_state`; completing the work still
   requires a modification update.
 
-The first slice deliberately omits event editing, operator merging, event
-archive/search UI, organizer authority, and typed import adapters. Those need
-real usage or a moderation contract before they earn more schema.
+**Day-two editing shipped 2026-08-11.** The participation author can reopen
+the same generic composer from **Edit our day** on the car journal card or
+stable update. The shared occurrence is read-only there; the owner may revise
+their journal, participation tags, ordered details, labeled links and files,
+and supported media. One transaction updates the existing participation and
+amends its `event.outing` claim under the same `entry_ref`, so the update URL,
+replies, reactions, and share URL do not move. Visibility is preserved and
+remains controlled by the journal privacy action. Removing an upload removes
+its mutable attachment/photo presentation while retaining immutable artifact
+bytes.
+
+Active stewardship alone is insufficient: the participation's original
+author must match the signed-in member. A later steward cannot edit or retrieve
+the earlier author's private contribution. Event-local details remain outside
+`current_state` on both create and edit.
+
+The event slice still deliberately omits shared-occurrence correction,
+operator merging, event archive/search UI, organizer authority, and typed
+import adapters. Shared correction and merging need a moderation contract that
+preserves participation and update permalinks.
 
 ## Deliberately excluded
 

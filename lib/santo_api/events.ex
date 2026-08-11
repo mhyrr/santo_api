@@ -100,6 +100,270 @@ defmodule SantoApi.Events do
     end
   end
 
+  @doc "One participation the current steward both authored and may edit."
+  def participation_for_edit(
+        %Scope{user: %User{id: user_id}} = scope,
+        %Vehicle{} = vehicle,
+        entry_ref
+      ) do
+    if Owners.stewarding?(scope, vehicle) do
+      with {:ok, ref} <- Ecto.UUID.cast(entry_ref),
+           %EventParticipation{} = participation <-
+             Repo.one(
+               from(p in EventParticipation,
+                 where:
+                   p.vehicle_id == ^vehicle.id and p.entry_ref == ^ref and
+                     p.user_id == ^user_id,
+                 preload: [:event, :user, :vehicle, attachments: :artifact]
+               )
+             ) do
+        {:ok, sort_attachments(participation)}
+      else
+        _absent -> {:error, :not_authorized}
+      end
+    else
+      {:error, :not_stewarded}
+    end
+  end
+
+  def participation_for_edit(_scope, %Vehicle{}, _entry_ref),
+    do: {:error, :authentication_required}
+
+  @doc "Validate an authored participation amendment without changing its shared occurrence."
+  def validate_participation_edit(scope, %Vehicle{} = vehicle, entry_ref, attrs) do
+    with {:ok, participation} <- participation_for_edit(scope, vehicle, entry_ref),
+         {:ok, changeset} <- participation_edit_changeset(participation, attrs),
+         :ok <-
+           validate_attachment_edits(
+             participation.attachments,
+             value(attrs, :existing_attachments, [])
+           ),
+         :ok <- validate_draft_links(value(attrs, :links, [])) do
+      {:ok,
+       %{
+         event: participation.event,
+         participation: Ecto.Changeset.apply_changes(changeset)
+       }}
+    end
+  end
+
+  @doc """
+  Amend one car's account of a shared event in a single transaction.
+
+  The participation row and update `entry_ref` retain their identity. Shared
+  occurrence fields and entry visibility are intentionally absent from this
+  write path; links and mutable attachment presentations are synchronized
+  around immutable artifact bytes.
+  """
+  def update_participation(scope, %Vehicle{} = vehicle, entry_ref, attrs) do
+    with {:ok, participation} <- participation_for_edit(scope, vehicle, entry_ref),
+         {:ok, changeset} <- participation_edit_changeset(participation, attrs),
+         :ok <-
+           validate_attachment_edits(
+             participation.attachments,
+             value(attrs, :existing_attachments, [])
+           ),
+         :ok <- validate_draft_links(value(attrs, :links, [])) do
+      case Repo.transaction(fn ->
+             participation_attrs = editable_participation_attrs(value(attrs, :participation, %{}))
+
+             case Owners.amend_entry(scope, vehicle, participation.entry_ref, %{
+                    date: participation.event.starts_on,
+                    claims: [outing_claim(participation.event, participation_attrs)]
+                  }) do
+               {:ok, _entry} -> :ok
+               {:error, reason} -> Repo.rollback(reason)
+             end
+
+             updated = Repo.update!(changeset)
+
+             removed_photo_artifact_ids =
+               sync_existing_attachments!(
+                 participation,
+                 value(attrs, :existing_attachments, [])
+               )
+
+             case Owners.remove_entry_photo_artifacts(
+                    scope,
+                    vehicle,
+                    participation.entry_ref,
+                    removed_photo_artifact_ids
+                  ) do
+               {:ok, _count} -> :ok
+               {:error, reason} -> Repo.rollback(reason)
+             end
+
+             append_attachments!(
+               scope,
+               vehicle,
+               updated,
+               value(attrs, :uploads, []),
+               value(attrs, :links, [])
+             )
+
+             updated
+             |> Repo.preload([:event, :user, :vehicle], force: true)
+             |> Map.put(:attachments, list_attachments(updated.id))
+           end) do
+        {:ok, updated} -> {:ok, updated}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp participation_edit_changeset(participation, attrs) do
+    changeset =
+      EventParticipation.changeset(
+        participation,
+        editable_participation_attrs(value(attrs, :participation, %{}))
+      )
+
+    if changeset.valid?, do: {:ok, changeset}, else: {:error, changeset}
+  end
+
+  defp editable_participation_attrs(attrs) when is_map(attrs),
+    do: Map.drop(attrs, [:visibility, "visibility"])
+
+  defp editable_participation_attrs(_attrs), do: %{}
+
+  defp validate_attachment_edits(existing, edits) when is_list(edits) do
+    existing_by_id = Map.new(existing, &{&1.id, &1})
+
+    Enum.reduce_while(edits, :ok, fn edit, :ok ->
+      case Map.get(existing_by_id, value(edit, :id)) do
+        nil ->
+          {:halt, {:error, :attachment_not_found}}
+
+        attachment ->
+          if removed?(edit) do
+            {:cont, :ok}
+          else
+            changeset =
+              EventAttachment.changeset(attachment, attachment_edit_attrs(attachment, edit))
+
+            if changeset.valid?,
+              do: {:cont, :ok},
+              else: {:halt, {:error, changeset}}
+          end
+      end
+    end)
+  end
+
+  defp validate_attachment_edits(_existing, _edits), do: {:error, :attachment_not_found}
+
+  defp attachment_edit_attrs(%EventAttachment{artifact_id: artifact_id} = attachment, edit)
+       when not is_nil(artifact_id) do
+    %{
+      label: value(edit, :label),
+      kind: attachment.kind,
+      position: attachment.position
+    }
+  end
+
+  defp attachment_edit_attrs(%EventAttachment{} = attachment, edit) do
+    %{
+      label: value(edit, :label),
+      url: value(edit, :url),
+      kind: value(edit, :kind, attachment.kind),
+      position: attachment.position
+    }
+  end
+
+  defp sync_existing_attachments!(participation, edits) do
+    edits_by_id = Map.new(edits, &{value(&1, :id), &1})
+
+    participation.attachments
+    |> Enum.reduce([], fn attachment, removed_photo_artifact_ids ->
+      case Map.get(edits_by_id, attachment.id) do
+        nil ->
+          removed_photo_artifact_ids
+
+        edit ->
+          if removed?(edit) do
+            Repo.delete!(attachment)
+
+            if attachment.kind == :photo and attachment.artifact_id,
+              do: [attachment.artifact_id | removed_photo_artifact_ids],
+              else: removed_photo_artifact_ids
+          else
+            attachment
+            |> EventAttachment.changeset(attachment_edit_attrs(attachment, edit))
+            |> Repo.update!()
+
+            removed_photo_artifact_ids
+          end
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp append_attachments!(scope, vehicle, participation, uploads, links) do
+    position = next_attachment_position(participation.id)
+
+    artifacts =
+      case Owners.attach_attachments(scope, vehicle, participation.entry_ref, uploads) do
+        {:ok, result} -> result.artifacts
+        {:error, reason} -> Repo.rollback(reason)
+      end
+
+    uploads
+    |> Enum.zip(artifacts)
+    |> Enum.with_index(position)
+    |> Enum.each(fn {{upload, artifact}, index} ->
+      %EventAttachment{participation_id: participation.id, artifact_id: artifact.id}
+      |> EventAttachment.changeset(%{
+        label: value(upload, :label, value(upload, :filename, "Attachment")),
+        kind: value(upload, :kind, :file),
+        position: index
+      })
+      |> insert_or_rollback!()
+    end)
+
+    links
+    |> Enum.with_index(position + length(uploads))
+    |> Enum.each(fn {link, index} ->
+      %EventAttachment{participation_id: participation.id}
+      |> EventAttachment.changeset(%{
+        url: value(link, :url),
+        label: value(link, :label, "Link"),
+        kind: value(link, :kind, :link),
+        position: index
+      })
+      |> insert_or_rollback!()
+    end)
+  end
+
+  defp next_attachment_position(participation_id) do
+    case Repo.one(
+           from(a in EventAttachment,
+             where: a.participation_id == ^participation_id,
+             select: max(a.position)
+           )
+         ) do
+      nil -> 0
+      position -> position + 1
+    end
+  end
+
+  defp list_attachments(participation_id) do
+    Repo.all(
+      from(a in EventAttachment,
+        where: a.participation_id == ^participation_id,
+        order_by: [asc: a.position, asc: a.inserted_at],
+        preload: :artifact
+      )
+    )
+  end
+
+  defp sort_attachments(%EventParticipation{} = participation) do
+    %{
+      participation
+      | attachments: Enum.sort_by(participation.attachments, &{&1.position, &1.inserted_at})
+    }
+  end
+
+  defp removed?(attrs), do: value(attrs, :remove, false) in [true, "true", "1", "on"]
+
   defp create_participation!(scope, user, vehicle, attrs) do
     event = resolve_event!(user, value(attrs, :event_id), value(attrs, :event, %{}))
     participation_attrs = value(attrs, :participation, %{})
@@ -487,29 +751,42 @@ defmodule SantoApi.Events do
   def retract_participation(_scope, %Vehicle{}, _entry_ref),
     do: {:error, :authentication_required}
 
-  @doc "Resolve uploaded bytes only through a public event and participation."
-  def fetch_public_attachment(event_public_id, attachment_id) do
+  @doc "Resolve event-upload bytes for a public account or that account's author."
+  def fetch_visible_attachment(scope, event_public_id, attachment_id) do
+    viewer_id = viewer_id(scope)
+
+    visibility_filter =
+      if viewer_id do
+        dynamic(
+          [_attachment, participation],
+          participation.visibility == :public or participation.user_id == ^viewer_id
+        )
+      else
+        dynamic([_attachment, participation], participation.visibility == :public)
+      end
+
     with {:ok, id} <- Ecto.UUID.cast(attachment_id),
          %EventAttachment{} = attachment <-
-           Repo.one(
-             from(a in EventAttachment,
-               join: p in EventParticipation,
-               on: p.id == a.participation_id,
-               join: e in EventOccurrence,
-               on: e.id == p.event_id,
-               join: artifact in Artifact,
-               on: artifact.id == a.artifact_id,
-               where:
-                 a.id == ^id and e.public_id == ^event_public_id and
-                   p.visibility == :public,
-               preload: [artifact: artifact]
-             )
-           ) do
+           EventAttachment
+           |> join(:inner, [a], p in EventParticipation, on: p.id == a.participation_id)
+           |> join(:inner, [_a, p], e in EventOccurrence, on: e.id == p.event_id)
+           |> join(:inner, [a], artifact in Artifact, on: artifact.id == a.artifact_id)
+           |> where(
+             [a, _p, e],
+             a.id == ^id and e.public_id == ^event_public_id
+           )
+           |> where(^visibility_filter)
+           |> preload([_a, p, _e, artifact], artifact: artifact, participation: p)
+           |> Repo.one() do
       {:ok, attachment}
     else
       _absent -> {:error, :not_found}
     end
   end
+
+  @doc "Resolve uploaded bytes only through a public event and participation."
+  def fetch_public_attachment(event_public_id, attachment_id),
+    do: fetch_visible_attachment(nil, event_public_id, attachment_id)
 
   defp with_event_counts(%EventParticipation{event: %EventOccurrence{} = event} = participation) do
     %{participation | event: with_counts(event)}

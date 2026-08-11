@@ -7,6 +7,7 @@ defmodule SantoApiWeb.BenchLive.Index do
   use SantoApiWeb, :live_view
 
   alias SantoApi.AcquisitionRuns
+  alias SantoApi.Bench
   alias SantoApi.Owners
   alias SantoApi.Registry
 
@@ -14,14 +15,27 @@ defmodule SantoApiWeb.BenchLive.Index do
   def mount(_params, _session, socket) do
     vehicles = Registry.list_vehicles()
     reported_replies = SantoApi.Social.list_open_reports(socket.assigns.current_scope)
+    scope = socket.assigns.current_scope
 
     {:ok,
      socket
      |> assign(:lookup_form, to_form(%{"vin" => ""}, as: :lookup))
      |> assign(:error, nil)
-     |> assign(:waiting_claims, length(Owners.list_pending_challenges()))
+     |> assign(:waiting_claims, length(Owners.list_pending_claiming_challenges()))
      |> assign(:reported_replies, length(reported_replies))
      |> assign(:vehicle_count, length(vehicles))
+     |> assign_async(:ratification_count, fn ->
+       case Bench.pending_ratification_count(scope) do
+         {:ok, count} -> {:ok, %{ratification_count: count}}
+         {:error, reason} -> {:error, reason}
+       end
+     end)
+     |> assign_async(:dispute_count, fn ->
+       case Bench.pending_dispute_count(scope) do
+         {:ok, count} -> {:ok, %{dispute_count: count}}
+         {:error, reason} -> {:error, reason}
+       end
+     end)
      |> stream(:vehicles, vehicles)}
   end
 
@@ -72,6 +86,14 @@ defmodule SantoApiWeb.BenchLive.Index do
   defp reports_waiting(1), do: "1 reported reply"
   defp reports_waiting(count), do: "#{count} reported replies"
 
+  defp ratifications_waiting(0), do: "No owner facts waiting"
+  defp ratifications_waiting(1), do: "1 owner fact waiting"
+  defp ratifications_waiting(count), do: "#{count} owner facts waiting"
+
+  defp disputes_waiting(0), do: "No stewardship disputes"
+  defp disputes_waiting(1), do: "1 stewardship dispute"
+  defp disputes_waiting(count), do: "#{count} stewardship disputes"
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -100,6 +122,38 @@ defmodule SantoApiWeb.BenchLive.Index do
           class="club-link club-code text-xs uppercase tracking-wider"
         >
           {reports_waiting(@reported_replies)}
+        </.link>
+      </p>
+
+      <p id="ratification-queue-link" class="-mt-4 mb-6">
+        <.link
+          navigate={~p"/bench/ratifications"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
+          <%= cond do %>
+            <% @ratification_count.loading -> %>
+              Checking owner facts…
+            <% @ratification_count.ok? -> %>
+              {ratifications_waiting(@ratification_count.result)}
+            <% true -> %>
+              Ratification queue unavailable
+          <% end %>
+        </.link>
+      </p>
+
+      <p id="dispute-queue-link" class="-mt-4 mb-6">
+        <.link
+          navigate={~p"/bench/disputes"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
+          <%= cond do %>
+            <% @dispute_count.loading -> %>
+              Checking stewardship disputes…
+            <% @dispute_count.ok? -> %>
+              {disputes_waiting(@dispute_count.result)}
+            <% true -> %>
+              Dispute queue unavailable
+          <% end %>
         </.link>
       </p>
 

@@ -26,6 +26,7 @@ defmodule SantoApiWeb.VehicleLive.Update do
            Owners.fetch_timeline_entry(nil, vehicle, entry_ref) do
       scope = socket.assigns.current_scope
       thread = Links.build_thread(vehicle)
+      event_participation = event_participation(scope, vehicle, entry.entry_ref)
 
       {:ok,
        socket
@@ -33,7 +34,8 @@ defmodule SantoApiWeb.VehicleLive.Update do
        |> assign(:vehicle, vehicle)
        |> assign(:entry, entry)
        |> assign(:parts, Presenter.entry_parts(entry))
-       |> assign(:event_participation, event_participation(scope, vehicle, entry.entry_ref))
+       |> assign(:event_participation, event_participation)
+       |> assign(:event_editable?, event_editable?(scope, vehicle, event_participation))
        |> assign(:distribution, DistributionPresenter.entry(vehicle, entry))
        |> assign(:shareable?, Owners.published?(vehicle))
        |> assign(:stewarding?, Owners.stewarding?(scope, vehicle))
@@ -71,6 +73,15 @@ defmodule SantoApiWeb.VehicleLive.Update do
       {:ok, participation} -> participation
       {:error, :not_found} -> nil
     end
+  end
+
+  defp event_editable?(_scope, _vehicle, nil), do: false
+
+  defp event_editable?(scope, vehicle, participation) do
+    match?(
+      {:ok, _participation},
+      Events.participation_for_edit(scope, vehicle, participation.entry_ref)
+    )
   end
 
   defp comment_form(
@@ -241,6 +252,7 @@ defmodule SantoApiWeb.VehicleLive.Update do
           reply_count={@comment_count}
           heading_level={1}
           show_our_day={false}
+          show_edit={@event_editable?}
         />
 
         <header :if={is_nil(@event_participation)} id="update-card" class="club-update-card">

@@ -2,7 +2,7 @@ defmodule SantoApi.Owners.Notifier do
   @moduledoc """
   What a claim sends, and to whom (owner_surface §4, §9.1).
 
-  Email only in v1 — no push, no digest. Three messages, each of which somebody
+  Email only in v1 — no push, no digest. These are messages somebody
   is actually waiting for: a receipt when the photo arrives, the decision when
   it is made, and the counter-claim alert, which is the one that must not be
   missed. Somebody is asking for a car another person maintains, and that person
@@ -46,6 +46,34 @@ defmodule SantoApi.Owners.Notifier do
     before deciding anything.
 
     If this is a sale you already made, tell us and we will hand the log over.
+
+    #{car_url(vehicle)}
+    """)
+  end
+
+  @doc "A contested claim was resolved without changing the incumbent stewardship."
+  def dispute_kept(%User{} = incumbent, %Vehicle{} = vehicle, claimant_handle, reason) do
+    deliver(incumbent, "You remain the maintainer of the #{Presenter.title(vehicle)}", """
+    The contested claim from #{claimant_handle} has been resolved. You remain
+    the person maintaining the #{Presenter.title(vehicle)} on Vin Santo, and
+    your entries and access are unchanged.
+
+    The operator's reason: #{reason}
+
+    #{car_url(vehicle)}
+    """)
+  end
+
+  @doc "A contested claim transferred stewardship to the claimant."
+  def dispute_transferred(%User{} = incumbent, %Vehicle{} = vehicle, claimant_handle, reason) do
+    deliver(incumbent, "The #{Presenter.title(vehicle)} log has been transferred", """
+    The contested claim from #{claimant_handle} has been resolved, and that
+    person now maintains the #{Presenter.title(vehicle)} on Vin Santo.
+
+    The operator's reason: #{reason}
+
+    Your prior entries remain in the record under your handle. You no longer
+    have access to add or change entries for this car.
 
     #{car_url(vehicle)}
     """)
