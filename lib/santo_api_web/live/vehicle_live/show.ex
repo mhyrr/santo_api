@@ -18,6 +18,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
   alias SantoApi.Owners.VehicleLink
   alias SantoApi.Owners.VehicleStory
   alias SantoApi.Registry
+  alias SantoApi.Social.ContentReport
   alias SantoApiWeb.EventComponents
   alias SantoApiWeb.OwnerLive.Composer
   alias SantoApiWeb.VehiclePhotoComponents
@@ -57,7 +58,8 @@ defmodule SantoApiWeb.VehicleLive.Show do
          |> assign(:links, Links.list_links(vehicle))
          |> assign(:resolve_error, nil)
          |> assign(:my_handle, my_handle(scope))
-         |> assign(:signed_in?, signed_in?(scope))}
+         |> assign(:signed_in?, signed_in?(scope))
+         |> assign(:vehicle_report_form, content_report_form(scope, vehicle, published?))}
 
       {:error, :not_found} ->
         raise SantoApiWeb.VehicleNotFound
@@ -66,6 +68,19 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
   defp signed_in?(%SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{}}), do: true
   defp signed_in?(_anonymous), do: false
+
+  defp content_report_form(
+         %SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{handle: handle}} = scope,
+         vehicle,
+         true
+       )
+       when is_binary(handle) do
+    scope
+    |> Social.change_content_report(vehicle, :vehicle)
+    |> to_form(as: :content_report)
+  end
+
+  defp content_report_form(_scope, _vehicle, _published?), do: nil
 
   # Which entries this caller may correct, matched on the asserting handle
   # rather than on stewardship alone: a previous steward's entries share
@@ -124,6 +139,7 @@ defmodule SantoApiWeb.VehicleLive.Show do
         <.current_spec vehicle={@vehicle} />
       </div>
       <.links_section links={@links} stewarding?={@stewarding?} />
+      <.vehicle_report form={@vehicle_report_form} />
       <.owner_data_controls
         :if={@stewarding?}
         public_id={@vehicle.public_id}
@@ -136,6 +152,40 @@ defmodule SantoApiWeb.VehicleLive.Show do
         <.colophon vehicle={@vehicle} />
       <% end %>
     </article>
+    """
+  end
+
+  attr :form, :any, default: nil
+
+  defp vehicle_report(assigns) do
+    ~H"""
+    <section :if={@form} class="club-wrap mt-8 border-t border-[var(--club-line)] pt-5">
+      <details id="vehicle-report-control" class="max-w-2xl">
+        <summary class="club-text-button cursor-pointer text-sm">Report this car</summary>
+        <.form
+          for={@form}
+          id="vehicle-report-form"
+          phx-submit="report_vehicle"
+          class="club-report-form mt-4"
+        >
+          <.input
+            field={@form[:reason]}
+            type="select"
+            label="Why should an operator review this car?"
+            options={Enum.map(ContentReport.reasons(), &{String.capitalize(&1), &1})}
+          />
+          <.input
+            field={@form[:detail]}
+            type="textarea"
+            label="What should the operator verify?"
+            rows="3"
+          />
+          <button id="vehicle-report-submit" type="submit" class="club-button club-button-primary">
+            Send report
+          </button>
+        </.form>
+      </details>
+    </section>
     """
   end
 
@@ -1092,6 +1142,24 @@ defmodule SantoApiWeb.VehicleLive.Show do
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "That entry is not yours to remove.")}
+    end
+  end
+
+  def handle_event("report_vehicle", %{"content_report" => params}, socket) do
+    %{current_scope: scope, vehicle: vehicle} = socket.assigns
+
+    case Social.report_content(scope, vehicle, :vehicle, nil, params) do
+      {:ok, _report} ->
+        {:noreply,
+         socket
+         |> assign(:vehicle_report_form, content_report_form(scope, vehicle, true))
+         |> put_flash(:info, "Report sent to the Vin Santo operators.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :vehicle_report_form, to_form(changeset, as: :content_report))}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "That car is no longer available to report.")}
     end
   end
 

@@ -130,6 +130,8 @@ defmodule SantoApiWeb.Router do
       live "/bench/ratifications", BenchLive.Ratifications
       live "/bench/disputes", BenchLive.Disputes
       live "/bench/comments", BenchLive.Comments
+      live "/bench/reports", BenchLive.Reports
+      live "/bench/access", BenchLive.Access
       live "/bench/vehicles/:id", BenchLive.Show
     end
   end

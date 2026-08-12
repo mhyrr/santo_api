@@ -14,11 +14,14 @@ defmodule SantoApi.Bench do
   import Ecto.Query, warn: false
 
   alias SantoApi.Accounts
-  alias SantoApi.Accounts.Scope
+  alias SantoApi.Accounts.{AccessDecision, Scope, User, UserToken}
+  alias SantoApi.Events.EventParticipation
   alias SantoApi.Owners
+  alias SantoApi.Owners.{Stewardship, VehiclePhoto}
   alias SantoApi.Registry
   alias SantoApi.Registry.{Artifact, Claim, Party, Vehicle}
   alias SantoApi.Repo
+  alias SantoApi.Social.ContentReport
 
   @live_claim_states [:proposed, :admitted]
 
@@ -87,6 +90,158 @@ defmodule SantoApi.Bench do
   def resolve_dispute(_scope, _challenge_id, _outcome, _reason),
     do: {:error, :not_authorized}
 
+  @doc """
+  Find the exact account an operator named by email or handle.
+
+  The result carries both sides of the split deliberately: the credential row
+  and its permanent public Party, followed by the independent active
+  Stewardships and append-only account-access decisions.
+  """
+  def find_access_account(%Scope{} = scope, query) when is_binary(query) do
+    with :ok <- authorize_operator(scope),
+         {:ok, term} <- normalize_account_query(query) do
+      account =
+        Repo.one(
+          from(u in User,
+            left_join: p in assoc(u, :party),
+            where: u.email == ^term or u.handle == ^String.downcase(term),
+            select: %{user: u, party: p}
+          )
+        )
+
+      {:ok, decorate_access_account(account)}
+    end
+  end
+
+  def find_access_account(%Scope{} = scope, _query) do
+    with :ok <- authorize_operator(scope), do: {:error, :query_required}
+  end
+
+  def find_access_account(_scope, _query), do: {:error, :not_authorized}
+
+  @doc "Suspend an account credential without changing any car authority."
+  def suspend_account(%Scope{} = scope, user_id, expected_version, reason) do
+    change_account_access(scope, user_id, expected_version, reason, :suspended)
+  end
+
+  def suspend_account(_scope, _user_id, _expected_version, _reason),
+    do: {:error, :not_authorized}
+
+  @doc "Restore an account credential without reconstructing car authority."
+  def restore_account(%Scope{} = scope, user_id, expected_version, reason) do
+    change_account_access(scope, user_id, expected_version, reason, :restored)
+  end
+
+  def restore_account(_scope, _user_id, _expected_version, _reason),
+    do: {:error, :not_authorized}
+
+  @doc "Revoke exactly one active Stewardship through the Owners transition."
+  def revoke_stewardship(%Scope{} = scope, stewardship_id, reason) do
+    with :ok <- authorize_operator(scope),
+         {:ok, id} <- cast_uuid(stewardship_id),
+         %Stewardship{} = stewardship <- Repo.get(Stewardship, id) do
+      Owners.revoke_stewardship(stewardship, reason, scope.user)
+    else
+      :error -> {:error, :not_found}
+      nil -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def revoke_stewardship(_scope, _stewardship_id, _reason),
+    do: {:error, :not_authorized}
+
+  @doc "Open car and update reports for the operator queue, oldest first."
+  def list_content_reports(%Scope{} = scope) do
+    with :ok <- authorize_operator(scope) do
+      {:ok,
+       Repo.all(
+         from(r in ContentReport,
+           where: r.status == :open,
+           order_by: [asc: r.inserted_at, asc: r.id],
+           preload: [:vehicle, :reporter_user]
+         )
+       )}
+    end
+  end
+
+  def list_content_reports(_scope), do: {:error, :not_authorized}
+
+  @doc "The number of car and update reports waiting in the Bench."
+  def content_report_count(%Scope{} = scope) do
+    with :ok <- authorize_operator(scope) do
+      {:ok, Repo.aggregate(from(r in ContentReport, where: r.status == :open), :count)}
+    end
+  end
+
+  def content_report_count(_scope), do: {:error, :not_authorized}
+
+  @doc "Hide a reported car/update or dismiss one report, retaining the decision trail."
+  def decide_content_report(%Scope{} = scope, report_id, decision, note)
+      when decision in [:hide, :dismiss] do
+    with :ok <- authorize_operator(scope),
+         {:ok, id} <- cast_uuid(report_id),
+         {:ok, note} <- validate_reason(note) do
+      Repo.transaction(fn ->
+        case Repo.get(ContentReport, id) do
+          %ContentReport{} = report ->
+            decide_locked_content_report(report, scope.user, decision, note)
+
+          nil ->
+            Repo.rollback(:not_found)
+        end
+      end)
+    end
+  end
+
+  def decide_content_report(%Scope{} = scope, _report_id, _decision, _note) do
+    with :ok <- authorize_operator(scope), do: {:error, :invalid_report_decision}
+  end
+
+  def decide_content_report(_scope, _report_id, _decision, _note),
+    do: {:error, :not_authorized}
+
+  @doc "Read-only 30-day operating measures derived from the rows each domain already owns."
+  def metrics(%Scope{} = scope) do
+    with :ok <- authorize_operator(scope) do
+      cutoff = DateTime.add(DateTime.utc_now(), -30, :day)
+
+      recent_entry_refs =
+        from(c in Claim,
+          join: p in Party,
+          on: p.id == c.asserted_by_party_id,
+          where: p.kind == :owner and not is_nil(c.entry_ref),
+          group_by: c.entry_ref,
+          having: min(c.inserted_at) >= ^cutoff,
+          select: c.entry_ref
+        )
+
+      owner_claims =
+        Repo.all(
+          from(c in Claim,
+            join: p in Party,
+            on: p.id == c.asserted_by_party_id,
+            where: p.kind == :owner and c.entry_ref in subquery(recent_entry_refs),
+            order_by: [asc: c.inserted_at, asc: c.id]
+          )
+        )
+
+      entry_metrics = owner_entry_metrics(owner_claims)
+      claim_count = Repo.aggregate(from(c in Claim, where: c.inserted_at >= ^cutoff), :count)
+
+      {:ok,
+       Map.merge(entry_metrics, %{
+         window_days: 30,
+         active_stewards:
+           Repo.aggregate(from(s in Stewardship, where: s.status == :active), :count),
+         claims: claim_count,
+         claims_per_day: Float.round(claim_count / 30, 1)
+       })}
+    end
+  end
+
+  def metrics(_scope), do: {:error, :not_authorized}
+
   defp pending_ratification_query do
     from(c in Claim,
       join: p in Party,
@@ -98,6 +253,165 @@ defmodule SantoApi.Bench do
       select: %{claim: c, party: p, vehicle: v}
     )
   end
+
+  defp decide_locked_content_report(report, operator, decision, note) do
+    reports = lock_content_target_reports(report)
+    selected = Enum.find(reports, &(&1.id == report.id))
+
+    cond do
+      is_nil(selected) ->
+        Repo.rollback(:not_found)
+
+      selected.status != :open ->
+        Repo.rollback(:already_decided)
+
+      decision == :dismiss ->
+        dismiss_content_report(selected, operator, note)
+
+      true ->
+        hide_content_target(selected, reports, operator, note)
+    end
+  end
+
+  defp lock_content_target_reports(%ContentReport{} = report) do
+    query =
+      from(r in ContentReport,
+        where: r.target_kind == ^report.target_kind and r.vehicle_id == ^report.vehicle_id,
+        order_by: [asc: r.inserted_at, asc: r.id],
+        lock: "FOR UPDATE"
+      )
+
+    query =
+      case report.entry_ref do
+        nil -> where(query, [r], is_nil(r.entry_ref))
+        entry_ref -> where(query, [r], r.entry_ref == ^entry_ref)
+      end
+
+    Repo.all(query)
+  end
+
+  defp dismiss_content_report(report, operator, note) do
+    report
+    |> Ecto.Changeset.change(
+      status: :dismissed,
+      decided_by_user_id: operator.id,
+      decided_at: DateTime.utc_now(),
+      decision_note: note
+    )
+    |> Repo.update!()
+  end
+
+  defp hide_content_target(report, _reports, operator, note) do
+    now = DateTime.utc_now()
+
+    hidden =
+      case report.target_kind do
+        :vehicle -> hide_vehicle(report.vehicle_id, now)
+        :entry -> hide_entry(report.vehicle_id, report.entry_ref, now)
+      end
+
+    resolution_query =
+      from(r in ContentReport,
+        where:
+          r.target_kind == ^report.target_kind and r.vehicle_id == ^report.vehicle_id and
+            r.status == :open
+      )
+
+    resolution_query =
+      case report.entry_ref do
+        nil -> where(resolution_query, [r], is_nil(r.entry_ref))
+        entry_ref -> where(resolution_query, [r], r.entry_ref == ^entry_ref)
+      end
+
+    Repo.update_all(
+      resolution_query,
+      set: [
+        status: :actioned,
+        decided_by_user_id: operator.id,
+        decided_at: now,
+        decision_note: note,
+        updated_at: now
+      ]
+    )
+
+    %{report: report, hidden: hidden}
+  end
+
+  defp hide_vehicle(vehicle_id, now) do
+    case Repo.one(from(v in Vehicle, where: v.id == ^vehicle_id, lock: "FOR UPDATE")) do
+      %Vehicle{visibility: :public} = vehicle ->
+        vehicle
+        |> Ecto.Changeset.change(visibility: :private, updated_at: now)
+        |> Repo.update!()
+
+      %Vehicle{visibility: :private} ->
+        Repo.rollback(:already_hidden)
+
+      nil ->
+        Repo.rollback(:not_found)
+    end
+  end
+
+  defp hide_entry(vehicle_id, entry_ref, now) do
+    claim_query =
+      from(c in Claim, where: c.vehicle_id == ^vehicle_id and c.entry_ref == ^entry_ref)
+
+    photo_query =
+      from(p in VehiclePhoto, where: p.vehicle_id == ^vehicle_id and p.entry_ref == ^entry_ref)
+
+    participation_query =
+      from(p in EventParticipation,
+        where: p.vehicle_id == ^vehicle_id and p.entry_ref == ^entry_ref
+      )
+
+    if not Repo.exists?(claim_query) and not Repo.exists?(photo_query) and
+         not Repo.exists?(participation_query) do
+      Repo.rollback(:not_found)
+    end
+
+    {claims, _rows} = Repo.update_all(claim_query, set: [visibility: :private, updated_at: now])
+    {photos, _rows} = Repo.update_all(photo_query, set: [visibility: :private, updated_at: now])
+
+    {participations, _rows} =
+      Repo.update_all(participation_query, set: [visibility: :private, updated_at: now])
+
+    %{claims: claims, photos: photos, participations: participations}
+  end
+
+  defp owner_entry_metrics(claims) do
+    entries = claims |> Enum.group_by(& &1.entry_ref) |> Map.values()
+    entry_count = length(entries)
+    mcp_entries = Enum.count(entries, &mcp_entry?/1)
+    amended_entries = Enum.count(entries, &amended_entry?/1)
+    deleted_entries = Enum.count(entries, &deleted_entry?/1)
+    corrected_entries = amended_entries + deleted_entries
+
+    %{
+      entries: entry_count,
+      mcp_entries: mcp_entries,
+      composer_entries: entry_count - mcp_entries,
+      mcp_share: percentage(mcp_entries, entry_count),
+      amended_entries: amended_entries,
+      deleted_entries: deleted_entries,
+      correction_rate: percentage(corrected_entries, entry_count)
+    }
+  end
+
+  defp mcp_entry?([first | _rest]), do: first.method_meta["surface"] == "mcp"
+  defp mcp_entry?([]), do: false
+
+  defp amended_entry?(claims) do
+    Enum.any?(claims, &(&1.state == :retracted)) and
+      Enum.any?(claims, &(&1.state in @live_claim_states))
+  end
+
+  defp deleted_entry?(claims) do
+    Enum.any?(claims, &(&1.state == :retracted)) and
+      not Enum.any?(claims, &(&1.state in @live_claim_states))
+  end
+
+  defp percentage(_numerator, 0), do: 0.0
+  defp percentage(numerator, denominator), do: Float.round(numerator / denominator * 100, 1)
 
   defp decide(scope, claim_id, decision) do
     with :ok <- authorize_operator(scope),
@@ -134,9 +448,147 @@ defmodule SantoApi.Bench do
     end
   end
 
-  defp authorize_operator(scope) do
-    if Accounts.operator?(scope), do: :ok, else: {:error, :not_authorized}
+  defp authorize_operator(%Scope{user: %User{id: user_id}} = scope) do
+    authorized? =
+      Accounts.operator?(scope) and
+        Repo.exists?(
+          from(u in User,
+            where: u.id == ^user_id and u.operator == true and is_nil(u.suspended_at)
+          )
+        )
+
+    if authorized?, do: :ok, else: {:error, :not_authorized}
   end
+
+  defp authorize_operator(_scope), do: {:error, :not_authorized}
+
+  defp normalize_account_query(query) do
+    case String.trim(query) do
+      "" -> {:error, :query_required}
+      term -> {:ok, term}
+    end
+  end
+
+  defp decorate_access_account(nil), do: nil
+
+  defp decorate_access_account(account) do
+    user_id = account.user.id
+
+    active_stewardships =
+      Repo.all(
+        from(s in Stewardship,
+          where: s.user_id == ^user_id and s.status == :active,
+          order_by: [desc: s.decided_at, desc: s.id],
+          preload: [:vehicle]
+        )
+      )
+
+    access_decisions =
+      Repo.all(
+        from(d in AccessDecision,
+          where: d.user_id == ^user_id,
+          order_by: [desc: d.access_version],
+          preload: [:decided_by_user]
+        )
+      )
+
+    account
+    |> Map.put(:active_stewardships, active_stewardships)
+    |> Map.put(:access_decisions, access_decisions)
+  end
+
+  defp change_account_access(scope, user_id, expected_version, reason, action) do
+    with :ok <- authorize_operator(scope),
+         {:ok, id} <- cast_uuid(user_id),
+         {:ok, version} <- cast_version(expected_version),
+         {:ok, reason} <- validate_reason(reason) do
+      Repo.transact(fn ->
+        case Repo.one(from(u in User, where: u.id == ^id, lock: "FOR UPDATE")) do
+          %User{} = user ->
+            transition_account_access(user, scope.user, version, reason, action)
+
+          nil ->
+            Repo.rollback(:not_found)
+        end
+      end)
+    end
+  end
+
+  defp transition_account_access(user, operator, expected_version, reason, action) do
+    cond do
+      user.access_version != expected_version ->
+        Repo.rollback({:stale_access_state, user.access_version})
+
+      action == :suspended and User.suspended?(user) ->
+        Repo.rollback(:already_suspended)
+
+      action == :restored and not User.suspended?(user) ->
+        Repo.rollback(:already_active)
+
+      true ->
+        persist_account_access(user, operator, reason, action)
+    end
+  end
+
+  defp persist_account_access(user, operator, reason, action) do
+    now = DateTime.utc_now()
+    next_version = user.access_version + 1
+    suspended_at = if action == :suspended, do: now, else: nil
+
+    with {:ok, updated_user} <-
+           user
+           |> User.access_changeset(suspended_at, next_version)
+           |> Repo.update(),
+         {:ok, decision} <-
+           Repo.insert(%AccessDecision{
+             user_id: user.id,
+             decided_by_user_id: operator.id,
+             action: action,
+             reason: reason,
+             access_version: next_version,
+             decided_at: now
+           }) do
+      session_tokens =
+        Repo.all(
+          from(t in UserToken,
+            where: t.user_id == ^user.id and t.context == "session",
+            select: %{token: t.token}
+          )
+        )
+
+      {:ok, %{user: updated_user, decision: decision, session_tokens: session_tokens}}
+    else
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp cast_uuid(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :not_found}
+    end
+  end
+
+  defp cast_version(version) when is_integer(version) and version >= 0, do: {:ok, version}
+
+  defp cast_version(version) when is_binary(version) do
+    case Integer.parse(version) do
+      {parsed, ""} when parsed >= 0 -> {:ok, parsed}
+      _invalid -> {:error, :invalid_access_version}
+    end
+  end
+
+  defp cast_version(_version), do: {:error, :invalid_access_version}
+
+  defp validate_reason(reason) when is_binary(reason) do
+    case String.trim(reason) do
+      "" -> {:error, :reason_required}
+      trimmed when byte_size(trimmed) > 500 -> {:error, :reason_too_long}
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  defp validate_reason(_reason), do: {:error, :reason_required}
 
   defp decorate_ratifications([]), do: []
 

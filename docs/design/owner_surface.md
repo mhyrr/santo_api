@@ -44,8 +44,9 @@ stack. Origination, Garage, natural-language intake, the narrative and generic
 event layers, distribution, privacy/export, update replies and reactions,
 comment reports, ratification, and contested-stewardship queues are built.
 What remains is narrowed in §9–§10: production email/object storage and legal
-policy, the rest of operator administration, optional platform metadata, and
-the explicitly queued product decisions.*
+policy, optional platform metadata, and the explicitly queued product decisions.
+TK-019 subsequently completed operator access controls, broader public-content
+reporting, and the derived metrics strip.*
 
 ## The product shape
 
@@ -781,9 +782,9 @@ against it) or dismiss one report. The moderation trail stays retained, while
 hidden speech leaves the public conversation. No owner moderation and no
 promote-to-claim shortcut exist.
 
-**Still open:** reply notifications and their email-volume policy. Broader
-car/update reporting outside replies remains part of ticket K; the speech
-remedy itself is built.
+**Still open:** reply notifications and their email-volume policy. Car/update
+reporting outside replies now uses the same operator-only remedy described in
+§9.2.
 
 ---
 
@@ -1322,13 +1323,30 @@ a per-vehicle workbench into workbench + queues:
   dispute table was required.
 - **Report queue**: update-reply reports and `/bench/comments` are shipped.
   Operators hide reported speech or dismiss the report without ledger contact.
-  Broader car/update reporting for abuse, doxxing, or fraud remains open; its
-  remedy is a visibility flip plus a note, never a ledger edit.
-- **User admin (open)**: suspend account, revoke stewardship — both status
-  flips with reasons, nothing deleted.
-- **Metrics strip (open)**: active stewards, entry mix (MCP vs composer — the §8
-  30-day check), correction rates (amend/delete, the confirm step's
-  replacement signal), claims/day. Read-only, computed, no new tables.
+  **Broader reporting shipped 2026-08-11 (TK-019 fourth slice).** Signed-in
+  members can report a public car or one stable update for abuse, doxxing,
+  fraud, or another stated concern. `/bench/reports` is derived from retained
+  report rows. A required operator note either dismisses one report or hides
+  the target and resolves every open report against it. Car hiding flips
+  `Vehicle.visibility`; update hiding flips the claims, photo placements, and
+  event participation sharing its `(vehicle_id, entry_ref)`. Event attachments
+  inherit the participation gate. The transition locks the target's reports;
+  stale and repeated actions fail inertly. Content hashes, artifacts, claim
+  states, attribution, `facts`, and `current_state` are untouched.
+- **User admin**: **shipped 2026-08-11 (TK-019 third slice).**
+  `/bench/access` finds an exact email or handle and keeps the controls separate.
+  Account suspension blocks the credential at session, magic-link, and MCP-token
+  lookup while retaining its tokens, Party, content, and Stewardships; restoration
+  reverses only that credential gate. A locked user transition plus monotonic
+  access version rejects stale tabs, and append-only decision rows retain action,
+  reason, operator, and time. General Stewardship revocation locks and flips one
+  existing Owners row with its own reason/operator/time, immediately removing
+  that car from active authorization while leaving other cars and prior entries
+  intact. No Registry state or claim projection participates.
+- **Metrics strip: shipped 2026-08-11 (TK-019 fourth slice).** `/bench` derives
+  active stewards plus a rolling 30-day entry mix (MCP vs composer), amendment
+  and deletion rate, and claims/day from existing stewardship, party, and claim
+  rows. There are no counters, snapshots, jobs, or metrics tables to drift.
 
 Doctrine: admin actions that touch the ledger go through `ratify_claim` /
 `adjudicate_claims` / status flips exclusively. The admin UI is a caller of
@@ -1444,7 +1462,7 @@ instead of only operator-fed auction documents.
 | H | MCP agent entry surface: token auth, tool set (`my_vehicles`, `log_entry`, `amend_entry`, `delete_entry`, `get_timeline`), self-ratifying entries + owner correction | A, B, C | §8's contract. Shipped 2026-08-03 (TK-017); confirm step and pending queue struck below. `attach_link` remains an optional MCP extension now that N's table exists. |
 | I | Distribution kit: share card, forum snippet (BBcode/markdown), embeddable badge, per-vehicle thread URL + "post to my thread" flow | D, F | Shipped 2026-08-10 (TK-018). Entries travel to existing audiences; page remains canonical. |
 | J | Platform plumbing: transactional email, S3-compatible artifact storage, image pipeline (share cards, thumbnails), rate limiting, ToS/privacy pages | — | Application foundations shipped in TK-006; image transforms shipped with I/O. Production mail, S3-compatible storage, legal pages, and artifact-store backup policy remain external-pilot blockers (§9.4). |
-| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Claiming, ratification, contested stewardship, and comment-report queues shipped. Broader reporting, user suspension, general stewardship revocation, and metrics remain open (TK-019). |
+| K | Operator admin: claiming/ratification/dispute/report queues in /bench, user suspend + stewardship revoke, metrics strip | A, E | Shipped 2026-08-11 (TK-019): all named queues, account suspension/restoration, general stewardship revocation, broader car/update reporting, and derived metrics. |
 | L | Embeds: YouTube oEmbed + iframe, IG bare-link cards, oEmbed metadata storage; Discourse crosspost when a target community warrants | D, F | URL-derived YouTube embeds, IG/general link cards, and legacy-forum distribution shipped. Persisted oEmbed metadata and Discourse posting remain optional (TK-020). |
 | N | Origination (§7b): `:asserted` identity kind, one-box entry + extraction endpoint (first hosted LLM call), one-way VIN resolution, registration handle (universal, §9.1), `vehicle_links`, origination throttle | A, B, J | Shipped 2026-08-07 (TK-024). Load-bearing identity path, one transaction, rate-limited; occupied-VIN absorb remains a named deferred seam. |
 | O | Narrative layer (§6c): story block, `event.plan` + composer Plan mode, photo-first update, mutable hero/gallery presentation | C, F | Shipped 2026-08-10 (TK-025). External-gallery links reuse N's `vehicle_links`. |
@@ -1454,9 +1472,9 @@ instead of only operator-fed auction documents.
 (TK-014), G (TK-016), H (TK-017), I (TK-018), N (TK-024), O (TK-025), the
 owner correction rule (TK-021), Garage/natural-language intake (TK-026's
 production scope), generic events and day-two editing, update replies and
-reactions, and comment moderation. J's application plumbing is built, with the
-production services and legal policy still unconfigured. K remains open for
-its remaining safety/admin controls; L remains optional platform depth.
+reactions, comment moderation, and K's full operator administration (TK-019).
+J's application plumbing is built, with the production services and legal
+policy still unconfigured. L remains optional platform depth.
 
 **Historical build order (Greg, round 3): infra first.** J, A, B open the build — no
 design dependencies, and they gate everything downstream (email gates A's
@@ -1474,9 +1492,8 @@ shipped behind I as intended. The
 not deferred to a second walk.
 
 **Remaining order, round 6:** land and validate the integrated owner flow;
-finish K's safety/admin controls; configure production mail, object storage,
-backups, and legal policy before an external pilot. L and TK-004 follow usage
-evidence rather than the calendar.
+configure production mail, object storage, backups, and legal policy before an
+external pilot. L and TK-004 follow usage evidence rather than the calendar.
 
 ### Decided 2026-08-01, round 3 (Greg)
 

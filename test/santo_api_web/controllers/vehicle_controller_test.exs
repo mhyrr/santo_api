@@ -1,6 +1,10 @@
 defmodule SantoApiWeb.VehicleControllerTest do
   use SantoApiWeb.ConnCase, async: true
 
+  alias SantoApi.Registry
+  alias SantoApi.Registry.{Claim, Vehicle}
+  alias SantoApi.Repo
+
   describe "POST /api/vehicles" do
     test "ingests a VIN and returns the registry record", %{conn: conn} do
       conn = post(conn, ~p"/api/vehicles", %{"input" => "WP0CA298X5L001502"})
@@ -59,6 +63,38 @@ defmodule SantoApiWeb.VehicleControllerTest do
     test "unknown id is a 404", %{conn: conn} do
       conn = get(conn, ~p"/api/vehicles/#{Ecto.UUID.generate()}")
       assert json_response(conn, 404)
+    end
+
+    test "a hidden car is absent from the public API and repeat ingest", %{conn: conn} do
+      {:ok, vehicle} = Registry.ingest("WP0CA298X5L001256")
+
+      vehicle
+      |> Ecto.Changeset.change(visibility: :private)
+      |> Repo.update!()
+
+      assert %{"status" => "not_found"} =
+               conn |> get(~p"/api/vehicles/#{vehicle.id}") |> json_response(404)
+
+      assert %{"status" => "not_found"} =
+               conn
+               |> post(~p"/api/vehicles", %{"input" => "WP0CA298X5L001256"})
+               |> json_response(404)
+    end
+
+    test "private update claims do not leak through claims or comparison", %{conn: conn} do
+      {:ok, %Vehicle{} = vehicle} = Registry.ingest("WP0CA298X5L001502")
+
+      claim =
+        Enum.find(Registry.list_claims(vehicle.id), &(&1.predicate == "identity.model_year"))
+
+      claim
+      |> Ecto.Changeset.change(visibility: :private)
+      |> Repo.update!()
+
+      response = conn |> get(~p"/api/vehicles/#{vehicle.id}") |> json_response(200)
+      refute Enum.any?(response["claims"], &(&1["id"] == claim.id))
+      refute Enum.any?(response["comparison"], &(&1["predicate"] == claim.predicate))
+      assert %Claim{} = Repo.get!(Claim, claim.id)
     end
   end
 

@@ -11,7 +11,7 @@ defmodule SantoApiWeb.VehicleLive.Update do
   alias SantoApi.Owners.Links
   alias SantoApi.Registry
   alias SantoApi.Social
-  alias SantoApi.Social.CommentReport
+  alias SantoApi.Social.{CommentReport, ContentReport}
   alias SantoApiWeb.DistributionComponents
   alias SantoApiWeb.DistributionPresenter
   alias SantoApiWeb.EventComponents
@@ -46,6 +46,10 @@ defmodule SantoApiWeb.VehicleLive.Update do
        |> assign(:comment_form, comment_form(scope, vehicle, entry.entry_ref))
        |> assign(:reporting_id, nil)
        |> assign(:report_form, nil)
+       |> assign(
+         :update_report_form,
+         content_report_form(scope, vehicle, entry.entry_ref, Owners.published?(vehicle))
+       )
        |> assign(:error, nil)
        |> stream_configure(:comments, dom_id: &"comment-#{&1.id}")
        |> load_conversation()}
@@ -96,6 +100,20 @@ defmodule SantoApiWeb.VehicleLive.Update do
   end
 
   defp comment_form(_scope, _vehicle, _entry_ref), do: nil
+
+  defp content_report_form(
+         %SantoApi.Accounts.Scope{user: %SantoApi.Accounts.User{handle: handle}} = scope,
+         vehicle,
+         entry_ref,
+         true
+       )
+       when is_binary(handle) do
+    scope
+    |> Social.change_content_report(vehicle, :entry, entry_ref)
+    |> to_form(as: :content_report)
+  end
+
+  defp content_report_form(_scope, _vehicle, _entry_ref, _published?), do: nil
 
   defp load_conversation(socket) do
     conversation =
@@ -190,6 +208,27 @@ defmodule SantoApiWeb.VehicleLive.Update do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :report_form, to_form(changeset, as: :report))}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, social_error(reason))}
+    end
+  end
+
+  def handle_event("report_update", %{"content_report" => params}, socket) do
+    %{current_scope: scope, vehicle: vehicle, entry: entry} = socket.assigns
+
+    case Social.report_content(scope, vehicle, :entry, entry.entry_ref, params) do
+      {:ok, _report} ->
+        {:noreply,
+         socket
+         |> assign(
+           :update_report_form,
+           content_report_form(scope, vehicle, entry.entry_ref, true)
+         )
+         |> put_flash(:info, "Report sent to the Vin Santo operators.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :update_report_form, to_form(changeset, as: :content_report))}
 
       {:error, reason} ->
         {:noreply, assign(socket, :error, social_error(reason))}
@@ -296,6 +335,36 @@ defmodule SantoApiWeb.VehicleLive.Update do
           thread_form={@thread_form}
           stewarding?={@stewarding?}
         />
+
+        <details
+          :if={@update_report_form}
+          id="update-report-control"
+          class="mt-6 border-t border-[var(--club-line)] pt-4"
+        >
+          <summary class="club-text-button cursor-pointer text-sm">Report this update</summary>
+          <.form
+            for={@update_report_form}
+            id="update-report-form"
+            phx-submit="report_update"
+            class="club-report-form mt-4"
+          >
+            <.input
+              field={@update_report_form[:reason]}
+              type="select"
+              label="Why should an operator review this update?"
+              options={Enum.map(ContentReport.reasons(), &{String.capitalize(&1), &1})}
+            />
+            <.input
+              field={@update_report_form[:detail]}
+              type="textarea"
+              label="What should the operator verify?"
+              rows="3"
+            />
+            <button id="update-report-submit" type="submit" class="club-button club-button-primary">
+              Send report
+            </button>
+          </.form>
+        </details>
 
         <section
           id="update-conversation"

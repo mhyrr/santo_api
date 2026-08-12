@@ -15,7 +15,7 @@ defmodule SantoApi.Social do
   alias SantoApi.Owners
   alias SantoApi.Registry.Vehicle
   alias SantoApi.Repo
-  alias SantoApi.Social.{CommentReport, UpdateComment, UpdateLike}
+  alias SantoApi.Social.{CommentReport, ContentReport, UpdateComment, UpdateLike}
 
   @doc "One update's visible conversation and reaction state for this viewer."
   def conversation(scope, %Vehicle{} = vehicle, entry_ref) do
@@ -207,6 +207,46 @@ defmodule SantoApi.Social do
 
   def report_comment(_scope, _comment_id, _attrs), do: {:error, :authentication_required}
 
+  @doc "Build the member form for reporting one public car or update."
+  def change_content_report(
+        %Scope{user: %User{handle: handle} = user},
+        %Vehicle{} = vehicle,
+        target_kind,
+        entry_ref \\ nil,
+        attrs \\ %{}
+      )
+      when is_binary(handle) and target_kind in [:vehicle, :entry] do
+    ContentReport.create_changeset(
+      target_kind,
+      vehicle.id,
+      cast_entry_ref(entry_ref),
+      user,
+      attrs
+    )
+  end
+
+  @doc "Send one public car or update to the operator content queue."
+  def report_content(
+        %Scope{user: %User{handle: handle} = user},
+        %Vehicle{} = vehicle,
+        target_kind,
+        entry_ref,
+        attrs
+      )
+      when is_binary(handle) and target_kind in [:vehicle, :entry] do
+    with {:ok, ref} <- public_content_target(vehicle, target_kind, entry_ref) do
+      target_kind
+      |> ContentReport.create_changeset(vehicle.id, ref, user, attrs)
+      |> Repo.insert()
+    end
+  end
+
+  def report_content(%Scope{user: %User{}}, %Vehicle{}, _target_kind, _entry_ref, _attrs),
+    do: {:error, :handle_required}
+
+  def report_content(_scope, %Vehicle{}, _target_kind, _entry_ref, _attrs),
+    do: {:error, :authentication_required}
+
   @doc "Open reply reports for the operator workbench, oldest first."
   def list_open_reports(%Scope{user: %User{operator: true}}) do
     Repo.all(
@@ -296,6 +336,21 @@ defmodule SantoApi.Social do
       {:ok, entry.entry_ref}
     else
       _private_or_missing -> {:error, :not_found}
+    end
+  end
+
+  defp public_content_target(vehicle, :vehicle, _entry_ref) do
+    if Owners.published?(vehicle), do: {:ok, nil}, else: {:error, :not_found}
+  end
+
+  defp public_content_target(vehicle, :entry, entry_ref), do: public_entry(vehicle, entry_ref)
+
+  defp cast_entry_ref(nil), do: nil
+
+  defp cast_entry_ref(entry_ref) do
+    case Ecto.UUID.cast(entry_ref) do
+      {:ok, ref} -> ref
+      :error -> nil
     end
   end
 

@@ -152,23 +152,46 @@ defmodule SantoApi.Owners do
   End a stewardship. A status flip with a reason and a decider — the row stays,
   and so does everything logged under it.
   """
-  def revoke_stewardship(%Stewardship{} = stewardship, reason, decided_by \\ nil)
-      when is_binary(reason) do
-    case Repo.get(Stewardship, stewardship.id) do
-      %Stewardship{status: :active} = current ->
-        current
-        |> Ecto.Changeset.change(
-          status: :revoked,
-          reason: reason,
-          decided_by_user_id: user_id(decided_by),
-          decided_at: DateTime.utc_now()
-        )
-        |> Repo.update()
+  def revoke_stewardship(stewardship, reason, decided_by \\ nil)
 
-      _inactive ->
-        {:error, :not_active}
+  def revoke_stewardship(%Stewardship{} = stewardship, reason, decided_by)
+      when is_binary(reason) do
+    reason = String.trim(reason)
+
+    cond do
+      reason == "" ->
+        {:error, :reason_required}
+
+      String.length(reason) > 500 ->
+        {:error, :reason_too_long}
+
+      true ->
+        Repo.transact(fn ->
+          case Repo.one(
+                 from(s in Stewardship,
+                   where: s.id == ^stewardship.id,
+                   lock: "FOR UPDATE"
+                 )
+               ) do
+            %Stewardship{status: :active} = current ->
+              current
+              |> Ecto.Changeset.change(
+                status: :revoked,
+                reason: reason,
+                decided_by_user_id: user_id(decided_by),
+                decided_at: DateTime.utc_now()
+              )
+              |> Repo.update()
+
+            _inactive ->
+              Repo.rollback(:not_active)
+          end
+        end)
     end
   end
+
+  def revoke_stewardship(%Stewardship{}, _reason, _decided_by),
+    do: {:error, :reason_required}
 
   @doc """
   The party a page names as maintaining this car, or `nil` when nobody does.
@@ -834,13 +857,14 @@ defmodule SantoApi.Owners do
   as it always was.
   """
   def published?(%Vehicle{} = vehicle) do
-    not Repo.exists?(
-      from(s in Stewardship,
-        join: u in User,
-        on: u.id == s.user_id,
-        where: s.vehicle_id == ^vehicle.id and s.status == :active and is_nil(u.confirmed_at)
+    vehicle.visibility == :public and
+      not Repo.exists?(
+        from(s in Stewardship,
+          join: u in User,
+          on: u.id == s.user_id,
+          where: s.vehicle_id == ^vehicle.id and s.status == :active and is_nil(u.confirmed_at)
+        )
       )
-    )
   end
 
   @doc """
@@ -849,14 +873,19 @@ defmodule SantoApi.Owners do
   `published?/1`.
   """
   def unpublished_vehicle_ids do
-    Repo.all(
-      from(s in Stewardship,
-        join: u in User,
-        on: u.id == s.user_id,
-        where: s.status == :active and is_nil(u.confirmed_at),
-        select: s.vehicle_id
+    unconfirmed =
+      Repo.all(
+        from(s in Stewardship,
+          join: u in User,
+          on: u.id == s.user_id,
+          where: s.status == :active and is_nil(u.confirmed_at),
+          select: s.vehicle_id
+        )
       )
-    )
+
+    hidden = Repo.all(from(v in Vehicle, where: v.visibility == :private, select: v.id))
+
+    (unconfirmed ++ hidden)
     |> MapSet.new()
   end
 

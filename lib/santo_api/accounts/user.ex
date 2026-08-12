@@ -12,6 +12,13 @@ defmodule SantoApi.Accounts.User do
     field :operator, :boolean, default: false
     field :authenticated_at, :utc_datetime, virtual: true
 
+    # Current credential access. Car authority remains on Stewardship rows;
+    # suspending this account never edits or deletes them. The monotonic version
+    # distinguishes "active again" from the older active state a stale browser
+    # may still be showing.
+    field :suspended_at, :utc_datetime_usec
+    field :access_version, :integer, default: 0
+
     # The reserved public handle, chosen at registration for every account
     # (owner_surface §9.1, round 5). A reservation, not a ledger identity:
     # the party is minted with it at the first assertive act, so no
@@ -180,6 +187,14 @@ defmodule SantoApi.Accounts.User do
   def operator_changeset(user, operator) when is_boolean(operator) do
     change(user, operator: operator)
   end
+
+  @doc false
+  def access_changeset(user, suspended_at, access_version) do
+    change(user, suspended_at: suspended_at, access_version: access_version)
+  end
+
+  def suspended?(%__MODULE__{suspended_at: nil}), do: false
+  def suspended?(%__MODULE__{}), do: true
 
   @doc """
   Confirms the account by setting `confirmed_at`.

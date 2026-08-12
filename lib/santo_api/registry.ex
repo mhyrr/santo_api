@@ -280,6 +280,16 @@ defmodule SantoApi.Registry do
     Repo.all(from(c in Claim, where: c.vehicle_id == ^vehicle_id, order_by: c.predicate))
   end
 
+  @doc "Claims whose mutable presentation state permits anonymous API output."
+  def list_public_claims(vehicle_id) do
+    Repo.all(
+      from(c in Claim,
+        where: c.vehicle_id == ^vehicle_id and c.visibility == :public,
+        order_by: c.predicate
+      )
+    )
+  end
+
   def list_evidence_requests(vehicle_id) do
     Repo.all(from(r in EvidenceRequest, where: r.vehicle_id == ^vehicle_id, order_by: r.subject))
   end
@@ -1176,8 +1186,21 @@ defmodule SantoApi.Registry do
     end)
   end
 
-  defp live_claim_entries(vehicle_id) do
-    Repo.all(
+  @doc "The public comparison, excluding claims hidden by owner privacy or moderation."
+  def public_claim_comparison(vehicle_id) do
+    vehicle_id
+    |> live_claim_entries(:public)
+    |> Enum.group_by(& &1.predicate)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {predicate, entries} ->
+      %{predicate: predicate, status: comparison_status(predicate, entries), claims: entries}
+    end)
+  end
+
+  defp live_claim_entries(vehicle_id), do: live_claim_entries(vehicle_id, nil)
+
+  defp live_claim_entries(vehicle_id, visibility) do
+    query =
       from(c in Claim,
         join: p in Party,
         on: p.id == c.asserted_by_party_id,
@@ -1197,7 +1220,10 @@ defmodule SantoApi.Registry do
           inserted_at: c.inserted_at
         }
       )
-    )
+
+    query = if visibility, do: where(query, [c, _p], c.visibility == ^visibility), else: query
+
+    Repo.all(query)
   end
 
   @doc """

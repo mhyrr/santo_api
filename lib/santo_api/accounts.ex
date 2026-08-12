@@ -41,7 +41,7 @@ defmodule SantoApi.Accounts do
   """
   def get_user_by_email_and_password(email, password)
       when is_binary(email) and is_binary(password) do
-    user = Repo.get_by(User, email: email)
+    user = Repo.one(from(u in User, where: u.email == ^email and is_nil(u.suspended_at)))
     if User.valid_password?(user, password), do: user
   end
 
@@ -279,9 +279,18 @@ defmodule SantoApi.Accounts do
   """
   def deliver_login_instructions(%User{} = user, magic_link_url_fun)
       when is_function(magic_link_url_fun, 1) do
-    {encoded_token, user_token} = UserToken.build_email_token(user, "login")
-    Repo.insert!(user_token)
-    UserNotifier.deliver_login_instructions(user, magic_link_url_fun.(encoded_token))
+    case Repo.get(User, user.id) do
+      %User{suspended_at: nil} = active_user ->
+        {encoded_token, user_token} = UserToken.build_email_token(active_user, "login")
+        Repo.insert!(user_token)
+        UserNotifier.deliver_login_instructions(active_user, magic_link_url_fun.(encoded_token))
+
+      %User{} ->
+        {:error, :suspended}
+
+      nil ->
+        {:error, :not_found}
+    end
   end
 
   @doc """

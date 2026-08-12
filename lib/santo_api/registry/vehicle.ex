@@ -34,6 +34,9 @@ defmodule SantoApi.Registry.Vehicle do
     field :santo_version, :string
     field :facts, :map, default: %{}
     field :current_state, :map, default: %{}
+    # Mutable moderation state: presentation only, outside the ledger and its
+    # content hashes and derived projections.
+    field :visibility, Ecto.Enum, values: [:public, :private], default: :public
     timestamps(type: :utc_datetime_usec)
   end
 

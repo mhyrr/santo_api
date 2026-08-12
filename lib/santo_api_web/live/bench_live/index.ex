@@ -16,6 +16,8 @@ defmodule SantoApiWeb.BenchLive.Index do
     vehicles = Registry.list_vehicles()
     reported_replies = SantoApi.Social.list_open_reports(socket.assigns.current_scope)
     scope = socket.assigns.current_scope
+    {:ok, content_report_count} = Bench.content_report_count(scope)
+    {:ok, metrics} = Bench.metrics(scope)
 
     {:ok,
      socket
@@ -23,6 +25,8 @@ defmodule SantoApiWeb.BenchLive.Index do
      |> assign(:error, nil)
      |> assign(:waiting_claims, length(Owners.list_pending_claiming_challenges()))
      |> assign(:reported_replies, length(reported_replies))
+     |> assign(:content_report_count, content_report_count)
+     |> assign(:metrics, metrics)
      |> assign(:vehicle_count, length(vehicles))
      |> assign_async(:ratification_count, fn ->
        case Bench.pending_ratification_count(scope) do
@@ -85,6 +89,10 @@ defmodule SantoApiWeb.BenchLive.Index do
   defp reports_waiting(0), do: "No reported replies"
   defp reports_waiting(1), do: "1 reported reply"
   defp reports_waiting(count), do: "#{count} reported replies"
+
+  defp content_reports_waiting(0), do: "No cars or updates reported"
+  defp content_reports_waiting(1), do: "1 car or update reported"
+  defp content_reports_waiting(count), do: "#{count} cars or updates reported"
 
   defp ratifications_waiting(0), do: "No owner facts waiting"
   defp ratifications_waiting(1), do: "1 owner fact waiting"
@@ -156,6 +164,63 @@ defmodule SantoApiWeb.BenchLive.Index do
           <% end %>
         </.link>
       </p>
+
+      <p id="access-control-link" class="-mt-4 mb-6">
+        <.link
+          navigate={~p"/bench/access"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
+          Account access and Stewardships
+        </.link>
+      </p>
+
+      <p id="content-report-queue-link" class="-mt-4 mb-6">
+        <.link
+          navigate={~p"/bench/reports"}
+          class="club-link club-code text-xs uppercase tracking-wider"
+        >
+          {content_reports_waiting(@content_report_count)}
+        </.link>
+      </p>
+
+      <section id="bench-metrics" class="mb-8" aria-labelledby="bench-metrics-heading">
+        <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p class="club-kicker">Operating pulse</p>
+            <h2 id="bench-metrics-heading" class="club-control-title">Last 30 days</h2>
+          </div>
+          <p class="club-code club-muted text-xs">Derived live · no counters</p>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article id="metric-active-stewards" class="club-work-panel p-4">
+            <p class="club-code club-muted text-xs uppercase tracking-wider">Active stewards</p>
+            <p class="mt-2 text-3xl font-semibold">{@metrics.active_stewards}</p>
+          </article>
+
+          <article id="metric-entry-mix" class="club-work-panel p-4">
+            <p class="club-code club-muted text-xs uppercase tracking-wider">Entry mix</p>
+            <p class="mt-2 text-3xl font-semibold">{@metrics.mcp_share}% MCP</p>
+            <p class="club-muted mt-1 text-xs">
+              {@metrics.mcp_entries} MCP · {@metrics.composer_entries} composer
+            </p>
+          </article>
+
+          <article id="metric-correction-rate" class="club-work-panel p-4">
+            <p class="club-code club-muted text-xs uppercase tracking-wider">Correction rate</p>
+            <p class="mt-2 text-3xl font-semibold">{@metrics.correction_rate}%</p>
+            <p class="club-muted mt-1 text-xs">
+              {@metrics.amended_entries} amended · {@metrics.deleted_entries} removed
+            </p>
+          </article>
+
+          <article id="metric-claims-per-day" class="club-work-panel p-4">
+            <p class="club-code club-muted text-xs uppercase tracking-wider">Claims / day</p>
+            <p class="mt-2 text-3xl font-semibold">{@metrics.claims_per_day}</p>
+            <p class="club-muted mt-1 text-xs">{@metrics.claims} claims in the window</p>
+          </article>
+        </div>
+      </section>
 
       <section
         id="vin-lookup"
