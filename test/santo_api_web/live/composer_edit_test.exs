@@ -13,7 +13,7 @@ defmodule SantoApiWeb.ComposerEditTest do
   field is worse than no correction at all.
   """
 
-  # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
+  # Ingest-heavy: real VINs and shared parties deadlock under async (TK-030).
   use SantoApiWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest

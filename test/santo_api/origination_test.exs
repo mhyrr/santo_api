@@ -5,7 +5,7 @@ defmodule SantoApi.OriginationTest do
   the magic link publishes rather than unlocks.
   """
 
-  # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
+  # Ingest-heavy: real VINs and shared parties deadlock under async (TK-030).
   use SantoApi.DataCase, async: false
 
   import Swoosh.TestAssertions

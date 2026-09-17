@@ -7,7 +7,7 @@ defmodule SantoApiWeb.BenchClaimsTest do
   the flow during exactly the period we are learning what abuse looks like.
   """
 
-  # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
+  # Ingest-heavy: real VINs and shared parties deadlock under async (TK-030).
   use SantoApiWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest

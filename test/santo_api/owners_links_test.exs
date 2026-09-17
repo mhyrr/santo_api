@@ -5,7 +5,7 @@ defmodule SantoApi.OwnersLinksTest do
   they were added to.
   """
 
-  # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
+  # Ingest-heavy: real VINs and shared parties deadlock under async (TK-030).
   use SantoApi.DataCase, async: false
 
   import SantoApi.AccountsFixtures

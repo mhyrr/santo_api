@@ -5,7 +5,7 @@ defmodule SantoApi.OwnersTest do
   """
 
   # Ingest-heavy and party-creating: two sandbox transactions inserting the
-  # same VINs and parties in opposite order deadlock (CLAUDE.md).
+  # same VINs and parties in opposite order deadlock (TK-030).
   use SantoApi.DataCase, async: false
 
   import SantoApi.AccountsFixtures

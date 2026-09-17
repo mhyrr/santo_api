@@ -5,7 +5,7 @@ defmodule SantoApiWeb.OriginationLiveTest do
   publish gate, and resolution from the page.
   """
 
-  # Ingest-heavy: real VINs and shared parties deadlock under async (CLAUDE.md).
+  # Ingest-heavy: real VINs and shared parties deadlock under async (TK-030).
   use SantoApiWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
